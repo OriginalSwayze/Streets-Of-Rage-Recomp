@@ -1,0 +1,9 @@
+{
+  "comment": "Instruction-level patches applied by the recompiler (tools/lib/codegen.mjs). Each one reads a runtime variable from runtime/src/recomp_rt.h; the variables default to values that reproduce the original instruction exactly. Streets of Rage has none yet: each is empty until the game's own spot is found.",
+  "spriteCull": { "pcs": [] },
+  "cameraClamp": { "minTest": null, "minSet": null, "maxLoad": null },
+  "playerDamage": { "pc": null },
+  "hitDamage": { "pcs": {} },
+  "playerSpeed": { "pcs": {} },
+  "randomDrop": { "dropPc": null, "placePc": null }
+}
