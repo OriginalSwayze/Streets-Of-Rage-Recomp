@@ -12,10 +12,10 @@
   "features": {
     "ram": false,
     "widescreen": false,
-    "launcher": false,
+    "launcher": true,
     "wideView": true,
     "smps": false,
-    "fighters": false
+    "fighters": true
   },
   "sram": {
     "present": false,

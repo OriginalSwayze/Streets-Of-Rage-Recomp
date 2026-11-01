@@ -13,7 +13,21 @@
 #define OST_PLAY(song) ((uint16_t)(0x0100 | (song)))
 #define OST_STOP 0
 
-#if GAME_SMPS
+#if GAME_SOR == 3
+/* Streets of Rage 3: its own driver at $1A8000 (requests $01xx songs). */
+#define OST_SONGS 36
+#define SFX_CURSOR  0x0342              /* a 4-frame tick, the game's most used */
+#define SFX_CONFIRM 0x0341
+#define SFX_CANCEL  0x0344
+#define SFX_ERROR   0x0340
+#elif GAME_SOR == 2
+/* Streets of Rage 2: its own driver at $040000 (requests $01xx songs, $02xx-$07xx effects). */
+#define OST_SONGS 26
+#define SFX_CURSOR  0x014C              /* short and soft: 8 frames (--sound-probe ... 0) */
+#define SFX_CONFIRM 0x0429              /* the money pickup's chime */
+#define SFX_CANCEL  0x0124
+#define SFX_ERROR   0x0122
+#elif GAME_SMPS
 /* Streets of Rage: Sega's SMPS 68k driver (songs $81-$91, effects $A0-$DF). */
 #define OST_SONGS 16
 #define SFX_CURSOR  0x02A1              /* short and soft (the game's own tick) */
@@ -41,6 +55,8 @@ void ost_end(void);                     /* removes the hooks; the machine needs 
 
 /* Queues a driver command; false if the queue is full. */
 bool ost_command(uint16_t cmd);
+/* The driver's own request number, as the game passes it (tests: --sound-probe). */
+bool ost_request(uint16_t id);
 
 /* Before each frame: queues the driver's once-a-frame update (as the game's V blank
  * does) and starts the queued calls; they run at the start of the frame. */

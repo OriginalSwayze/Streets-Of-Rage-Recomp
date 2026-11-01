@@ -11,7 +11,41 @@
 
 #include "recomp_rt.h"
 
-#if GAME_SMPS
+#if GAME_SOR == 3
+/* Streets of Rage 3: the V blank calls $1A8000 once a frame (again on a 50 Hz console, to
+ * keep the tempo); `jsr $1A8004` with a request in d0 starts a song ($01xx) or an effect.
+ * $1A8008 sets the driver up at power on. Its RAM is $FF9F00-$FFA6FF. */
+#define DRIVER_UPDATE  0x1A8000
+#define DRIVER_CMD     0x1A8004
+/* The songs: $0100-$0123, every one plays (--sound-probe). */
+static const uint16_t songs[OST_SONGS] = {
+    0x0100, 0x0101, 0x0102, 0x0103, 0x0104, 0x0105, 0x0106, 0x0107,
+    0x0108, 0x0109, 0x010A, 0x010B, 0x010C, 0x010D, 0x010E, 0x010F,
+    0x0110, 0x0111, 0x0112, 0x0113, 0x0114, 0x0115, 0x0116, 0x0117,
+    0x0118, 0x0119, 0x011A, 0x011B, 0x011C, 0x011D, 0x011E, 0x011F,
+    0x0120, 0x0121, 0x0122, 0x0123,
+};
+const char *ost_song_name(int song) { (void)song; return NULL; }
+int ost_title_song(void) { return -1; }
+#elif GAME_SOR == 2
+/* Streets of Rage 2: the V blank calls $040000 then $040004 once a frame (the music, then
+ * the PCM channel on the Z80); `jsr $040008` with a request in d0 (d1 = 0) starts a song
+ * ($01xx) or a sound effect ($02xx-$07xx, the high byte its priority). $04000C sets the
+ * driver up at power on. */
+#define DRIVER_UPDATE  0x040000
+#define DRIVER_UPDATE2 0x040004
+#define DRIVER_CMD     0x040008
+/* The songs: every request from $0100 to $011B that plays ($010C and $0110 are silent), in
+ * the driver's order (--sound-probe). */
+static const uint16_t songs[OST_SONGS] = {
+    0x0100, 0x0101, 0x0102, 0x0103, 0x0104, 0x0105, 0x0106, 0x0107,
+    0x0108, 0x0109, 0x010A, 0x010B, 0x010D, 0x010E, 0x010F, 0x0111,
+    0x0112, 0x0113, 0x0114, 0x0115, 0x0116, 0x0117, 0x0118, 0x0119,
+    0x011A, 0x011B,
+};
+const char *ost_song_name(int song) { (void)song; return NULL; }
+int ost_title_song(void) { return -1; }
+#elif GAME_SMPS
 /* Streets of Rage: Sega's SMPS 68k driver. The V blank calls its update at $072914 once a
  * frame (twice every sixth on a 50 Hz console, bit 6 of $FFFF44, to keep the tempo; this
  * one is 60 Hz); requests go into the 3-byte queue at $FFF00A, which the update reads
@@ -40,7 +74,10 @@ const char *ost_song_name(int song) { (void)song; return NULL; }
 int ost_title_song(void) { return -1; }
 #endif
 #define RETURN_HERE   0x0001FC          /* in the cartridge header */
-#if GAME_SMPS
+#if GAME_SOR >= 2
+#define PARK          0xFFE000          /* object and sprite tables: the drivers keep to $FF9F00-$FFA6FF */
+#define PARK_SP       0xFFE800
+#elif GAME_SMPS
 #define PARK          0xFFC9C0          /* the idle loop and its stack, in game RAM the driver */
 #define PARK_SP       0xFFCF00          /* does not use (its own is $FFF000-$FFF3FF) */
 #else
@@ -60,6 +97,7 @@ static void start_next(void) {
     for (int k = 0; k < queued; k++) queue[k] = queue[k + 1];
     push32(RETURN_HERE);
     D(0) = c.d0;
+    D(1) = 0;
     REG_PC = c.entry;
     running = true;
 }
@@ -101,7 +139,25 @@ static bool enqueue(uint32_t entry, uint16_t d0) {
     return true;
 }
 
-#if GAME_SMPS
+#if GAME_SOR >= 2
+bool ost_request(uint16_t id) { return enqueue(DRIVER_CMD, id); }
+
+bool ost_command(uint16_t cmd) {
+    if (!cmd) return enqueue(DRIVER_CMD, 0x0000);                     /* stops everything */
+    if ((cmd >> 8) == 1) return songs[(cmd & 0xFF) % OST_SONGS] && enqueue(DRIVER_CMD, songs[(cmd & 0xFF) % OST_SONGS]);
+    return enqueue(DRIVER_CMD, cmd);
+}
+
+void ost_frame(void) {
+    enqueue(DRIVER_UPDATE, 0);
+#ifdef DRIVER_UPDATE2
+    enqueue(DRIVER_UPDATE2, 0);
+#endif
+    if (!running && queued) start_next();
+}
+#elif GAME_SMPS
+bool ost_request(uint16_t id) { return ost_command(id); }
+
 bool ost_command(uint16_t cmd) {
     if (!started || nrequests >= (int)sizeof requests) return false;
     requests[nrequests++] = !cmd ? SMPS_STOP : (cmd >> 8) == 1 ? songs[(cmd & 0xFF) % OST_SONGS].id : (uint8_t)cmd;
@@ -120,6 +176,8 @@ void ost_frame(void) {
     if (!running && queued) start_next();
 }
 #else
+bool ost_request(uint16_t id) { return ost_command(id); }
+
 bool ost_command(uint16_t cmd) { return enqueue(DRIVER_CMD, cmd); }
 
 void ost_frame(void) {

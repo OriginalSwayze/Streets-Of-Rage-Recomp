@@ -470,8 +470,8 @@ static void draw_sprites(uint8_t *out, int w, int extra, int line) {
                 /* Streets of Rage: a player's pixel (palette 0, from its tile block) takes that
                  * player's colour; player 2's are marked with bit 4, so they find their table
                  * at vdp_outfit 16-31 (sprite_px). */
-                if (fighters_on && !(attr & 0x6000) && (attr & 0x7FF) >= 0x580 && (attr & 0x7FF) < 0x600) {
-                    int p = (attr & 0x7FF) >= 0x5C0;
+                if (fighters_on && !(attr & 0x6000) && (attr & 0x7FF) >= FIGHTER_TILES_P1 && (attr & 0x7FF) < FIGHTER_TILES_END) {
+                    int p = (attr & 0x7FF) >= FIGHTER_TILES_P2;
                     if (vdp_outfit[p * 16 + c] != OUTFIT_KEEP) v = (uint8_t)(OUTFIT | p << 4 | c | (v & PRI));
                 }
                 if (player_entry[link_now]) {

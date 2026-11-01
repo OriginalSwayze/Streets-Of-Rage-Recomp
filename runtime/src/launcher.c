@@ -42,6 +42,7 @@
  * backdrop). Both come from running the game: through the intro, then Start into round 1
  * and walking right while the camera follows. */
 static Art cover, pano;
+bool launcher_in_collection;
 
 #define ART_MAGIC    0x32524F53u       /* cache file tag (bump when the capture changes) */
 #define PANO_TOP     32                 /* the street starts under the HUD */
@@ -69,6 +70,7 @@ static void art_paste(Art *a, const uint32_t *fb, int pitch, int x, int y0, int 
         }
 }
 
+#if GAME_SOR == 1
 /* The select screen is up: a sprite of Blaze's still (tiles $680-$6BF) in palette 0. */
 static bool select_screen(void) {
     uint32_t sat = (vdp.reg[5] & 0x7E) << 9;
@@ -79,6 +81,7 @@ static bool select_screen(void) {
     }
     return false;
 }
+#endif
 
 static void run_frames(uint32_t *fb, int n, uint16_t pad) {
     for (int f = 0; f < n; f++) { pad_state[0] = pad; pad_state[1] = 0; machine_run_frame(f == n - 1 ? fb : NULL, 320); }
@@ -120,6 +123,81 @@ static bool art_load_cache(void) {
 
 /* Runs the game from a reset (blank save RAM, original speed) to the title, then into
  * round 1, walking right: a few seconds, once; the result is cached. */
+#if GAME_SOR >= 2
+/* Streets of Rage 2 and 3: the title screen is the cover; then Start through the menus into
+ * round 1 and walk right for the street (docs/ram-sor2.md, docs/ram-sor3.md). */
+#if GAME_SOR == 3
+#define COVER_FRAME 880                 /* the logo and "press start", Start at 300 and 500 */
+#define PANO_TOP_GAME 40
+static bool in_round(void) {
+    uint16_t s = (uint16_t)(bus.ram[0xDF00] << 8 | bus.ram[0xDF01]);
+    return s && s != 0x5A && s != 0x5C && s != 0x5E && !bus.ram[0xFB13] && bus.ram[0xDF6C];
+}
+static int camera_x(void) { return (int16_t)(bus.ram[0xF710] << 8 | bus.ram[0xF711]); }
+#else
+#define COVER_FRAME 700
+#define PANO_TOP_GAME 40
+static bool in_round(void) {
+    uint16_t s = (uint16_t)(bus.ram[0xEF00] << 8 | bus.ram[0xEF01]);
+    return s && s < 0x30 && !bus.ram[0xFD10];
+}
+static int camera_x(void) { return -(int16_t)(bus.ram[0xFC22] << 8 | bus.ram[0xFC23]); }
+#endif
+
+static void art_capture(void) {
+    static uint32_t fb[320 * 240];
+    int extra = vdp_opts.extra_width, hide = vdp_opts.hide_layers, overclock = machine_opts.overclock;
+    bool mask = vdp_opts.mask_sides;
+    vdp_opts.extra_width = 0;
+    widescreen_patches(0);
+    machine_opts.overclock = 100;
+    uint8_t *sram = malloc(SRAM_SIZE);
+    memcpy(sram, bus.sram, SRAM_SIZE);
+    memset(bus.sram, 0xFF, SRAM_SIZE);
+    machine_reset();
+    for (int f = 0; f < COVER_FRAME; f++) run_frames(fb, 1, f == 300 || f == 500 || (f > 300 && f < 306) || (f > 500 && f < 506) ? PAD_START : 0);
+    art_alloc(&cover, 320, 224);
+    art_paste(&cover, fb, 320, 0, 0, 224);
+    /* Start every 200 frames (held for 6) until round 1 is under way. */
+    for (int f = COVER_FRAME; f < 6000 && !in_round(); f++) run_frames(fb, 1, f % 200 < 6 ? PAD_START : 0);
+    run_frames(fb, 90, 0);
+    vdp_opts.hide_layers = 4;
+    art_alloc(&pano, PANO_MAX_W, 224 - PANO_TOP_GAME);
+    int cam0 = -1, right = 0;
+    for (int f = 0; f < 3000 && right < PANO_MAX_W; f += 8) {
+        run_frames(fb, 8, PAD_RIGHT | (f % 64 < 8 ? PAD_B : 0));
+        int cam = camera_x();
+        if (cam0 < 0) cam0 = cam;
+        if (cam < cam0) continue;
+        art_paste(&pano, fb, 320, cam - cam0, PANO_TOP_GAME, 224 - PANO_TOP_GAME);
+        if (cam - cam0 + 320 > right) right = cam - cam0 + 320;
+    }
+    if (right < PANO_MAX_W) {
+        Art cut = { 0 };
+        art_alloc(&cut, right, pano.h);
+        for (int y = 0; y < pano.h; y++) {
+            memcpy(cut.rgb + y * right, pano.rgb + y * pano.w, (size_t)right * 4);
+            memcpy(cut.mask + y * right, pano.mask + y * pano.w, (size_t)right);
+        }
+        art_free(&pano);
+        pano = cut;
+    }
+    vdp_opts.hide_layers = hide;
+    machine_opts.overclock = overclock;
+    memcpy(bus.sram, sram, SRAM_SIZE);
+    free(sram);
+    vdp_opts.extra_width = extra;
+    vdp_opts.mask_sides = mask;
+    widescreen_patches(extra);
+    pad_state[0] = pad_state[1] = 0;
+    if (cover.w && pano.w) art_save_cache();
+    char *base = SDL_GetBasePath();
+    char card[1100];
+    snprintf(card, sizeof card, "%scard.png", base ? base : "");
+    if (base) SDL_free(base);
+    if (cover.w) png_write(card, cover.rgb, cover.w, cover.h, cover.w);
+}
+#else
 static void art_capture(void) {
     static uint32_t fb[320 * 240];
     int extra = vdp_opts.extra_width, hide = vdp_opts.hide_layers, overclock = machine_opts.overclock;
@@ -191,7 +269,14 @@ static void art_capture(void) {
     widescreen_patches(extra);
     pad_state[0] = pad_state[1] = 0;
     if (cover.w && pano.w) art_save_cache();
+    /* The collection's card for this game: its cover, next to the program. */
+    char *base = SDL_GetBasePath();
+    char card[1100];
+    snprintf(card, sizeof card, "%scard.png", base ? base : "");
+    if (base) SDL_free(base);
+    if (cover.w) png_write(card, cover.rgb, cover.w, cover.h, cover.w);
 }
+#endif
 
 static bool rom_ok;
 
@@ -520,6 +605,53 @@ bool launcher_make_menu_sounds(const char *path) {
 
 /* Plays every song for up to `seconds` and prints its level per second (in tenths of the
  * loudest second), to tell songs from jingles and empty entries. */
+int launcher_sound_probe(int from, int to, int seconds) {
+    if (!settings.rom_path[0] || bus_load_rom(settings.rom_path)) { fprintf(stderr, "could not load the ROM\n"); return 1; }
+    music_to_title();
+    ost_start();
+    for (int id = from; id <= to; id++) {
+        ost_request(0);
+        for (int f = 0; f < 20; f++) { ost_frame(); machine_run_frame(NULL, 320); }
+        ost_request((uint16_t)id);
+        if (!seconds) {                 /* a sound effect: its level and length in frames */
+            double lv[90], top = 0, all = 0;
+            for (int f = 0; f < 90; f++) {
+                ost_frame();
+                machine_run_frame(NULL, 320);
+                double sum = 0, sum2 = 0;
+                int k = sound_out_count * 2;
+                for (int i = 0; i < k; i++) { sum += sound_out[i]; sum2 += (double)sound_out[i] * sound_out[i]; }
+                lv[f] = k ? sqrt(fmax(0, sum2 / k - (sum / k) * (sum / k))) : 0;
+                if (lv[f] > top) top = lv[f];
+                all += lv[f];
+            }
+            int last = 0;
+            for (int f = 0; f < 90; f++) if (lv[f] > top / 10) last = f + 1;
+            printf("%04X level %6.0f peak %6.0f %2d frames\n", id, all / 90, top, last);
+            continue;
+        }
+        double top = 0;
+        char line[700];
+        int n = 0;
+        for (int s = 0; s < seconds && s < 600; s++) {
+            double sum = 0, sum2 = 0;
+            long k = 0;
+            for (int f = 0; f < 60; f++) {
+                ost_frame();
+                machine_run_frame(NULL, 320);
+                for (int i = 0; i < sound_out_count * 2; i++) { sum += sound_out[i]; sum2 += (double)sound_out[i] * sound_out[i]; k++; }
+            }
+            double level = k ? sqrt(fmax(0, sum2 / k - (sum / k) * (sum / k))) : 0;
+            if (level > top) top = level;
+            line[n++] = level < 30 ? '.' : level < 300 ? '-' : level < 1500 ? '+' : '#';
+        }
+        line[n] = 0;
+        printf("%04X peak %6.0f %s\n", id, top, line);
+        fflush(stdout);
+    }
+    return 0;
+}
+
 int launcher_ost_check(int seconds) {
     init_common();
     if (!rom_ok) { fprintf(stderr, "could not load the ROM\n"); return 1; }
@@ -598,9 +730,12 @@ static const Row tab_rows[TABS][9] = {
     { { ROW_OPTION, "Lighting", OPT_LIGHTING, "Glow from bright light; Neon: the signs and lamps only, buzzing." },
       { ROW_OPTION, "HDR look", OPT_HDR, "Deeper shadows, brighter highlights, richer colour." },
       { ROW_OPTION, "Combat info", OPT_COMBAT, "Damage numbers rise from enemies; health bars show what they have left." },
-      { ROW_OPTION, "Rumble", OPT_RUMBLE, "The controller rumbles on your hits, knockouts, when you are hit and on the police car." } },
-    { { ROW_ROM, "ROM", 0, "Your Streets of Rage cartridge file." },
-      { ROW_OPTION, "Player 2", OPT_PLAYER2, "A friend on a second controller, or the AI partner fighting beside you." },
+      { ROW_OPTION, "Rumble", OPT_RUMBLE, GAME_SOR == 1 ? "The controller rumbles on your hits, knockouts, when you are hit and on the police car."
+                                                         : "The controller rumbles on your hits, knockouts and when you are hit." } },
+    { { ROW_ROM, "ROM", 0, GAME_SOR == 3 ? "Your Streets of Rage 3 (USA) cartridge file." : GAME_SOR == 2 ? "Your Streets of Rage 2 (USA) cartridge file."
+                                                                                        : "Your Streets of Rage cartridge file." },
+      { ROW_OPTION, "Player 2", OPT_PLAYER2, GAME_SOR == 2 ? "In a 2 PLAYERS game: a friend on a second controller, or the AI partner beside you."
+                                                            : "A friend on a second controller, or the AI partner fighting beside you." },
       { ROW_OPTION, "Smooth motion", OPT_SMOOTH, "Scrolls smoothly on fast screens, between the game's own updates." },
       { ROW_OPTION, "Sprite flicker fix", OPT_FLICKER, "Lifts the hardware's sprites-per-line limit, so nothing flickers." },
       { ROW_OPTION, "Slowdown fix", OPT_OVERCLOCK, "A faster 68000, so crowded fights no longer slow down." },
@@ -610,6 +745,29 @@ static const Row tab_rows[TABS][9] = {
     { { ROW_OPTION, "Launcher music", OPT_MUSIC, NULL }, { ROW_TRACK, "Track", 0, NULL },
       { ROW_OPTION, "Player", OPT_OST_MODE, NULL }, { ROW_OPTION, "Volume", OPT_VOLUME, NULL },
       { ROW_OPTION, "Audio", OPT_AUDIO, NULL } },
+#if GAME_SOR == 3
+    { { ROW_FIGHTER, "Axel", 0, "His top, hair, trousers, gloves and skin in any colour, still or animated." },
+      { ROW_FIGHTER, "Blaze", 1, "Her outfit, hair and skin in any colour, still or animated." },
+      { ROW_FIGHTER, "Skate", 2, "His top, cap, shorts, skates and skin in any colour, still or animated." },
+      { ROW_FIGHTER, "Zan", 3, "His jacket, trousers, shoes and metal head in any colour, still or animated." } },
+    { { ROW_OPTION, "Infinite health", OPT_CHEAT_HEALTH, "Both players take no damage from enemies." },
+      { ROW_OPTION, "Infinite lives", OPT_CHEAT_LIVES, "Both players always have at least two lives left." },
+      { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
+};
+static const int tab_count[TABS] = { 9, 4, 8, 5, 4, 3 };
+#elif GAME_SOR == 2
+    { { ROW_FIGHTER, "Max", 0, "His trousers, boots, belt and skin in any colour, still or animated." },
+      { ROW_FIGHTER, "Axel", 1, "His hair, shirt, jeans, gloves and skin in any colour, still or animated." },
+      { ROW_FIGHTER, "Blaze", 2, "Her outfit, trim, hair and skin in any colour, still or animated." },
+      { ROW_FIGHTER, "Skate", 3, "His top, cap, shorts and skin in any colour, still or animated." } },
+    { { ROW_OPTION, "Infinite health", OPT_CHEAT_HEALTH, "Both players take no damage from enemies." },
+      { ROW_OPTION, "Infinite lives", OPT_CHEAT_LIVES, "Both players always have at least three lives." },
+      { ROW_OPTION, "Free specials", OPT_CHEAT_SPECIALS, "Special moves cost no health when they land." },
+      { ROW_OPTION, "Infinite time", OPT_CHEAT_TIME, "The round timer never runs down." },
+      { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
+};
+static const int tab_count[TABS] = { 9, 4, 8, 5, 4, 5 };
+#else
     { { ROW_FIGHTER, "Axel", 0, "His hair, top, jeans and skin in any colour, still or animated." },
       { ROW_FIGHTER, "Adam", 1, "His vest, trousers, skin and shoes in any colour, still or animated." },
       { ROW_FIGHTER, "Blaze", 2, "Her outfit, hair and skin in any colour, still or animated." } },
@@ -620,14 +778,10 @@ static const Row tab_rows[TABS][9] = {
       { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
 };
 static const int tab_count[TABS] = { 9, 4, 8, 5, 3, 5 };
+#endif
 
 /* ---- Look: the game's HUD, a yellow frame on charcoal, red bars ---------------------- */
-#define C_YELLOW rgb_hex(0xF8D838)
-#define C_AMBER  rgb_hex(0xF0A030)
-#define C_RED    rgb_hex(0xE0381C)
-#define C_INK    rgb_hex(0x15151A)
-#define C_TEXT   rgb_hex(0xE9E5DC)
-#define C_DIM    rgb_hex(0x8E8A82)
+#include "theme.h"
 #define HEAD     "Impact"                /* the game's lettering is a heavy condensed face */
 
 /* ---- Layout (1280x720 units) ------------------------------------------------------- */
@@ -865,7 +1019,7 @@ static void draw_row(int r, const Row *row, float dx, float alpha, const PlayerV
     Rgb lc = focus ? rgb(1, 1, 1) : C_TEXT;
     ui_draw_text(row->label, "Segoe UI", 17.5f, 400, 0, PANEL_X + 4 + dx, y + 10, lc, lc, alpha);
     char value[96];
-    Rgb vc = focus ? C_YELLOW : rgb_hex(0xE8D49A);
+    Rgb vc = focus ? C_YELLOW : C_VALUE;
     const char *hint = NULL;
     switch (row->kind) {
     case ROW_ROM:
@@ -882,7 +1036,7 @@ static void draw_row(int r, const Row *row, float dx, float alpha, const PlayerV
         break;
     case ROW_FIGHTER: {
         int changed = 0;
-        for (int k = 0; k < 4; k++) changed += settings.fighter_color[row->id][k] >= 0;
+        for (int k = 0; k < FIGHTER_PARTS; k++) changed += settings.fighter_color[row->id][k] >= 0;
         if (!changed) snprintf(value, sizeof value, "Their own colours");
         else snprintf(value, sizeof value, "%d part%s recoloured", changed, changed == 1 ? "" : "s");
         hint = "Enter to change\xE2\x80\xA6";
@@ -931,7 +1085,7 @@ static void draw_player(const PlayerView *pv, float dx, float alpha) {
     int song = pv->ready ? pv->song : (settings.ost_track >= 0 ? settings.ost_track : title_song >= 0 ? title_song : 0);
     song_name(song, name, sizeof name);
     ui_draw_text(pv->on ? "NOW PLAYING" : "STOPPED", "Segoe UI Semibold", 11, 600, 3, x + 20, y + 16, C_RED, C_RED, alpha);
-    shadow_text(name, HEAD, 30, 400, 1, x + 20, y + 30, C_YELLOW, rgb_hex(0x7A1A0C), alpha);
+    shadow_text(name, HEAD, 30, 400, 1, x + 20, y + 30, C_YELLOW, C_DEEP, alpha);
     char count[32];
     snprintf(count, sizeof count, "%d / %d", (song < 0 ? 0 : song) + 1, OST_SONGS);
     float cw = ui_text_width(count, "Segoe UI", 14, 400, 0);
@@ -1003,7 +1157,7 @@ static void draw_ui(float t) {
     }
 
     hud_button(PLAY_X, BTN_Y, PLAY_W, BTN_H, "PLAY", true, ui.selected == ITEM_PLAY, play_enabled(), t);
-    hud_button(QUIT_X, BTN_Y, QUIT_W, BTN_H, "QUIT", false, ui.selected == ITEM_QUIT, true, t);
+    hud_button(QUIT_X, BTN_Y, QUIT_W, BTN_H, launcher_in_collection ? "BACK" : "QUIT", false, ui.selected == ITEM_QUIT, true, t);
     const char *keys = "\xE2\x86\x91\xE2\x86\x93 select    \xE2\x86\x90\xE2\x86\x92 change    Q E  tabs    [ ]  track    M  music    Esc  quit";
     ui_draw_text(keys, "Segoe UI", 12, 400, 1, PANEL_X, BOX_Y + BOX_H - 44, rgb_hex(0x77736A), rgb_hex(0x77736A), 1);
 
@@ -1056,9 +1210,10 @@ static void draw_cover(float t) {
     if (cover.w) draw_art(&cover, x, y, w, h, 0, (float)cover.w, 1);
     else ui_fill_rect(x, y, w, h, rgb_hex(0x101018), 1);
     float ty = y + h + 34;
-    const char *name = "STREETS OF RAGE";
-    float nw = ui_text_width(name, HEAD, 54, 400, 2);
-    shadow_text(name, HEAD, 54, 400, 2, x + w / 2 - nw / 2, ty, C_YELLOW, rgb_hex(0x8A140A), 1);
+    const char *name = GAME_NAME;
+    float size = GAME_SOR >= 2 ? 46 : 54;
+    float nw = ui_text_width(name, HEAD, size, 400, 2);
+    shadow_text(name, HEAD, size, 400, 2, x + w / 2 - nw / 2, ty + (54 - size) / 2, C_YELLOW, C_DEEP, 1);
     ui_fill_rect(x + 60, ty + 78, w - 120, 3, C_RED, .9f);
     const char *sub = "NATIVE PC EDITION";
     float sw = ui_text_width(sub, "Segoe UI Semibold", 14, 600, 6);

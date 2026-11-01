@@ -1,6 +1,13 @@
 /* The fighters' colours: see fighters.h.
  *
- * The three fighters share palette line 0 (docs/ram.md): entries 1-5 are everyone's
+ * Streets of Rage 3's four (docs/ram-sor3.md) use the same line 0 as 2's; player 1's frame
+ * is in tiles $4CE-$518, player 2's in $519-$563.
+ *
+ * Streets of Rage 2's four (docs/ram-sor2.md) share line 0 the same way: 1 white, 2 the
+ * outline, 3-5 skin, 6-7 reds, 8-10 blues, 11-12 greys, 13-14 yellow and orange, each using
+ * some of them; player 1's frame is in tiles $180-$1CF, player 2's in $1D0-$21F.
+ *
+ * Streets of Rage's three fighters share palette line 0 (docs/ram.md): entries 1-5 are everyone's
  * (white, the dark outline, the skin ramp), 6-7 Blaze's reds, 9-11 Axel's blues and
  * 12-15 greys and yellows that Axel (top, hair) and Adam (trousers, vest) both use. Each
  * player's current frame is in its own block of tiles ($580 for player 1, $5C0 for player
@@ -25,10 +32,72 @@
 #include "settings.h"
 #include "ui.h"
 
+typedef struct { const char *name, *about; int n; uint8_t idx[3]; uint16_t top; } Part;
+
+#if GAME_SOR == 3
+enum { AXEL, BLAZE, SKATE, ZAN };
+const char *const fighter_names[FIGHTERS] = { "Axel", "Blaze", "Skate", "Zan" };
+static const char *const ini_names[FIGHTERS] = { "axel", "blaze", "skate", "zan" };
+static const Part parts[FIGHTERS][FIGHTER_PARTS] = {
+    [AXEL] = {
+        { "Top & hair", "His top and his hair: the game draws them with the same colours.", 2, { 13, 14 }, 0x00EE },
+        { "Trousers & shoes", "The grey of his trousers and his shoes.", 2, { 11, 12 }, 0x0AAA },
+        { "Gloves", "His gloves and the red on his shoes.", 2, { 6, 7 }, 0x002E },
+        { "Skin", "His skin, from pale to deep.", 3, { 3, 4, 5 }, 0x06AE },
+    },
+    [BLAZE] = {
+        { "Outfit & boots", "Her top, skirt and boots.", 2, { 11, 12 }, 0x0AAA },
+        { "Hair & skin", "Her hair and her skin: the game draws them with the same colours.", 3, { 3, 4, 5 }, 0x06AE },
+    },
+    [SKATE] = {
+        { "Top", "His vest.", 2, { 6, 7 }, 0x002E },
+        { "Cap, shorts & skates", "His cap, his shorts and his skates.", 3, { 8, 9, 10 }, 0x0AAE },
+        { "Wheels", "The wheels of his skates.", 2, { 13, 14 }, 0x00EE },
+        { "Skin", "His skin, from pale to deep.", 3, { 3, 4, 5 }, 0x06AE },
+    },
+    [ZAN] = {
+        { "Jacket", "His jacket.", 3, { 8, 9, 10 }, 0x0AAE },
+        { "Trousers", "His trousers.", 2, { 11, 12 }, 0x0AAA },
+        { "Shoes", "His shoes.", 2, { 6, 7 }, 0x002E },
+        { "Head & hands", "His metal head and hands.", 3, { 3, 4, 5 }, 0x06AE },
+    },
+};
+static const int part_count[FIGHTERS] = { 4, 2, 4, 4 };
+#elif GAME_SOR == 2
+enum { MAX, AXEL, BLAZE, SKATE };
+const char *const fighter_names[FIGHTERS] = { "Max", "Axel", "Blaze", "Skate" };
+static const char *const ini_names[FIGHTERS] = { "max", "axel", "blaze", "skate" };
+static const Part parts[FIGHTERS][FIGHTER_PARTS] = {
+    [MAX] = {
+        { "Trousers", "His trousers.", 3, { 8, 9, 10 }, 0x0AAE },
+        { "Boots", "His boots.", 2, { 6, 7 }, 0x002E },
+        { "Belt & wristbands", "His belt and the bands on his wrists.", 2, { 11, 12 }, 0x0AAA },
+        { "Skin", "His skin, from pale to deep.", 3, { 3, 4, 5 }, 0x06AE },
+    },
+    [AXEL] = {
+        { "Hair", "His hair.", 2, { 13, 14 }, 0x00EE },
+        { "Shirt", "His shirt's shading (the white stays).", 2, { 11, 12 }, 0x0AAA },
+        { "Jeans & headband", "His jeans and his headband: the game draws them with the same blues.", 3, { 8, 9, 10 }, 0x0AAE },
+        { "Gloves & shoes", "His fingerless gloves and the red on his shoes.", 2, { 6, 7 }, 0x002E },
+        { "Skin", "His skin, from pale to deep.", 3, { 3, 4, 5 }, 0x06AE },
+    },
+    [BLAZE] = {
+        { "Outfit", "Her top, skirt and shoes.", 2, { 6, 7 }, 0x002E },
+        { "Trim & bands", "The yellow trim and the bands on her wrists.", 2, { 13, 14 }, 0x00EE },
+        { "Hair & skin", "Her hair and her skin: the game draws them with the same colours.", 3, { 3, 4, 5 }, 0x06AE },
+    },
+    [SKATE] = {
+        { "Top", "His top.", 2, { 13, 14 }, 0x00EE },
+        { "Cap & skates", "His cap, his gloves and his skates.", 2, { 6, 7 }, 0x002E },
+        { "Shorts", "His shorts' shading (the white stays).", 2, { 11, 12 }, 0x0AAA },
+        { "Skin", "His skin, from pale to deep.", 3, { 3, 4, 5 }, 0x06AE },
+    },
+};
+static const int part_count[FIGHTERS] = { 4, 5, 3, 4 };
+#else
 enum { AXEL, ADAM, BLAZE };
 const char *const fighter_names[FIGHTERS] = { "Axel", "Adam", "Blaze" };
-
-typedef struct { const char *name, *about; int n; uint8_t idx[3]; uint16_t top; } Part;
+static const char *const ini_names[FIGHTERS] = { "axel", "adam", "blaze" };
 static const Part parts[FIGHTERS][FIGHTER_PARTS] = {
     [AXEL] = {
         { "Hair", "His hair.", 2, { 14, 15 }, 0x02EE },
@@ -49,6 +118,7 @@ static const Part parts[FIGHTERS][FIGHTER_PARTS] = {
     },
 };
 static const int part_count[FIGHTERS] = { 4, 4, 3 };
+#endif
 
 typedef struct { const char *name; uint8_t r, g, b; } Colour;   /* 3-bit channels, as the Genesis has */
 static const Colour colours[] = {
@@ -78,10 +148,9 @@ static int lum_of(uint16_t c) { return ((c >> 1) & 7) + ((c >> 5) & 7) + ((c >> 
 static int anim_slot(int anim) { for (int k = 0; k < ANIMS; k++) if (anims[k] == anim) return k; return 0; }
 
 /* ---- Settings ------------------------------------------------------------------------ */
-static const char *const ini_names[FIGHTERS] = { "axel", "adam", "blaze" };
 
 void fighters_defaults(void) {
-    for (int f = 0; f < FIGHTERS; f++)
+    for (int f = 0; f < FIGHTERS_MAX; f++)
         for (int k = 0; k < FIGHTER_PARTS; k++) { settings.fighter_color[f][k] = -1; settings.fighter_anim[f][k] = 0; }
 }
 
@@ -108,9 +177,8 @@ bool fighters_ini_load(const char *key, const char *value) {
 }
 
 void fighters_ini_save(FILE *f) {
-    fprintf(f, "# The fighters' colours, part by part (Genesis CRAM colours, - = their own);\n"
-               "# axel: hair, top, jeans, skin; adam: vest, trousers, skin, shoes; blaze: outfit, hair & skin, details.\n"
-               "# The animations: 0 still, 2 pulse, 3 rainbow, 4 flame.\n");
+    fprintf(f, "# The fighters' colours, part by part as the pause menu lists them (Genesis CRAM\n"
+               "# colours, - = their own). The animations: 0 still, 2 pulse, 3 rainbow, 4 flame.\n");
     for (int g = 0; g < FIGHTERS; g++) {
         fprintf(f, "fighter_%s=", ini_names[g]);
         for (int k = 0; k < FIGHTER_PARTS; k++) {
@@ -135,15 +203,41 @@ static uint16_t entry_colour(int f, int idx, const int colour[FIGHTER_PARTS], co
     return OUTFIT_KEEP;
 }
 
+static void capture_live(int p, int f);
+
+/* Which fighter player p plays, or -1 when not in play. */
+static int fighter_of(int p) {
+#if GAME_SOR == 3
+    uint16_t obj = p ? 0xE000 : 0xDF00, state = (uint16_t)(bus.ram[obj] << 8 | bus.ram[obj + 1]);
+    if (!state || state == 0x5A || state == 0x5C || state == 0x5E || bus.ram[0xFB13]) return -1;
+    int f = bus.ram[obj + 0x1F] - 1;    /* 1 Axel, 2 Blaze, 3 Skate, 4 Zan */
+    return f >= 0 && f < FIGHTERS ? f : -1;
+#elif GAME_SOR == 2
+    uint16_t obj = p ? 0xF000 : 0xEF00, state = (uint16_t)(bus.ram[obj] << 8 | bus.ram[obj + 1]);
+    if (!state || state >= 0x30 || bus.ram[0xFD10]) return -1;     /* not in a round, or the demo */
+    for (int f = 0; f < FIGHTERS; f++) {                            /* its name, at +$78 */
+        size_t n = strlen(fighter_names[f]);
+        bool same = true;
+        for (size_t k = 0; k < n && same; k++) same = bus.ram[obj + 0x78 + k] == (uint8_t)(fighter_names[f][k] & ~0x20);
+        if (same && bus.ram[obj + 0x78 + n] <= ' ') return f;
+    }
+    return -1;
+#else
+    uint16_t obj = p ? 0xB880 : 0xB800;
+    int f = bus.ram[(uint16_t)(obj + 0x50)];
+    return bus.ram[obj] && f < FIGHTERS ? f : -1;
+#endif
+}
+
 int fighters_colours(uint16_t out[32]) {
     static unsigned frame;
     frame++;
     int any = 0;
     for (int i = 0; i < 32; i++) out[i] = OUTFIT_KEEP;
     for (int p = 0; p < 2; p++) {
-        uint16_t obj = p ? 0xB880 : 0xB800;
-        int f = bus.ram[(uint16_t)(obj + 0x50)];
-        if (!bus.ram[obj] || f >= FIGHTERS) continue;
+        int f = fighter_of(p);
+        if (f < 0) continue;
+        if (GAME_SOR >= 2) capture_live(p, f);
         for (int idx = 1; idx < 16; idx++) {
             uint16_t c = entry_colour(f, idx, settings.fighter_color[f], settings.fighter_anim[f], vdp.cram[idx], frame);
             if (c != OUTFIT_KEEP) { out[p * 16 + idx] = c; any = 1; }
@@ -153,8 +247,13 @@ int fighters_colours(uint16_t out[32]) {
 }
 
 /* ---- The previews ------------------------------------------------------------------- */
+#if GAME_SOR >= 2
+#define PREV_W 112                      /* the later games' sprites are bigger */
+#define PREV_H 128
+#else
 #define PREV_W 72
 #define PREV_H 96
+#endif
 #define PREVIEW_MAGIC 0x31475446u       /* "FTG1" */
 static uint8_t prev_img[FIGHTERS][PREV_W * PREV_H];   /* colour entries of palette 0, 0 = none */
 static int prev_w[FIGHTERS], prev_h[FIGHTERS];
@@ -165,6 +264,9 @@ static bool have_cram;
  * each sprite entry below the portraits is drawn into its fighter's picture by where it
  * stands, and the pictures are then cropped to what was drawn. */
 void fighters_capture_select(void) {
+#if GAME_SOR >= 2
+    return;                             /* its previews come from play (capture_live) */
+#else
     static const int order[3] = { ADAM, AXEL, BLAZE };
     static uint8_t img[FIGHTERS][PREV_W * 2 * PREV_H * 2];
     memset(img, 0, sizeof img);
@@ -208,6 +310,72 @@ void fighters_capture_select(void) {
         prev_w[f] = w; prev_h[f] = h;
     }
     if (!have_cram) { memcpy(prev_cram, vdp.cram, sizeof prev_cram); have_cram = true; }
+#endif
+}
+
+/* Streets of Rage 2 and later: a still of fighter f the first time player p, playing them,
+ * stands without a button pressed for half a second (state 2, not hit or thrown): the
+ * sprite pieces drawn from that player's tiles, saved to fighters.cache at once. A frame
+ * with little drawn (the fighter arriving, or blinking) is passed over. */
+static char cache_dir[1024];
+static bool cache_dir_known;
+
+static void capture_live(int p, int f) {
+    static int idle[2];
+    if (prev_w[f]) { idle[p] = 0; return; }
+    uint16_t obj = GAME_SOR == 3 ? (p ? 0xE000 : 0xDF00) : (p ? 0xF000 : 0xEF00);
+    bool standing = bus.ram[obj] == 0 && bus.ram[obj + 1] == 2;
+    idle[p] = pad_state[p] || !standing ? 0 : idle[p] + 1;
+    if (idle[p] < 30) return;
+    idle[p] = 0;
+    static uint8_t img[PREV_H * 2][PREV_W * 2];
+    memset(img, 0, sizeof img);
+    int lo = p ? FIGHTER_TILES_P2 : FIGHTER_TILES_P1, hi = p ? FIGHTER_TILES_END : FIGHTER_TILES_P2;
+    uint32_t sat = (vdp.reg[5] & 0x7E) << 9;
+    int minx = 1 << 30, miny = 1 << 30, link = 0, n = 0;
+    struct { int x, y, size, attr; } pieces[40];
+    int count = 0;
+    do {                                  /* the pieces in this player's tiles, in drawing order */
+        uint32_t e = (sat + link * 8) & 0xFFFF;
+        int y = ((vdp.vram[e] << 8 | vdp.vram[e + 1]) & 0x3FF) - 128, size = vdp.vram[e + 2];
+        int attr = vdp.vram[e + 4] << 8 | vdp.vram[e + 5], x = ((vdp.vram[e + 6] << 8 | vdp.vram[e + 7]) & 0x1FF) - 128;
+        link = vdp.vram[e + 3] & 0x7F;
+        if ((attr & 0x7FF) >= lo && (attr & 0x7FF) < hi && !(attr & 0x6000) && count < 40) {
+            pieces[count].x = x; pieces[count].y = y; pieces[count].size = size; pieces[count].attr = attr; count++;
+            if (x < minx) minx = x;
+            if (y < miny) miny = y;
+        }
+    } while (link && ++n < 80);
+    if (count < 2) return;
+    for (int i = 0; i < count; i++) {
+        int hc = ((pieces[i].size >> 2) & 3) + 1, vc = (pieces[i].size & 3) + 1, attr = pieces[i].attr;
+        for (int sy = 0; sy < vc * 8; sy++)
+            for (int sx = 0; sx < hc * 8; sx++) {
+                int cx = (attr & 0x0800) ? hc * 8 - 1 - sx : sx, cy = (attr & 0x1000) ? vc * 8 - 1 - sy : sy;
+                int tile = ((attr & 0x7FF) + (cx >> 3) * vc + (cy >> 3)) & 0x7FF;
+                uint8_t b = vdp.vram[(tile * 32 + (cy & 7) * 4 + ((cx & 7) >> 1)) & 0xFFFF];
+                int c = (cx & 1) ? (b & 0xF) : (b >> 4);
+                int px = pieces[i].x - minx + sx, py = pieces[i].y - miny + sy;
+                if (c && px < PREV_W * 2 && py < PREV_H * 2 && !img[py][px]) img[py][px] = (uint8_t)c;   /* earlier pieces are in front */
+            }
+    }
+    int x0 = PREV_W * 2, y0 = PREV_H * 2, x1 = -1, y1 = -1;
+    for (int y = 0; y < PREV_H * 2; y++)
+        for (int x = 0; x < PREV_W * 2; x++)
+            if (img[y][x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    int drawn = 0;
+    for (int y = 0; y < PREV_H * 2; y++) for (int x = 0; x < PREV_W * 2; x++) drawn += img[y][x] != 0;
+    if (x1 < 0 || drawn < 900) return;
+    int w = x1 - x0 + 1, h = y1 - y0 + 1;
+    if (w > PREV_W) { x0 += (w - PREV_W) / 2; w = PREV_W; }
+    if (h > PREV_H) { y0 += h - PREV_H; h = PREV_H; }               /* keep the feet */
+    memset(prev_img[f], 0, sizeof prev_img[f]);
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) prev_img[f][y * PREV_W + x] = img[y0 + y][x0 + x];
+    prev_w[f] = w; prev_h[f] = h;
+    memcpy(prev_cram, vdp.cram, sizeof prev_cram);
+    have_cram = true;
+    if (cache_dir_known) fighters_preview_save(cache_dir);
 }
 
 void fighters_capture_colours(void) {
@@ -218,7 +386,9 @@ void fighters_capture_colours(void) {
 static void cache_path(char *out, size_t n, const char *dir) { snprintf(out, n, "%sfighters.cache", dir ? dir : ""); }
 
 bool fighters_preview_save(const char *dir) {
-    if (!prev_w[0] && !prev_w[1] && !prev_w[2]) return false;
+    bool any = false;
+    for (int k = 0; k < FIGHTERS; k++) any |= prev_w[k] > 0;
+    if (!any) return false;
     char path[1100];
     cache_path(path, sizeof path, dir);
     FILE *f = fopen(path, "wb");
@@ -232,6 +402,8 @@ bool fighters_preview_save(const char *dir) {
 }
 
 bool fighters_preview_load(const char *dir) {
+    snprintf(cache_dir, sizeof cache_dir, "%s", dir ? dir : "");
+    cache_dir_known = true;
     char path[1100];
     cache_path(path, sizeof path, dir);
     FILE *f = fopen(path, "rb");
@@ -275,12 +447,7 @@ void fighters_draw(int f, float cx, float bottom, float scale, float alpha, doub
 }
 
 /* ---- The page: the game's HUD, a yellow frame on charcoal, red bars ------------------ */
-#define C_YELLOW rgb_hex(0xF8D838)
-#define C_AMBER  rgb_hex(0xF0A030)
-#define C_RED    rgb_hex(0xE0381C)
-#define C_INK    rgb_hex(0x15151A)
-#define C_TEXT   rgb_hex(0xE9E5DC)
-#define C_DIM    rgb_hex(0x8E8A82)
+#include "theme.h"
 #define HEAD     "Impact"
 
 #define PANEL_X 120
@@ -293,7 +460,7 @@ void fighters_draw(int f, float cx, float bottom, float scale, float alpha, doub
 #define BOX_H   400
 #define TAB_X   (PANEL_X + 36)
 #define TAB_Y   (PANEL_Y + 88)
-#define TAB_W   120
+#define TAB_W   (FIGHTERS > 3 ? 84 : 120)
 #define LIST_X  (PANEL_X + 440)
 #define LIST_R  (PANEL_X + PANEL_W - 44)
 #define LIST_Y  (PANEL_Y + 150)
@@ -478,7 +645,7 @@ static void frame_rect(float x, float y, float w, float h, float t, Rgb c, float
 }
 
 static void shadow_text(const char *s, float px, float x, float y, Rgb c) {
-    ui_draw_text(s, HEAD, px, 400, 3, x + px / 16, y + px / 16, rgb_hex(0x8A140A), rgb_hex(0x8A140A), .9f);
+    ui_draw_text(s, HEAD, px, 400, 3, x + px / 16, y + px / 16, C_DEEP, C_DEEP, .9f);
     ui_draw_text(s, HEAD, px, 400, 3, x, y, c, mix(c, C_AMBER, .35f), 1);
 }
 
@@ -565,7 +732,7 @@ void fighters_render(double time_s) {
             ui_fill_rect(LIST_X - 14, y + 4, LIST_R - LIST_X + 24, ROW_H - 8, C_RED, .22f);
             ui_fill_rect(LIST_X - 14, y + 4, 5, ROW_H - 8, C_YELLOW, 1);
         }
-        Rgb lc = focus ? rgb(1, 1, 1) : C_TEXT, vc = focus ? C_YELLOW : rgb_hex(0xE8D49A);
+        Rgb lc = focus ? rgb(1, 1, 1) : C_TEXT, vc = focus ? C_YELLOW : C_VALUE;
         float ty = y + ROW_H / 2.f - 11;
         ui_draw_text(parts[fighter][r].name, "Segoe UI", 17.5f, 400, 0, LIST_X, ty, lc, lc, 1);
         int c = draft[fighter][r] < 0 ? parts[fighter][r].top : draft[fighter][r];

@@ -35,3 +35,16 @@ attack power cheats.
 | `$FFFC18` | word | mode: 0 one player, 1 two players (the title menu); player 2 can only play in a two-player game |
 | `$FFFC3C` | byte | round timer, BCD seconds (set to `$99` with `move.w #$9900` at the start of each life) |
 | `$FFFD10` | byte | nonzero during the demo: `sub_00089E` then plays the recorded pads from `$FFFD20` |
+
+## Widescreen
+
+The game is written for 320 pixels; games/sor2/patches.json moves its screen edges out by the
+extra width (`patch_sor_wide`, 0 without widescreen, when every patch is the original
+instruction):
+
+| Patch | Where | What |
+|---|---|---|
+| `sorWideAdd` | `$00B48A`/`$00B48E`, `$00D6D4`/`$00D6D8` | the players' limits, camera + `$10` and camera + `$130` (the left one never before the level's start) |
+| `sorWideAdd` | `$003BF8`, `$003C3A`, `$003C5A` | the background streamer, which draws the next column of the level at camera + `$150` |
+| `sorCullList` | `$020DB0`/`$020DB6`, `$021E2C`/`$021E32`, `$021F28`/`$021F2E` | sprite pieces are drawn between screen X `$60` and `$1C0` (+`$80`) |
+| `sorCullList` | `$00E236`/`$00E23E` | `sub_00E21A` creates the enemies of the level's spawn table once they are within -32 to 360 pixels of the screen |

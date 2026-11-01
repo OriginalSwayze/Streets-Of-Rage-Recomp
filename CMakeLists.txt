@@ -127,3 +127,19 @@ if(WIN32)
   target_link_options(${GAME_EXE} PRIVATE -static)
   target_link_libraries(${GAME_EXE} PRIVATE gdi32 comdlg32)
 endif()
+
+# ---- The collection's front end (built with the first game) -----------------------
+if(GAME STREQUAL "sor1")
+  add_executable(Collection WIN32
+    runtime/src/collection.c
+    runtime/src/ui.c
+    runtime/src/text.c
+    runtime/src/png.c)
+  set_target_properties(Collection PROPERTIES OUTPUT_NAME "Streets of Rage Collection")
+  target_link_libraries(Collection PRIVATE SDL2::SDL2main SDL2::SDL2-static)
+  target_compile_options(Collection PRIVATE -Wall -Wextra -Wno-unused-parameter)
+  if(WIN32)
+    target_link_options(Collection PRIVATE -static)
+    target_link_libraries(Collection PRIVATE gdi32)
+  endif()
+endif()

@@ -8,6 +8,7 @@
 
 #include "input.h"
 #include "settings.h"
+#include "theme.h"
 #include "ui.h"
 
 #define ROW_RESET IN_COUNT
@@ -107,7 +108,7 @@ void controls_render(double time_s) {
     if (!open_) return;
     ui_fill_rect(0, 0, UI_BASE_W, UI_BASE_H, rgb(0, 0, 0), .55f);
     /* The game's HUD: charcoal in a yellow frame, red bars. */
-    Rgb yellow = rgb_hex(0xF8D838), red = rgb_hex(0xE0381C);
+    Rgb yellow = C_YELLOW, red = C_RED;
     ui_fill_rect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, rgb_hex(0x15151A), .95f);
     for (int k = 0; k < 4; k++) {
         float th = 4;
@@ -116,7 +117,7 @@ void controls_render(double time_s) {
         if (k == 2) ui_fill_rect(PANEL_X, PANEL_Y, th, PANEL_H, yellow, 1);
         if (k == 3) ui_fill_rect(PANEL_X + PANEL_W - th, PANEL_Y, th, PANEL_H, yellow, 1);
     }
-    ui_draw_text("CONTROLS", "Impact", 40, 400, 5, LIST_X + 2, PANEL_Y + 26, rgb_hex(0x8A140A), rgb_hex(0x8A140A), .9f);
+    ui_draw_text("CONTROLS", "Impact", 40, 400, 5, LIST_X + 2, PANEL_Y + 26, C_DEEP, C_DEEP, .9f);
     ui_draw_text("CONTROLS", "Impact", 40, 400, 5, LIST_X - 1, PANEL_Y + 23, yellow, rgb_hex(0xF0A030), 1);
     ui_fill_rect(LIST_X, PANEL_Y + 76, 110, 3, red, .9f);
     Rgb head = red;
@@ -141,7 +142,7 @@ void controls_render(double time_s) {
                          KEY_X, y + 9, rgb_hex(0xF3DDA4), rgb_hex(0xF3DDA4), a);
             continue;
         }
-        Rgb vc = focus ? yellow : rgb_hex(0xE8D49A);
+        Rgb vc = focus ? yellow : C_VALUE;
         if (focus && now < captured_until) vc = rgb_hex(0x8FD19E);
         ui_draw_text(input_key_name(i), "Segoe UI Semibold", 16.5f, 600, 0, KEY_X, y + 7, vc, vc, 1);
         ui_draw_text(input_button_name(i), "Segoe UI Semibold", 16.5f, 600, 0, PAD_X, y + 7, vc, vc, 1);

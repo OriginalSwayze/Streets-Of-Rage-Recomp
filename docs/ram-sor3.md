@@ -40,3 +40,15 @@ games/sor3/entries.json. Found by scanning the ROM for the instructions.
 
 There is no round timer. Player 2 can join a one-player game with Start, as in Streets of
 Rage.
+
+## Widescreen
+
+games/sor3/patches.json moves the screen edges out by the extra width (`patch_sor_wide`):
+
+| Patch | Where | What |
+|---|---|---|
+| `sorWideLimit` | `$0101C0`, `$01024A` | the players' limits, `$20` and `$128` pixels from the camera (the left one never before the level's start) |
+| `sorCullList` | `$001BF4`/`$001BFA`, `$002066`/`$00206C`, `$002172`/`$002178` | sprite pieces are drawn between screen X `$60` and `$1C0` (+`$80`) |
+
+The enemies' own on-screen tests (camera + 1 to + `$130` at `$01AC22`, and others like it)
+are left alone: widening Streets of Rage 1's made waves wait for enemies that never came.

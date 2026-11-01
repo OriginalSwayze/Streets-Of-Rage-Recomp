@@ -52,6 +52,38 @@ const REPLACED = new Map([
     return [parseInt(pc, 16), [text,
       [`{ uint32_t d = sor_hit(${t}, ${attacker}, ${damage}); wr8(${t} + 0x6C, subb(d, rd8(${t} + 0x6C))); }`]]];
   }),
+  // Screen edges in Streets of Rage 2 and 3 (sorWideAdd): "dN K -" is addi.w #K,dN for a left
+  // edge, moved left by patch_sor_wide but not below K itself (where each level starts);
+  // "dN K +" a right edge, moved right.
+  ...Object.entries(PATCHES.sorWideAdd ?? {}).map(([pc, spec]) => {
+    const [reg, k, side] = spec.split(' ');
+    const n = reg[1], K = `0x${k}u`;
+    return [parseInt(pc, 16), [`addi.w	#$${k},${reg}`, [side === '-'
+      ? `{ uint32_t v = addw((${K} - (uint32_t)patch_sor_wide) & 0xFFFFu, D(${n}) & 0xFFFFu); if ((int16_t)v < (int16_t)${K}) v = ${K}; setw(&D(${n}), v); }`
+      : `setw(&D(${n}), addw((${K} + (uint32_t)patch_sor_wide) & 0xFFFFu, D(${n}) & 0xFFFFu));`]]];
+  }),
+  // Sprite culling in Streets of Rage 2 and 3 (sorCullList): "dN K lo" is cmpi.w #K,dN against
+  // a piece's left edge, "dN K hi" against its right; both moved out by patch_sor_wide. "slo"
+  // and "shi" are signed screen positions (the spawner's window), moved without limits.
+  ...Object.entries(PATCHES.sorCullList ?? {}).map(([pc, spec]) => {
+    const [reg, k, side] = spec.split(' ');
+    const K = `0x${k}u`, w = '(uint32_t)patch_sor_wide';
+    const edge = side === 'lo' ? `(${K} > ${w} ? ${K} - ${w} : 0u)`
+      : side === 'hi' ? `(${K} + ${w} < 0x200u ? ${K} + ${w} : 0x200u)`
+      : side === 'slo' ? `((${K} - ${w}) & 0xFFFFu)` : `((${K} + ${w}) & 0xFFFFu)`;
+    return [parseInt(pc, 16), [`cmpi.w	#$${k},${reg}`, [`cmpw(${edge}, D(${reg[1]}) & 0xFFFFu);`]]];
+  }),
+  // Streets of Rage 3's screen limits for the players (sorWideLimit): "dN K - CAM" is
+  // move.l #K<<16,dN, a left limit in pixels from the camera (the word at $FFCAM), moved left
+  // by patch_sor_wide but never left of world X K (where each level starts); "dN K +" a right
+  // limit, moved right.
+  ...Object.entries(PATCHES.sorWideLimit ?? {}).map(([pc, spec]) => {
+    const [reg, k, side, cam] = spec.split(' ');
+    const n = reg[1], K = `0x${k}`;
+    return [parseInt(pc, 16), [`move.l	#$${k}0000,${reg}`, [side === '-'
+      ? `{ int32_t lim = ${K} - patch_sor_wide, least = ${K} - (int16_t)rd16(0xFF${cam}u); if (lim < least) lim = least; D(${n}) = (uint32_t)lim << 16; logicl(D(${n})); }`
+      : `{ D(${n}) = (uint32_t)(${K} + patch_sor_wide) << 16; logicl(D(${n})); }`]]];
+  }),
   [parseInt(PATCHES.sorCull?.loPc, 16), ['cmpi.w	#$60,d0', ['cmpw(patch_sor_x_lo, D(0) & 0xFFFFu);']]],
   [parseInt(PATCHES.sorCull?.hiPc, 16), ['cmpi.w	#$1E0,d0', ['cmpw(patch_sor_x_hi, D(0) & 0xFFFFu);']]],
   // Streets of Rage edges (sorWide): the original constant, widened by patch_sor_wide.

@@ -23,7 +23,7 @@
 
 typedef enum { ITEM_ACTION, ITEM_SLOT, ITEM_OPTION } ItemKind;
 enum { ACT_RESUME, ACT_SAVE, ACT_LOAD, ACT_RESET, ACT_QUIT, ACT_CONTROLS, ACT_OUTFIT, ACT_MAP, ACT_STATS,
-       ACT_FIGHTER0, ACT_FIGHTER1, ACT_FIGHTER2 };
+       ACT_FIGHTER0, ACT_FIGHTER1, ACT_FIGHTER2, ACT_FIGHTER3 };
 typedef struct { ItemKind kind; const char *label; int id; } Item;
 
 #define TABS 6
@@ -41,23 +41,31 @@ static const Item tab_items[TABS][MAX_ROWS] = {
       { ITEM_OPTION, "Sprite flicker fix", OPT_FLICKER }, { ITEM_OPTION, "Slowdown fix", OPT_OVERCLOCK } },
     { { ITEM_OPTION, "Lighting", OPT_LIGHTING }, { ITEM_OPTION, "HDR look", OPT_HDR },
       { ITEM_OPTION, "Combat info", OPT_COMBAT }, { ITEM_OPTION, "Play timer", OPT_TIMER } },
+#if GAME_SOR == 3
+    { { ITEM_ACTION, "Axel", ACT_FIGHTER0 }, { ITEM_ACTION, "Blaze", ACT_FIGHTER1 }, { ITEM_ACTION, "Skate", ACT_FIGHTER2 },
+      { ITEM_ACTION, "Zan", ACT_FIGHTER3 } },
+#elif GAME_SOR == 2
+    { { ITEM_ACTION, "Max", ACT_FIGHTER0 }, { ITEM_ACTION, "Axel", ACT_FIGHTER1 }, { ITEM_ACTION, "Blaze", ACT_FIGHTER2 },
+      { ITEM_ACTION, "Skate", ACT_FIGHTER3 } },
+#else
     { { ITEM_ACTION, "Axel", ACT_FIGHTER0 }, { ITEM_ACTION, "Adam", ACT_FIGHTER1 }, { ITEM_ACTION, "Blaze", ACT_FIGHTER2 } },
+#endif
+#if GAME_SOR == 3
     { { ITEM_OPTION, "Infinite health", OPT_CHEAT_HEALTH }, { ITEM_OPTION, "Infinite lives", OPT_CHEAT_LIVES },
-      { ITEM_OPTION, "Infinite specials", OPT_CHEAT_SPECIALS }, { ITEM_OPTION, "Infinite time", OPT_CHEAT_TIME },
       { ITEM_OPTION, "Attack power", OPT_CHEAT_ATTACK } },
+#else
+    { { ITEM_OPTION, "Infinite health", OPT_CHEAT_HEALTH }, { ITEM_OPTION, "Infinite lives", OPT_CHEAT_LIVES },
+      { ITEM_OPTION, GAME_SOR == 2 ? "Free specials" : "Infinite specials", OPT_CHEAT_SPECIALS }, { ITEM_OPTION, "Infinite time", OPT_CHEAT_TIME },
+      { ITEM_OPTION, "Attack power", OPT_CHEAT_ATTACK } },
+#endif
     { { ITEM_OPTION, "Volume", OPT_VOLUME }, { ITEM_OPTION, "Audio", OPT_AUDIO },
       { ITEM_ACTION, "Controls", ACT_CONTROLS }, { ITEM_OPTION, "Rumble", OPT_RUMBLE },
       { ITEM_OPTION, "Texture pack", OPT_TEXPACK }, { ITEM_OPTION, "Dump tiles", OPT_DUMP } },
 };
-static const int tab_count[TABS] = { 9, 10, 4, 3, 5, 6 };
+static const int tab_count[TABS] = { 9, 10, 4, FIGHTERS, GAME_SOR == 3 ? 3 : 5, 6 };
 
 /* ---- Look: the game's HUD, a yellow frame on charcoal, red bars (as the launcher) ------- */
-#define C_YELLOW rgb_hex(0xF8D838)
-#define C_AMBER  rgb_hex(0xF0A030)
-#define C_RED    rgb_hex(0xE0381C)
-#define C_INK    rgb_hex(0x15151A)
-#define C_TEXT   rgb_hex(0xE9E5DC)
-#define C_DIM    rgb_hex(0x8E8A82)
+#include "theme.h"
 #define HEAD     "Impact"
 
 static void frame_rect(float x, float y, float w, float h, float thick, Rgb c, float a) {
@@ -89,7 +97,7 @@ static const char *about(const Item *it) {
         case ACT_QUIT: return "Closes the game. Unsaved progress is lost; the game's own saves stay.";
         case ACT_CONTROLS: return "The keyboard key and controller button for every action.";
             case ACT_STATS: return NULL;
-        case ACT_FIGHTER0: case ACT_FIGHTER1: case ACT_FIGHTER2:
+        case ACT_FIGHTER0: case ACT_FIGHTER1: case ACT_FIGHTER2: case ACT_FIGHTER3:
             return "Their hair, clothes and skin in any of the Genesis' 512 colours, still or animated, with a preview. The colours follow the fighter, whoever plays them.";
         }
     if (it->kind == ITEM_SLOT) return NULL;
@@ -113,14 +121,17 @@ static const char *about(const Item *it) {
     case OPT_WATER: return "The sea, rivers and pools roll with slow swells, foam where they meet the shore and anyone standing in them, glint along the crests and reflect the people and things above them.";
     case OPT_CHEAT_HEALTH: return "Both players take no damage from enemies and their health stays full. Falling into a pit still costs a life.";
     case OPT_CHEAT_LIVES: return "Both players always have at least three lives left.";
-    case OPT_CHEAT_SPECIALS: return "There is always a police car to call: the special attack never runs out.";
+    case OPT_CHEAT_SPECIALS: return GAME_SOR == 2 ? "Special moves cost no health when they land."
+                                                  : "There is always a police car to call: the special attack never runs out.";
     case OPT_CHEAT_TIME: return "The round timer stays at 99, so time never runs out.";
     case OPT_CHEAT_SPIRIT: return "Spirit power stays full, so the spirits can be called and kept as long as you like.";
     case OPT_CHEAT_WEAPONS: return "Weapons never wear out: a weapon keeps its uses however often it strikes.";
     case OPT_CHEAT_ATTACK: return "Enemies take double or four times the damage from the players' hits, or fall to a single one. Bosses too.";
     case OPT_CHEAT_SPEED: return "Ali walks and runs one and a half or two times as fast. Walls still stop him. If a scripted scene stalls, set it back to Normal.";
     case OPT_REWIND: return "Hold the rewind key to step back in time.";
-    case OPT_PLAYER2: return "Who plays player 2. Second controller: a friend on another controller joins with Start. AI partner: the computer joins as player 2, fights beside you and keeps up with you.";
+    case OPT_PLAYER2:
+        if (GAME_SOR == 2) return "Who plays player 2 in a 2 PLAYERS game (picked on the title menu). Second controller: a friend. AI partner: the computer picks a fighter, fights beside you and keeps up with you.";
+        return "Who plays player 2. Second controller: a friend on another controller joins with Start. AI partner: the computer joins as player 2, fights beside you and keeps up with you.";
     case OPT_RANDOMIZER: return "Chests, pots, enemies and the items lying about give other restoratives (and, with weapons, other weapons) than they used to. Each spot keeps its prize for the seed; turning it on picks a new seed. Keys, upgrades, spirit stones and the Bomb never change, so the game can always be finished.";
     case OPT_FAST: return "How fast the game runs while the fast-forward key is held (Tab, or RB on a controller; change it in Controls).";
     case OPT_COMBAT: return "The damage of every hit rises from the enemy as a number, gold for a one-hit kill; with health bars, a bar over an enemy shows what it has left for a few seconds after each hit.";
@@ -354,7 +365,7 @@ static MenuAction act(int dir, bool activate) {
         if (it->id == ACT_RESUME) return MENU_CLOSE;
         if (it->id == ACT_CONTROLS) { sound(1); controls_open(); return MENU_NONE; }
         if (it->id == ACT_OUTFIT) { sound(1); outfit_open(); return MENU_NONE; }
-        if (it->id >= ACT_FIGHTER0 && it->id <= ACT_FIGHTER2) { sound(1); fighters_open(it->id - ACT_FIGHTER0); return MENU_NONE; }
+        if (it->id >= ACT_FIGHTER0 && it->id <= ACT_FIGHTER3) { sound(1); fighters_open(it->id - ACT_FIGHTER0); return MENU_NONE; }
         if (it->id == ACT_MAP || it->id == ACT_STATS) return MENU_NONE;     /* shown on the card */
         /* Reset and quit lose progress: ask for a second press. */
         if (!confirm_pending || confirm_item != selected) {
@@ -528,9 +539,9 @@ static void draw_card(float t, float alpha) {
     const Item *it = item_at(selected);
     float x = CARD_X + 28, w = CARD_W - 56, y = CARD_Y + 26;
     if (!it) {                          /* on the tab bar: the game's name and the tab */
-        const char *name = "STREETS OF RAGE";
+        const char *name = GAME_NAME;
         float nw = ui_text_width(name, HEAD, 48, 400, 2);
-        shadow_text(name, HEAD, 48, 400, 2, CARD_X + (CARD_W - nw) / 2, CARD_Y + 170, C_YELLOW, rgb_hex(0x8A140A), alpha);
+        shadow_text(name, HEAD, GAME_SOR >= 2 ? 40 : 48, 400, 2, CARD_X + (CARD_W - nw) / 2, CARD_Y + 170, C_YELLOW, C_DEEP, alpha);
         ui_fill_rect(CARD_X + 120, CARD_Y + 246, CARD_W - 240, 3, C_RED, .9f * alpha);
         float lw = ui_text_width(tab_names[tab], HEAD, 26, 400, 4);
         ui_draw_text(tab_names[tab], HEAD, 26, 400, 4, CARD_X + (CARD_W - lw) / 2, CARD_Y + 268, C_TEXT, C_TEXT, alpha);
@@ -550,12 +561,13 @@ static void draw_card(float t, float alpha) {
     ui_fill_rect(x, y + 30, 46, 3, C_RED, .9f * alpha);
     y += 48;
     if (it->kind == ITEM_SLOT) { draw_slot(x, y, w, t, alpha); return; }
-    if (it->kind == ITEM_ACTION && it->id >= ACT_FIGHTER0 && it->id <= ACT_FIGHTER2) {
+    if (it->kind == ITEM_ACTION && it->id >= ACT_FIGHTER0 && it->id <= ACT_FIGHTER3) {
         /* The fighter as they are now, live, under the description. */
         int f = it->id - ACT_FIGHTER0;
         y = draw_wrapped(about(it), x, y, w, 15.5f, C_TEXT, alpha);
         if (fighters_have_preview(f)) fighters_draw(f, CARD_X + CARD_W / 2.f, CARD_Y + CARD_H - 40, 3.2f, alpha, t);
-        else draw_wrapped("Start the game once from the launcher to see the fighters here.", x, y + 20, w, 14, C_DIM, alpha);
+        else draw_wrapped(GAME_SOR >= 2 ? "Play a round with this fighter, and stand still for a moment, to see them here."
+                                         : "Start the game once from the launcher to see the fighters here.", x, y + 20, w, 14, C_DIM, alpha);
         ui_draw_text("Enter to change\xE2\x80\xA6", "Segoe UI Semibold", 14, 600, 0, x, CARD_Y + CARD_H - 30, C_YELLOW, C_YELLOW, alpha);
         return;
     }
@@ -604,7 +616,7 @@ void menu_render(double time_s) {
 
     /* The panel, "PAUSED" in the game's lettering. */
     hud_box(TAB_X0, TAB_Y0, TAB_W0, TAB_H0, 1);
-    shadow_text("PAUSED", HEAD, 46, 400, 6, LIST_X - 2, TAB_Y0 + 24, C_YELLOW, rgb_hex(0x8A140A), 1);
+    shadow_text("PAUSED", HEAD, 46, 400, 6, LIST_X - 2, TAB_Y0 + 24, C_YELLOW, C_DEEP, 1);
     if (sinf(t * 1.7f) > .97f) ui_fill_rect(LIST_X, TAB_Y0 + 80, 120, 3, rgb(1, .6f, .4f), .6f);   /* a neon flicker */
     ui_fill_rect(LIST_X, TAB_Y0 + 80, 120, 3, C_RED, .9f);
 
@@ -645,7 +657,7 @@ void menu_render(double time_s) {
         else if (it->kind == ITEM_SLOT) snprintf(value, sizeof value, "Slot %d", settings.state_slot);
         if (!value[0]) continue;
         float pulse = changed_row == i ? 1 - ease_out((float)(now - changed_at) / .35f) : 0;
-        Rgb vc = focus ? C_YELLOW : rgb_hex(0xE8D49A);
+        Rgb vc = focus ? C_YELLOW : C_VALUE;
         if (pulse > 0) vc = mix(vc, rgb(1, 1, 1), pulse * .8f);
         Rgb ac = focus ? C_YELLOW : rgb_hex(0x5E5A52);
         float px = 17.5f + pulse * 1.5f;

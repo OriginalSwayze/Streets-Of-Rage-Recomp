@@ -399,6 +399,12 @@ int main(int argc, char **argv) {
             free(px);
             return px ? 0 : 1;
         }
+        else if (!strcmp(argv[i], "--sound-probe") && i + 3 < argc) {
+            /* --sound-probe FROM TO SECONDS (hex, hex, decimal): each driver request's level. */
+            apply_settings();
+            int from = (int)strtol(argv[i + 1], NULL, 16), to = (int)strtol(argv[i + 2], NULL, 16);
+            return launcher_sound_probe(from, to, atoi(argv[i + 3]));
+        }
         else if (!strcmp(argv[i], "--ost-check") && i + 1 < argc) {
             /* --ost-check SECONDS: play every song headless, print its level per second. */
             apply_settings();
@@ -525,6 +531,7 @@ int main(int argc, char **argv) {
             shot_lx = (float)atof(argv[++i]);
             shot_ly = (float)atof(argv[++i]);
         }
+        else if (!strcmp(argv[i], "--collection")) launcher_in_collection = true;   /* started by the collection */
         else { snprintf(settings.rom_path, sizeof settings.rom_path, "%s", argv[i]); rom_from_args = true; }
     }
 
