@@ -6,15 +6,33 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define OST_SONGS 0x22                  /* song numbers $00-$21 */
+#include "game.h"
 
-/* Driver commands: $01nn plays song nn, $02nn-$04nn play sound effects, 0 stops. */
+/* Commands, the same for every driver: OST_PLAY(n) plays song n of the soundtrack
+ * (0 .. OST_SONGS-1), $02xx-$04xx play a sound effect, 0 stops. */
 #define OST_PLAY(song) ((uint16_t)(0x0100 | (song)))
 #define OST_STOP 0
-#define SFX_CURSOR  0x0256              /* the game's menu sounds */
+
+#if GAME_SMPS
+/* Streets of Rage: Sega's SMPS 68k driver (songs $81-$91, effects $A0-$DF). */
+#define OST_SONGS 16
+#define SFX_CURSOR  0x02A1              /* short and soft (the game's own tick) */
+#define SFX_CONFIRM 0x02BD              /* the game's pause sound */
+#define SFX_CANCEL  0x02A6
+#define SFX_ERROR   0x02A5
+#else
+/* Beyond Oasis: song numbers $00-$21. */
+#define OST_SONGS 0x22
+#define SFX_CURSOR  0x0256
 #define SFX_CONFIRM 0x0347
 #define SFX_CANCEL  0x03AA
 #define SFX_ERROR   0x0253
+#endif
+
+/* The song's name in the player, or NULL to number it. */
+const char *ost_song_name(int song);
+/* The song the title screen plays, or -1 if the driver does not say. */
+int ost_title_song(void);
 
 /* Parks the game (its code stops; the driver, the Z80 and the sound chips keep their
  * state). Call once the game has set the driver up, e.g. at the title screen. */

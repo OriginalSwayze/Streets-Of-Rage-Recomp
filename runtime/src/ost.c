@@ -11,11 +11,42 @@
 
 #include "recomp_rt.h"
 
+#if GAME_SMPS
+/* Streets of Rage: Sega's SMPS 68k driver. The V blank calls its update at $072914 once a
+ * frame (twice every sixth on a 50 Hz console, bit 6 of $FFFF44, to keep the tempo; this
+ * one is 60 Hz); requests go into the 3-byte queue at $FFF00A, which the update reads
+ * ($81-$9F songs, $A0-$DF effects, $E1 stops everything). */
+#define DRIVER_UPDATE 0x072914
+#define DRIVER_CMD    0                 /* (no command entry: requests go in the queue) */
+#define QUEUE         0xF00A
+#define SMPS_STOP     0xE1
+
+/* The songs in the player's order: the title, the eight rounds, then the rest. */
+static const struct { uint8_t id; const char *name; } songs[OST_SONGS] = {
+    { 0x8A, "Title" },    { 0x81, "Round 1" }, { 0x8B, "Round 2" }, { 0x84, "Round 3" },
+    { 0x8C, "Round 4" },  { 0x85, "Round 5" }, { 0x89, "Round 6" }, { 0x86, "Round 7" },
+    { 0x88, "Round 8" },  { 0x87, "Boss" },    { 0x8E, "Round Clear" }, { 0x83, "Intro" },
+    { 0x82, NULL },       { 0x8F, NULL },      { 0x90, NULL },      { 0x91, NULL },
+};
+const char *ost_song_name(int song) { return song >= 0 && song < OST_SONGS ? songs[song].name : NULL; }
+int ost_title_song(void) { return 0; }
+
+static uint8_t requests[8];
+static int nrequests;
+#else
 #define DRIVER_UPDATE 0x060000
 #define DRIVER_CMD    0x060004
+const char *ost_song_name(int song) { (void)song; return NULL; }
+int ost_title_song(void) { return -1; }
+#endif
 #define RETURN_HERE   0x0001FC          /* in the cartridge header */
+#if GAME_SMPS
+#define PARK          0xFFC9C0          /* the idle loop and its stack, in game RAM the driver */
+#define PARK_SP       0xFFCF00          /* does not use (its own is $FFF000-$FFF3FF) */
+#else
 #define PARK          0xFFF000          /* the idle loop, in game RAM the driver does not use */
 #define PARK_SP       0xFFFE00
+#endif
 
 typedef struct { uint32_t entry; uint16_t d0; } Call;
 
@@ -53,6 +84,9 @@ void ost_start(void) {
     queued = 0;
     running = false;
     started = true;
+#if GAME_SMPS
+    nrequests = 0;
+#endif
 }
 
 void ost_end(void) {
@@ -67,9 +101,29 @@ static bool enqueue(uint32_t entry, uint16_t d0) {
     return true;
 }
 
+#if GAME_SMPS
+bool ost_command(uint16_t cmd) {
+    if (!started || nrequests >= (int)sizeof requests) return false;
+    requests[nrequests++] = !cmd ? SMPS_STOP : (cmd >> 8) == 1 ? songs[(cmd & 0xFF) % OST_SONGS].id : (uint8_t)cmd;
+    return true;
+}
+
+void ost_frame(void) {
+    /* One request a frame: the update keeps only the highest-priority request in its
+     * queue and clears the others, so a stop and a song together would lose one. */
+    if (nrequests && !bus.ram[QUEUE] && !bus.ram[QUEUE + 1] && !bus.ram[QUEUE + 2]) {
+        bus.ram[QUEUE] = requests[0];
+        for (int i = 1; i < nrequests; i++) requests[i - 1] = requests[i];
+        nrequests--;
+    }
+    enqueue(DRIVER_UPDATE, 0);
+    if (!running && queued) start_next();
+}
+#else
 bool ost_command(uint16_t cmd) { return enqueue(DRIVER_CMD, cmd); }
 
 void ost_frame(void) {
     enqueue(DRIVER_UPDATE, 0);
     if (!running && queued) start_next();
 }
+#endif

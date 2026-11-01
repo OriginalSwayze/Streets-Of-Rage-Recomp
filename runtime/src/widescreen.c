@@ -26,6 +26,8 @@
 
 static int pad;                         /* extra columns kept valid on each side */
 uint32_t patch_cull_left, patch_cull_widen;
+uint32_t patch_sor_x_lo = 0x60, patch_sor_x_hi = 0x1E0;
+int patch_sor_wide;
 int patch_cam_margin;
 
 static int16_t L16(uint32_t layer, int off) { return (int16_t)rd16(layer + off); }
@@ -201,12 +203,32 @@ static uint32_t redraw_rect(uint32_t pc) {
  * in-engine scenes). Logos, the title, menus and story scenes are drawn for 320 pixels,
  * so their sides are masked to black. */
 void widescreen_frame(void) {
-    if (!GAME_WIDESCREEN) return;
+    if (!GAME_WIDESCREEN) {
+        /* Streets of Rage: the sides show the street only during a game, not the demo. */
+        bool game = (rd8(0xFFFF18) & 3) && !rd8(0xFFFF2A);
+        vdp_opts.mask_sides = !game;
+        /* The HUD is the window plane, 320 pixels wide: the street goes on beside it. */
+        vdp_opts.window_narrow = true;
+        /* No streaming of our own: the game keeps the 512-pixel planes filled from 96
+         * pixels left of the camera to 416 right of it (sub_018B3C, from the street maps
+         * at $FF0000 and $FF2000), which covers the widescreen sides. */
+        return;
+    }
     vdp_opts.mask_sides = !((rd8(0xFF1716 + 0x27) | rd8(0xFF173E + 0x27)) & 1);
 }
 
 void widescreen_patches(int extra_width) {
-    if (!GAME_WIDESCREEN) return;
+    if (!GAME_WIDESCREEN) {
+        /* Streets of Rage: draw sprite pieces in the side areas too (32 pixels past them
+         * for pieces partly in view), up to hardware X $1FF, past which X wraps around. */
+        int lo = 0x60 - extra_width, hi = 0x1E0 + extra_width;
+        patch_sor_x_lo = (uint32_t)(lo < 0 ? 0 : lo);
+        patch_sor_x_hi = (uint32_t)(hi > 0x200 ? 0x200 : hi);
+        /* The players walk to the new edges, enemies walk in from beyond them and count as
+         * on screen across the whole width. */
+        patch_sor_wide = extra_width;
+        return;
+    }
     pad = (extra_width + 7) / 8;
     if (pad > 11) pad = 11;
     bool on = extra_width > 0;

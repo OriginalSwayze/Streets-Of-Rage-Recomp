@@ -57,6 +57,7 @@ typedef struct {
     int  extra_width;                   /* widescreen pixels on each side (0 = original 320) */
     bool no_sprite_limit;               /* draw past the 20-per-line hardware limit (no flicker) */
     bool mask_sides;                    /* draw the widescreen columns black (screens made for 320) */
+    bool window_narrow;                 /* the window plane stops at the original 320 columns (the planes show beside it) */
     int  hide_layers;                   /* debugging: bit 0 plane A, 1 plane B, 2 sprites, 3 window */
     bool hd_capture;                    /* keep each line's layers for hd_compose() (hd.h) */
     bool outfit;                        /* draw the player's sprites with vdp_outfit's colours */
@@ -179,8 +180,9 @@ void   machine_state(StateIO *s);                   /* machine.c */
 
 /* Rewind (rewind.c): rewind_push() before each frame; rewind_step() goes back one. */
 void rewind_reset(size_t budget_bytes);             /* 0 turns rewind off */
-void rewind_push(uint16_t pad);
-bool rewind_step(uint16_t *pad);
+void rewind_push(uint32_t pad);          /* both pads: pad_state[0] | pad_state[1] << 16 */
+bool rewind_step(uint32_t *pad);
+#define PADS_BOTH() ((uint32_t)pad_state[1] << 16 | pad_state[0])
 void rewind_restore_head(void);
 int  rewind_frames(void);
 size_t rewind_bytes(void);

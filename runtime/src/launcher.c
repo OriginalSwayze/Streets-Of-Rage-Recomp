@@ -1,12 +1,12 @@
-/* Launcher: a settings screen shown before the game. The Gold Armlet floats over a desert
- * at dusk with the four spirits circling it (launcher_scene.c); the settings sit on a stone
- * tablet with one tab per spirit, and the game's soundtrack plays through a built-in player,
- * with the game's own menu sounds for every choice.
+/* Launcher: a settings screen shown before the game. The first round's street pans slowly
+ * behind it at night; the title screen sits on the left like a cartridge label, and the
+ * settings on the right in the style of the game's own HUD (yellow frame, red bars). The
+ * game's soundtrack plays through a built-in player, with its own sounds for every choice.
  *
- * The artwork comes from the user's own ROM: the launcher runs the game's intro
- * silently and captures the armlet scene and the title screen, then caches them in
- * launcher_art.cache next to the executable. Everything is drawn in software into one
- * ui_px (also used for headless screenshots), at the window's pixel scale. */
+ * The artwork comes from the user's own ROM: the launcher runs the game silently to the
+ * title and into round 1 and captures them, then caches them in launcher_art.cache next
+ * to the executable. Everything is drawn in software into one ui_px (also used for
+ * headless screenshots), at the window's pixel scale. */
 #include "launcher.h"
 #include "ost.h"
 #include "launcher_scene.h"
@@ -35,76 +35,41 @@
 #define BASE_W UI_BASE_W
 #define BASE_H UI_BASE_H
 
-/* ---- Artwork captured from the ROM -------------------------------------------- */
-static Art armlet, logo;
+/* ---- Artwork captured from the ROM -------------------------------------------- *
+ * The intro's city skyline before its story text rolls in (the cover, on the left) and a
+ * panorama of the first round's street, drawn without its people or the HUD (the
+ * backdrop). Both come from running the game: through the intro, then Start into round 1
+ * and walking right while the camera follows. */
+static Art cover, pano;
 
-#define ART_MAGIC    0x34524142u       /* cache file tag (bump when the capture changes) */
+#define ART_MAGIC    0x31524F53u       /* cache file tag (bump when the capture changes) */
+#define PANO_TOP     32                 /* the street starts under the HUD */
+#define PANO_MAX_W   1600
 
 static char cache_path[1100];
 
 static void art_free(Art *a) { free(a->rgb); free(a->mask); memset(a, 0, sizeof *a); }
 
-/* Crops the pixels of a 320x224 frame that `keep` selects into an Art. */
-static void art_crop(Art *a, const uint32_t *fb, int pitch, int (*keep)(uint32_t), int y_limit) {
-    int x0 = 320, y0 = 224, x1 = -1, y1 = -1;
-    for (int y = 0; y < y_limit; y++)
-        for (int x = 0; x < 320; x++)
-            if (keep(fb[y * pitch + x])) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+static void art_alloc(Art *a, int w, int h) {
     art_free(a);
-    if (x1 < 0) return;
-    a->w = x1 - x0 + 1; a->h = y1 - y0 + 1;
-    a->rgb = malloc((size_t)a->w * a->h * 4);
-    a->mask = malloc((size_t)a->w * a->h);
-    for (int y = 0; y < a->h; y++)
-        for (int x = 0; x < a->w; x++) {
-            uint32_t p = fb[(y0 + y) * pitch + x0 + x];
-            a->rgb[y * a->w + x] = p;
-            a->mask[y * a->w + x] = keep(p) ? 255 : 0;
+    a->w = w; a->h = h;
+    a->rgb = calloc((size_t)w * h, 4);
+    a->mask = calloc((size_t)w * h, 1);
+}
+
+/* Copies rows y0..y0+h of a 320-wide frame into a at column x (opaque). */
+static void art_paste(Art *a, const uint32_t *fb, int pitch, int x, int y0, int h) {
+    for (int y = 0; y < h && y < a->h; y++)
+        for (int i = 0; i < 320; i++) {
+            int ax = x + i;
+            if (ax < 0 || ax >= a->w) continue;
+            a->rgb[y * a->w + ax] = fb[(y0 + y) * pitch + i];
+            a->mask[y * a->w + ax] = 255;
         }
 }
 
-static int is_lit(uint32_t p) { int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255; return r > 28 || g > 28 || b > 28; }
-static int is_gold(uint32_t p) { int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255; return r > 100 && r >= g && r > b + 50; }
-/* Title lettering: gold faces and their dark brown outlines (the stone behind is blue-green). */
-static int is_letter(uint32_t p) { int r = (p >> 16) & 255, b = p & 255; return r >= b + 6; }
-static int is_teal(uint32_t p) { int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255; return g > r + 12 && b > r + 12; }
-
-static int count(const uint32_t *fb, int (*pred)(uint32_t), int y_limit) {
-    int n = 0;
-    for (int i = 0; i < 320 * y_limit; i++) n += pred(fb[i]);
-    return n;
-}
-
-/* The intro's Gold Armlet scene: a large gold object on black, fully on screen and still. */
-static bool armlet_shown(const uint32_t *fb, int *last) {
-    int gold = count(fb, is_gold, 224), lit = count(fb, is_lit, 224);
-    bool edge = false;
-    for (int y = 0; y < 224; y++) edge |= is_lit(fb[y * 320 + 318]) || is_lit(fb[y * 320 + 1]);
-    bool still = abs(gold - *last) < 40;
-    *last = gold;
-    return gold > 4000 && lit < 320 * 224 / 2 && !edge && still;
-}
-
-/* The title screen: gold lettering over the teal stone background, finished fading in. */
-static bool title_shown(const uint32_t *fb, int *last) {
-    int gold = count(fb, is_gold, 140), teal = count(fb, is_teal, 224);
-    bool still = abs(gold - *last) < 20;
-    *last = gold;
-    return gold > 900 && teal > 25000 && still;
-}
-
-/* Runs the game until `shown` accepts a frame (checked every few frames), pressing Start
- * every `press_every` frames if nonzero. Returns false if it never appears. */
-static bool run_until(uint32_t *fb, bool (*shown)(const uint32_t *, int *), int press_every, int limit) {
-    int last = -1000;
-    for (int f = 0; f < limit; f++) {
-        pad_state[0] = press_every && f >= 500 && f % press_every < 4 ? PAD_START : 0;
-        bool check = f >= 300 && f % 4 == 0;
-        machine_run_frame(check ? fb : NULL, 320);
-        if (check && shown(fb, &last)) { pad_state[0] = 0; return true; }
-    }
-    pad_state[0] = 0;
-    return false;
+static void run_frames(uint32_t *fb, int n, uint16_t pad) {
+    for (int f = 0; f < n; f++) { pad_state[0] = pad; pad_state[1] = 0; machine_run_frame(f == n - 1 ? fb : NULL, 320); }
 }
 
 static bool art_save_cache(void) {
@@ -112,7 +77,7 @@ static bool art_save_cache(void) {
     if (!f) return false;
     uint32_t magic = ART_MAGIC;
     fwrite(&magic, 4, 1, f);
-    Art *arts[2] = { &armlet, &logo };
+    Art *arts[2] = { &cover, &pano };
     for (int i = 0; i < 2; i++) {
         fwrite(&arts[i]->w, 4, 1, f); fwrite(&arts[i]->h, 4, 1, f);
         fwrite(arts[i]->rgb, 4, (size_t)arts[i]->w * arts[i]->h, f);
@@ -127,71 +92,90 @@ static bool art_load_cache(void) {
     if (!f) return false;
     uint32_t magic = 0;
     bool ok = fread(&magic, 4, 1, f) == 1 && magic == ART_MAGIC;
-    Art *arts[2] = { &armlet, &logo };
+    Art *arts[2] = { &cover, &pano };
     for (int i = 0; ok && i < 2; i++) {
         Art *a = arts[i];
-        art_free(a);
-        ok = fread(&a->w, 4, 1, f) == 1 && fread(&a->h, 4, 1, f) == 1 && a->w > 0 && a->h > 0 && a->w <= 320 && a->h <= 224;
+        int w = 0, h = 0;
+        ok = fread(&w, 4, 1, f) == 1 && fread(&h, 4, 1, f) == 1 && w > 0 && h > 0 && w <= PANO_MAX_W && h <= 224;
         if (!ok) break;
-        a->rgb = malloc((size_t)a->w * a->h * 4);
-        a->mask = malloc((size_t)a->w * a->h);
-        ok = fread(a->rgb, 4, (size_t)a->w * a->h, f) == (size_t)a->w * a->h &&
-             fread(a->mask, 1, (size_t)a->w * a->h, f) == (size_t)a->w * a->h;
+        art_alloc(a, w, h);
+        ok = fread(a->rgb, 4, (size_t)w * h, f) == (size_t)w * h && fread(a->mask, 1, (size_t)w * h, f) == (size_t)w * h;
     }
     fclose(f);
-    if (!ok) { art_free(&armlet); art_free(&logo); }
+    if (!ok) { art_free(&cover); art_free(&pano); }
     return ok;
 }
 
-/* Runs the intro twice (about 1.5 s) to capture the armlet and the title logo. */
+/* Runs the game from a reset (blank save RAM, original speed) to the title, then into
+ * round 1, walking right: a few seconds, once; the result is cached. */
 static void art_capture(void) {
     static uint32_t fb[320 * 240];
-    int extra = vdp_opts.extra_width;
+    int extra = vdp_opts.extra_width, hide = vdp_opts.hide_layers, overclock = machine_opts.overclock;
     bool mask = vdp_opts.mask_sides;
     vdp_opts.extra_width = 0;
     widescreen_patches(0);
-    /* Start from blank save RAM so the intro plays the same for everyone. */
+    machine_opts.overclock = 100;
     uint8_t *sram = malloc(SRAM_SIZE);
     memcpy(sram, bus.sram, SRAM_SIZE);
     memset(bus.sram, 0xFF, SRAM_SIZE);
     machine_reset();
-    if (run_until(fb, armlet_shown, 0, 2400)) art_crop(&armlet, fb, 320, is_lit, 224);
-    machine_reset();
-    if (run_until(fb, title_shown, 100, 3000)) {
-        /* Find the lettering by its gold, then take whole letterforms inside that box. */
-        Art gold = { 0 };
-        art_crop(&gold, fb, 320, is_gold, 140);
-        art_crop(&logo, fb, 320, is_letter, 140);
-        art_free(&gold);
-        /* Close one-pixel gaps in the strokes, taking the color of a neighboring letter pixel. */
-        uint8_t *m = malloc((size_t)logo.w * logo.h);
-        memcpy(m, logo.mask, (size_t)logo.w * logo.h);
-        for (int y = 1; y < logo.h - 1; y++)
-            for (int x = 1; x < logo.w - 1; x++) {
-                if (logo.mask[y * logo.w + x]) continue;
-                int n = 0, from = -1;
-                for (int k = 0; k < 9; k++) {
-                    int i = (y - 1 + k / 3) * logo.w + x - 1 + k % 3;
-                    if (logo.mask[i]) { n++; from = i; }
-                }
-                if (n >= 5) { m[y * logo.w + x] = 255; logo.rgb[y * logo.w + x] = logo.rgb[from]; }
-            }
-        memcpy(logo.mask, m, (size_t)logo.w * logo.h);
-        free(m);
+    /* The skyline, once it has faded in (its top two thirds lit and still), before the
+     * story's white text rolls up over it. */
+    int last = -1;
+    for (int f = 0; f < 1200; f += 4) {
+        run_frames(fb, 4, 0);
+        int lit = 0, white = 0;
+        for (int i = 0; i < 320 * 224; i++) {
+            uint32_t p = fb[i];
+            if (i < 320 * 150) lit += ((p >> 16) & 255) > 16 || ((p >> 8) & 255) > 16 || (p & 255) > 16;
+            white += ((p >> 16) & 255) > 200 && ((p >> 8) & 255) > 200 && (p & 255) > 200;
+        }
+        if (f >= 200 && lit > 320 * 150 * 6 / 10 && abs(lit - last) < 50 && white < 200) break;
+        last = lit;
     }
+    art_alloc(&cover, 320, 224);
+    art_paste(&cover, fb, 320, 0, 0, 224);
+    /* Start through the menus until round 1 is under way (not the demo). */
+    for (int f = 0; f < 4000 && !((bus.ram[0xFF18] & 1) && !bus.ram[0xFF2A] && bus.ram[0xB800]); f++)
+        run_frames(fb, 1, f % 60 < 6 ? PAD_START : 0);
+    run_frames(fb, 120, 0);
+    /* Walk right; the street, without sprites, at each step of the camera. */
+    vdp_opts.hide_layers = 4;
+    art_alloc(&pano, PANO_MAX_W, 224 - PANO_TOP);
+    int cam0 = -1, right = 0;
+    for (int f = 0; f < 2400 && right < PANO_MAX_W; f += 8) {
+        run_frames(fb, 8, PAD_RIGHT | (f % 64 < 8 ? PAD_B : 0));
+        int cam = (int16_t)(bus.ram[0xE002] << 8 | bus.ram[0xE003]);
+        if (cam <= 0) continue;         /* (0 while the round is still being set up) */
+        if (cam0 < 0) cam0 = cam;
+        art_paste(&pano, fb, 320, cam - cam0, PANO_TOP, 224 - PANO_TOP);
+        if (cam - cam0 + 320 > right) right = cam - cam0 + 320;
+    }
+    if (right < PANO_MAX_W) {           /* keep only what was filled */
+        Art cut = { 0 };
+        art_alloc(&cut, right, pano.h);
+        for (int y = 0; y < pano.h; y++) {
+            memcpy(cut.rgb + y * right, pano.rgb + y * pano.w, (size_t)right * 4);
+            memcpy(cut.mask + y * right, pano.mask + y * pano.w, (size_t)right);
+        }
+        art_free(&pano);
+        pano = cut;
+    }
+    vdp_opts.hide_layers = hide;
+    machine_opts.overclock = overclock;
     memcpy(bus.sram, sram, SRAM_SIZE);
     free(sram);
     vdp_opts.extra_width = extra;
     vdp_opts.mask_sides = mask;
     widescreen_patches(extra);
-    pad_state[0] = 0;
-    if (armlet.w && logo.w) art_save_cache();
+    pad_state[0] = pad_state[1] = 0;
+    if (cover.w && pano.w) art_save_cache();
 }
 
 static bool rom_ok;
 
 static void art_prepare(void) {
-    art_free(&armlet); art_free(&logo);
+    art_free(&cover); art_free(&pano);
     rom_ok = settings.rom_path[0] && !bus_load_rom(settings.rom_path);
     if (!rom_ok) return;
     if (!art_load_cache()) art_capture();
@@ -234,22 +218,15 @@ static struct {
     float meter[METER_BARS];            /* level of the latest frame, in slices, 0-1 */
 } player;
 
-/* Records the songs the game asks for while it runs to the title. */
-static uint32_t note_song(uint32_t pc) {
-    (void)pc;
-    if ((D(0) & 0xFF00) == 0x0100) title_song = (int)(D(0) & 0xFF);
-    return 0x06042A;                    /* on to the driver, as `bra` at $060004 does */
-}
-
+/* Runs the game from a reset to its title screen, where the driver is set up. */
 static bool music_to_title(void) {
     vdp_opts.extra_width = 0;
     widescreen_patches(0);
     memset(bus.sram, 0xFF, SRAM_SIZE);
     machine_reset();
-    machine_override(0x060004, note_song);
-    bool ok = run_until(music_fb, title_shown, 100, 3000);
-    machine_override(0x060004, NULL);
-    return ok;
+    run_frames(music_fb, 1000, 0);
+    title_song = ost_title_song();
+    return true;
 }
 
 /* One frame of sound, scaled by volume (0-1). Returns the stereo frames in sound_out and
@@ -550,20 +527,29 @@ int launcher_ost_check(int seconds) {
         for (int s = 0; s < seconds && s < 600; s++) putchar(top > 0 ? '0' + (int)(level[s] * 9.99 / top) : '.');
         putchar('\n');
     }
-    /* The menu sound effects over silence: level of the first half second. */
-    static const uint16_t sfx[] = { SFX_CURSOR, SFX_CONFIRM, SFX_CANCEL, SFX_ERROR };
-    for (int k = 0; ok && k < 4; k++) {
+    /* The sound effects over silence: their level, and how long they last (frames until
+     * the last one above a tenth of the loudest). The menu's four, or with SMPS every one. */
+    uint16_t sfx[64] = { SFX_CURSOR, SFX_CONFIRM, SFX_CANCEL, SFX_ERROR };
+    int nsfx = 4;
+    if (GAME_SMPS) for (nsfx = 0; nsfx < 64; nsfx++) sfx[nsfx] = (uint16_t)(0x02A0 + nsfx);
+    for (int k = 0; ok && k < nsfx; k++) {
         ost_command(OST_STOP);
         for (int f = 0; f < 30; f++) { ost_frame(); machine_run_frame(NULL, 320); }
         ost_command(sfx[k]);
-        double sum = 0, sum2 = 0;
-        long n = 0;
-        for (int f = 0; f < 30; f++) {
+        double level[60], top = 0, all = 0;
+        for (int f = 0; f < 60; f++) {
             ost_frame();
             machine_run_frame(NULL, 320);
-            for (int i = 0; i < sound_out_count * 2; i++) { sum += sound_out[i]; sum2 += (double)sound_out[i] * sound_out[i]; n++; }
+            double sum = 0, sum2 = 0;
+            int n = sound_out_count * 2;
+            for (int i = 0; i < n; i++) { sum += sound_out[i]; sum2 += (double)sound_out[i] * sound_out[i]; }
+            level[f] = n ? sqrt(fmax(0, sum2 / n - (sum / n) * (sum / n))) : 0;
+            if (level[f] > top) top = level[f];
+            all += level[f];
         }
-        printf("sound effect %04X: level %.0f\n", sfx[k], n ? sqrt(fmax(0, sum2 / n - (sum / n) * (sum / n))) : 0);
+        int last = 0;
+        for (int f = 0; f < 60; f++) if (level[f] > top * .1) last = f + 1;
+        printf("sound effect %04X: level %5.0f, peak %5.0f, %2d frames\n", sfx[k], all / 60, top, last);
     }
     ost_end();
     memcpy(bus.sram, sram, SRAM_SIZE);
@@ -572,64 +558,74 @@ int launcher_ost_check(int seconds) {
     return ok ? 0 : 1;
 }
 
-/* ---- The tablet: four tabs, one per spirit ---------------------------------------- */
+/* ---- The settings: five tabs ----------------------------------------------------- */
 typedef enum { ROW_OPTION, ROW_ROM, ROW_CONTROLS, ROW_TRACK, ROW_OUTFIT } RowKind;
 typedef struct { RowKind kind; const char *label; int id; const char *about; } Row;
 
 #define TABS 5
 static const char *const tab_names[TABS] = { "DISPLAY", "EFFECTS", "GAME", "MUSIC", "CHEATS" };
 static const Row tab_rows[TABS][9] = {
-    { { ROW_OPTION, "Widescreen", OPT_WIDESCREEN, "Shows more of the world at the sides, streamed by the game's own map code." },
+    { { ROW_OPTION, "Widescreen", OPT_WIDESCREEN, "More of the street at the sides; enemies show beyond the old edges." },
       { ROW_OPTION, "Aspect ratio", OPT_ASPECT, "The shape of the widescreen picture." },
       { ROW_OPTION, "Integer scaling", OPT_INTEGER, "Whole-number scaling only: every pixel the same size." },
       { ROW_OPTION, "Window", OPT_WINDOW_ALL, "Fullscreen, or a window of this many times the game's size." },
       { ROW_OPTION, "Filter", OPT_FILTER, "Scanlines, a curved CRT tube or an LCD grid over the picture." },
       { ROW_OPTION, "Sharpening", OPT_SHARPEN, "Crisper edges after scaling, without halos (contrast-adaptive)." },
       { ROW_OPTION, "Internal resolution", OPT_INTERNAL, "Redraws each layer at a higher resolution; 6x (4K) needs a fast CPU." },
-      { ROW_OPTION, "Scaler", OPT_SCALER, "Edge rounds corners; Smooth follows curves and slopes (xBR)." },
+      { ROW_OPTION, "Scaler", OPT_SCALER, "Edge rounds corners; Smooth follows curves (xBR); Sharp keeps pixels square." },
       { ROW_OPTION, "Texture pack", OPT_TEXPACK, "High-resolution tile replacements from a folder in texture_packs." } },
-    { { ROW_OPTION, "Lighting", OPT_LIGHTING, "Fire, magic and bright light glow into their surroundings." },
-      { ROW_OPTION, "Spirit effects", OPT_ELEMENTS, "The spirits and their magic give off embers, drops, wisps or leaves." },
-      { ROW_OPTION, "Water", OPT_WATER, "Water swells, foams at the shore, glints and reflects what stands above it." },
-      { ROW_OPTION, "Footsteps", OPT_FOOTSTEPS, "Ali kicks up dust, grass or splashes as he walks." },
-      { ROW_OPTION, "Combat info", OPT_COMBAT, "Damage numbers rise from enemies; health bars show what they have left." } },
-    { { ROW_ROM, "ROM", 0, "Your Beyond Oasis (USA) cartridge file." },
-      { ROW_OPTION, "Smooth motion", OPT_SMOOTH, "Moves everything smoothly between the game's 30 Hz updates." },
+    { { ROW_OPTION, "Lighting", OPT_LIGHTING, "Glow from bright light; Neon: the signs and lamps only, buzzing." },
+      { ROW_OPTION, "HDR look", OPT_HDR, "Deeper shadows, brighter highlights, richer colour." },
+      { ROW_OPTION, "Combat info", OPT_COMBAT, "Damage numbers rise from enemies; health bars show what they have left." },
+      { ROW_OPTION, "Rumble", OPT_RUMBLE, "The controller rumbles on your hits, knockouts, when you are hit and on the police car." } },
+    { { ROW_ROM, "ROM", 0, "Your Streets of Rage cartridge file." },
+      { ROW_OPTION, "Player 2", OPT_PLAYER2, "A friend on a second controller, or the AI partner fighting beside you." },
+      { ROW_OPTION, "Smooth motion", OPT_SMOOTH, "Scrolls smoothly on fast screens, between the game's own updates." },
       { ROW_OPTION, "Sprite flicker fix", OPT_FLICKER, "Lifts the hardware's sprites-per-line limit, so nothing flickers." },
-      { ROW_OPTION, "Slowdown fix", OPT_OVERCLOCK, "A faster 68000, so busy scenes no longer slow down." },
+      { ROW_OPTION, "Slowdown fix", OPT_OVERCLOCK, "A faster 68000, so crowded fights no longer slow down." },
       { ROW_OPTION, "Rewind", OPT_REWIND_ALL, "Hold the rewind key to step back in time." },
       { ROW_CONTROLS, "Controls", 0, "Keyboard keys and controller buttons for every action." },
-      { ROW_OUTFIT, "Ali's outfit", 0, "Colours and animations for his clothes, hair, skin and jewellery." },
-      { ROW_OPTION, "Rumble", OPT_RUMBLE, "The controller rumbles on hits, kills, when Ali is hit and on summons." },
       { ROW_OPTION, "Show launcher at startup", OPT_LAUNCHER, "Off starts the game directly (show_launcher=1 in settings.ini brings it back)." } },
     { { ROW_OPTION, "Launcher music", OPT_MUSIC, NULL }, { ROW_TRACK, "Track", 0, NULL },
       { ROW_OPTION, "Player", OPT_OST_MODE, NULL }, { ROW_OPTION, "Volume", OPT_VOLUME, NULL },
       { ROW_OPTION, "Audio", OPT_AUDIO, NULL } },
-    { { ROW_OPTION, "Infinite health", OPT_CHEAT_HEALTH, "Ali takes no damage; his health stays full." },
-      { ROW_OPTION, "Infinite spirit", OPT_CHEAT_SPIRIT, "Spirit power stays full." },
-      { ROW_OPTION, "Unbreakable weapons", OPT_CHEAT_WEAPONS, "Weapons keep their uses however often they strike." },
-      { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." },
-      { ROW_OPTION, "Move speed", OPT_CHEAT_SPEED, "Ali moves 1.5x or 2x as fast; walls still stop him." },
-      { ROW_OPTION, "Randomizer", OPT_RANDOMIZER, "Chests and drops give other items; keys and upgrades stay put." } },
+    { { ROW_OPTION, "Infinite health", OPT_CHEAT_HEALTH, "Both players take no damage from enemies." },
+      { ROW_OPTION, "Infinite lives", OPT_CHEAT_LIVES, "Both players always have at least three lives." },
+      { ROW_OPTION, "Infinite specials", OPT_CHEAT_SPECIALS, "The police car can always be called." },
+      { ROW_OPTION, "Infinite time", OPT_CHEAT_TIME, "The round timer never runs down." },
+      { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
 };
-static const int tab_count[TABS] = { 9, 5, 9, 5, 6 };
+static const int tab_count[TABS] = { 9, 4, 8, 5, 5 };
+
+/* ---- Look: the game's HUD, a yellow frame on charcoal, red bars ---------------------- */
+#define C_YELLOW rgb_hex(0xF8D838)
+#define C_AMBER  rgb_hex(0xF0A030)
+#define C_RED    rgb_hex(0xE0381C)
+#define C_INK    rgb_hex(0x15151A)
+#define C_TEXT   rgb_hex(0xE9E5DC)
+#define C_DIM    rgb_hex(0x8E8A82)
+#define HEAD     "Impact"                /* the game's lettering is a heavy condensed face */
 
 /* ---- Layout (1280x720 units) ------------------------------------------------------- */
-#define CASE_X 84                       /* the steelbook */
-#define CASE_Y 40
-#define CASE_W 408
-#define CASE_H 620
-#define PANEL_X (TABLET_X + 40)
-#define PANEL_R (TABLET_X + TABLET_W - 44)
-#define TAB_Y   (TABLET_Y + 26)
-#define TAB_H   70
-#define TAB_X0  (TABLET_X + 26)
-#define TAB_W   ((TABLET_W - 52) / TABS)
-#define ROWS_Y  (TAB_Y + TAB_H + 26)
+#define CASE_X 60                       /* the title screen, framed */
+#define CASE_Y 52
+#define CASE_W 448
+#define CASE_H (CASE_W * 224 / 320)
+#define BOX_X  560                      /* the settings panel */
+#define BOX_Y  28
+#define BOX_W  680
+#define BOX_H  664
+#define PANEL_X (BOX_X + 40)
+#define PANEL_R (BOX_X + BOX_W - 44)
+#define TAB_Y   (BOX_Y + 26)
+#define TAB_H   46
+#define TAB_X0  (BOX_X + 26)
+#define TAB_W   ((BOX_W - 52) / TABS)
+#define ROWS_Y  (TAB_Y + TAB_H + 24)
 #define ROW_H   40
 #define CARD_Y  (ROWS_Y + 5 * ROW_H + 14)
 #define CARD_H  160
-#define BTN_Y   (TABLET_Y + TABLET_H - 118)
+#define BTN_Y   (BOX_Y + BOX_H - 118)
 #define BTN_H   54
 #define PLAY_X  PANEL_X
 #define PLAY_W  330
@@ -645,14 +641,13 @@ enum { HIT_PREV = 200, HIT_TOGGLE, HIT_NEXT, HIT_TAB0 = 300 };
 
 static struct {
     int tab, selected;
-    float focus;                        /* the spirit circling to the front, follows tab */
     float tab_t0;                       /* when the tab last changed, and from where */
     int tab_from;
-    float hl_y, hl_x;                   /* the highlight, gliding to the selected item */
+    float hl_y;                         /* the highlight, gliding to the selected row */
     float changed_t0;                   /* when a value last changed (it pulses) */
     float selected_t0;                  /* when the selection last moved (the preview fades in) */
     int changed_item;
-    float flash;                        /* the spirits' flare on a choice, fading */
+    float flash;                        /* the frame's flare on a choice, fading */
     float t;
 } ui;
 
@@ -723,7 +718,8 @@ static PlayerView player_view(void) {
 }
 
 static void song_name(int song, char *out, size_t n) {
-    if (song == title_song) snprintf(out, n, "Title Theme");
+    const char *name = ost_song_name(song);
+    if (name) snprintf(out, n, "%s", name);
     else snprintf(out, n, "Track %02d", song + 1);
 }
 
@@ -748,31 +744,104 @@ static void fill_tri(float ax, float ay, float bx, float by, float cx, float cy,
         }
 }
 
+/* A rectangular frame of `thick` units inside (x, y, w, h). */
+static void frame_rect(float x, float y, float w, float h, float thick, Rgb c, float a) {
+    ui_fill_rect(x, y, w, thick, c, a);
+    ui_fill_rect(x, y + h - thick, w, thick, c, a);
+    ui_fill_rect(x, y + thick, thick, h - 2 * thick, c, a);
+    ui_fill_rect(x + w - thick, y + thick, thick, h - 2 * thick, c, a);
+}
+
+/* The HUD box: charcoal with a yellow frame and a dark line inside it. */
+static void hud_box(float x, float y, float w, float h, float alpha, float glow) {
+    ui_fill_rect(x, y, w, h, C_INK, .9f * alpha);
+    frame_rect(x, y, w, h, 4, mix(C_YELLOW, rgb(1, 1, 1), glow * .5f), alpha);
+    frame_rect(x + 4, y + 4, w - 8, h - 8, 2, rgb(0, 0, 0), .8f * alpha);
+}
+
+/* Text with the game's hard drop shadow. */
+static void shadow_text(const char *s, const char *face, float px, int weight, float tracking, float x, float y,
+                        Rgb c, Rgb shade, float alpha) {
+    float d = px / 16;
+    ui_draw_text(s, face, px, weight, tracking, x + d, y + d, shade, shade, alpha * .9f);
+    ui_draw_text(s, face, px, weight, tracking, x, y, c, mix(c, C_AMBER, .35f), alpha);
+}
+
+/* An Art scaled to (x, y, w, h) in layout units, nearest pixel, from its columns
+ * src_x .. src_x + src_w; `bright` darkens it. */
+static void draw_art(const Art *a, float x, float y, float w, float h, float src_x, float src_w, float bright) {
+    if (!a->w) return;
+    int px0 = (int)ui_x(x), px1 = (int)ui_x(x + w), py0 = (int)ui_y(y), py1 = (int)ui_y(y + h);
+    if (px0 < 0) px0 = 0;
+    if (py0 < 0) py0 = 0;
+    if (px1 > ui_w) px1 = ui_w;
+    if (py1 > ui_h) py1 = ui_h;
+    float sx = src_w / (ui_x(x + w) - ui_x(x)), sy = a->h / (ui_y(y + h) - ui_y(y));
+    int k = (int)(bright * 256);
+    for (int py = py0; py < py1; py++) {
+        int ay = (int)((py - ui_y(y)) * sy);
+        if (ay < 0 || ay >= a->h) continue;
+        uint32_t *out = ui_px + (size_t)py * ui_w;
+        const uint32_t *row = a->rgb + (size_t)ay * a->w;
+        for (int px = px0; px < px1; px++) {
+            int ax = (int)(src_x + (px - ui_x(x)) * sx);
+            if (ax < 0 || ax >= a->w) continue;
+            uint32_t c = row[ax];
+            out[px] = ((((c >> 16) & 255) * k >> 8) << 16) | ((((c >> 8) & 255) * k >> 8) << 8) | ((c & 255) * k >> 8);
+        }
+    }
+}
+
+/* Behind everything: the street at night, panning slowly to and fro, with a red haze
+ * rising from the bottom and faint scanlines. */
+static void draw_backdrop(float t) {
+    for (size_t i = 0; i < (size_t)ui_w * ui_h; i++) ui_px[i] = 0x07060A;
+    if (pano.w) {
+        float view = pano.h * (float)UI_BASE_W / UI_BASE_H;          /* street pixels across */
+        float span = pano.w - view;
+        float at = span > 0 ? (.5f - .5f * cosf(t * 6.2831853f / 120)) * span : 0;
+        draw_art(&pano, 0, 0, UI_BASE_W, UI_BASE_H, at, span > 0 ? view : (float)pano.w, .42f);
+    }
+    for (int y = 0; y < ui_h; y++) {
+        float v = (float)y / ui_h;
+        float haze = smooth(.45f, 1, v) * .28f, dark = (1 - smooth(0, .35f, v)) * .35f;
+        bool line = (y / (ui_s > 1.5f ? 3 : 2)) % 2;
+        uint32_t *out = ui_px + (size_t)y * ui_w;
+        for (int x = 0; x < ui_w; x++) {
+            Rgb c = unpack(out[x]);
+            float edge = fabsf((float)x / ui_w - .5f) * 2;
+            c = scale(c, (1 - dark) * (1 - edge * edge * .45f) * (line ? .9f : 1));
+            c = add(c, rgb(.85f, .12f, .06f), haze);
+            out[x] = pack(c);
+        }
+    }
+}
+
 static void draw_tabs(void) {
     for (int k = 0; k < TABS; k++) {
-        float x = TAB_X0 + k * TAB_W, cx = x + TAB_W / 2.f;
+        float x = TAB_X0 + k * TAB_W + 4, w = TAB_W - 8, cx = x + w / 2.f;
         bool open = ui.tab == k, focus = ui.selected == ITEM_TABS && open;
-        const Spirit *sp = &spirits[k];
-        float bright = open ? 1 : .45f;
         if (open) {
-            ui_fill_rect(x + 6, TAB_Y, TAB_W - 12, TAB_H, sp->light, focus ? .10f : .06f);
-            /* A glowing line under the open tab. */
-            for (int i = 0; i < 3; i++) ui_fill_rect(x + 14 - i * 3, TAB_Y + TAB_H - 3 - i, TAB_W - 28 + i * 6, 2, sp->light, .5f - i * .15f);
+            ui_fill_rect(x, TAB_Y, w, TAB_H, C_YELLOW, 1);
+            ui_fill_rect(x, TAB_Y + TAB_H - 4, w, 4, C_RED, 1);
+            if (focus) frame_rect(x - 3, TAB_Y - 3, w + 6, TAB_H + 6, 2, rgb(1, 1, 1), .5f + .3f * sinf(ui.t * 6));
+        } else {
+            ui_fill_rect(x, TAB_Y, w, TAB_H, rgb_hex(0x24242B), .9f);
+            frame_rect(x, TAB_Y, w, TAB_H, 1, rgb_hex(0x4A4A52), 1);
         }
-        scene_orb(k, cx, TAB_Y + 24, open ? 15 : 12, ui.t, bright + (open ? ui.flash * .4f : 0));
-        Rgb tc = open ? mix(rgb_hex(0xFFF4DA), sp->light, .25f) : rgb_hex(0x8A8170);
-        float tw = ui_text_width(tab_names[k], "Segoe UI Semibold", 12.5f, 600, 3);
-        ui_draw_text(tab_names[k], "Segoe UI Semibold", 12.5f, 600, 3, cx - tw / 2, TAB_Y + 46, tc, tc, 1);
+        Rgb tc = open ? C_INK : C_DIM;
+        float tw = ui_text_width(tab_names[k], HEAD, 21, 400, 2);
+        ui_draw_text(tab_names[k], HEAD, 21, 400, 2, cx - tw / 2, TAB_Y + 10, tc, tc, 1);
     }
 }
 
 static void draw_row(int r, const Row *row, float dx, float alpha, const PlayerView *pv) {
     float y = row_y(r);
     bool focus = ui.selected == r;
-    Rgb lc = focus ? rgb_hex(0xFFFFFF) : rgb_hex(0xD8CDB6);
+    Rgb lc = focus ? rgb(1, 1, 1) : C_TEXT;
     ui_draw_text(row->label, "Segoe UI", 17.5f, 400, 0, PANEL_X + 4 + dx, y + 10, lc, lc, alpha);
     char value[96];
-    Rgb vc = focus ? rgb_hex(0xFFE4A0) : rgb_hex(0xEBD9AE);
+    Rgb vc = focus ? C_YELLOW : rgb_hex(0xE8D49A);
     const char *hint = NULL;
     switch (row->kind) {
     case ROW_ROM:
@@ -784,16 +853,11 @@ static void draw_row(int r, const Row *row, float dx, float alpha, const PlayerV
         snprintf(value, sizeof value, "Keyboard & controller");
         hint = "Enter to change\xE2\x80\xA6";
         break;
-    case ROW_OUTFIT: {
-        int changed = 0;
-        for (int k = 0; k < OUTFIT_PARTS; k++) changed += settings.outfit_color[k] >= 0;
-        if (!settings.outfit || !changed) snprintf(value, sizeof value, "His own colours");
-        else snprintf(value, sizeof value, "%d part%s recoloured", changed, changed == 1 ? "" : "s");
-        hint = "Enter to change\xE2\x80\xA6";
+    case ROW_OUTFIT:
+        snprintf(value, sizeof value, "-");
         break;
-    }
     case ROW_TRACK:
-        song_name(pv->ready ? pv->song : (settings.ost_track >= 0 ? settings.ost_track : title_song), value, sizeof value);
+        song_name(pv->ready ? pv->song : (settings.ost_track >= 0 ? settings.ost_track : title_song >= 0 ? title_song : 0), value, sizeof value);
         hint = pv->on ? "Enter to stop" : "Enter to play";
         break;
     default:
@@ -814,59 +878,72 @@ static void draw_row(int r, const Row *row, float dx, float alpha, const PlayerV
     }
     if (focus && hint) {
         float hw = ui_text_width(hint, "Segoe UI", 13, 400, 0);
-        ui_draw_text(hint, "Segoe UI", 13, 400, 0, vx - hw - (arrows ? 34 : 16) + dx, y + 13, rgb_hex(0x8F8673), rgb_hex(0x8F8673), alpha);
+        ui_draw_text(hint, "Segoe UI", 13, 400, 0, vx - hw - (arrows ? 34 : 16) + dx, y + 13, C_DIM, C_DIM, alpha);
     }
     if (arrows) {
-        Rgb ac = focus ? spirits[ui.tab].light : rgb_hex(0x6A5F4C);
+        Rgb ac = focus ? C_YELLOW : rgb_hex(0x5E5A52);
         float nudge = pulse * 3;
-        ui_draw_text("\xE2\x80\xB9", "Segoe UI Semibold", 20, 600, 0, vx - 18 - nudge + dx, y + 7, ac, ac, alpha);
-        ui_draw_text("\xE2\x80\xBA", "Segoe UI Semibold", 20, 600, 0, PANEL_R - 12 + nudge + dx, y + 7, ac, ac, alpha);
+        fill_tri(vx - 18 - nudge + dx, y + ROW_H / 2.f, vx - 10 - nudge + dx, y + ROW_H / 2.f - 6, vx - 10 - nudge + dx, y + ROW_H / 2.f + 6, ac, alpha);
+        fill_tri(PANEL_R + 4 + nudge + dx, y + ROW_H / 2.f, PANEL_R - 4 + nudge + dx, y + ROW_H / 2.f - 6, PANEL_R - 4 + nudge + dx, y + ROW_H / 2.f + 6, ac, alpha);
+        vx -= 0;
     }
-    ui_draw_text(value, "Segoe UI Semibold", px, 600, 0, vx + dx, y + 10 - pulse * .8f, vc, vc, alpha);
+    ui_draw_text(value, "Segoe UI Semibold", px, 600, 0, vx - (arrows ? 6 : 0) + dx, y + 10 - pulse * .8f, vc, vc, alpha);
 }
 
 /* The soundtrack player: the song, its time, a level meter and the transport buttons. */
 static void draw_player(const PlayerView *pv, float dx, float alpha) {
     float x = PANEL_X - 6 + dx, w = PANEL_R - PANEL_X + 12, y = CARD_Y;
-    const Spirit *sp = &spirits[3];
-    ui_panel(x, y, w, CARD_H, 12, rgb_hex(0x1B1426), rgb_hex(0x100C16), .9f * alpha, sp->light, .28f * alpha);
+    ui_fill_rect(x, y, w, CARD_H, rgb_hex(0x0C0C10), .85f * alpha);
+    frame_rect(x, y, w, CARD_H, 2, C_RED, .8f * alpha);
     char name[64], time[48];
-    int song = pv->ready ? pv->song : (settings.ost_track >= 0 ? settings.ost_track : title_song);
+    int song = pv->ready ? pv->song : (settings.ost_track >= 0 ? settings.ost_track : title_song >= 0 ? title_song : 0);
     song_name(song, name, sizeof name);
-    ui_draw_text(pv->on ? "NOW PLAYING" : "STOPPED", "Segoe UI Semibold", 11, 600, 3, x + 20, y + 16, sp->light, sp->light, alpha * .9f);
-    ui_draw_text(name, "Palatino Linotype", 26, 700, 1, x + 20, y + 32, rgb_hex(0xFFF1D0), rgb_hex(0xD9B567), alpha);
+    ui_draw_text(pv->on ? "NOW PLAYING" : "STOPPED", "Segoe UI Semibold", 11, 600, 3, x + 20, y + 16, C_RED, C_RED, alpha);
+    shadow_text(name, HEAD, 30, 400, 1, x + 20, y + 30, C_YELLOW, rgb_hex(0x7A1A0C), alpha);
     char count[32];
     snprintf(count, sizeof count, "%d / %d", (song < 0 ? 0 : song) + 1, OST_SONGS);
     float cw = ui_text_width(count, "Segoe UI", 14, 400, 0);
-    ui_draw_text(count, "Segoe UI", 14, 400, 0, x + w - 20 - cw, y + 20, rgb_hex(0x9A8FB0), rgb_hex(0x9A8FB0), alpha);
-    /* Level meter, right of the name. */
+    ui_draw_text(count, "Segoe UI", 14, 400, 0, x + w - 20 - cw, y + 20, C_DIM, C_DIM, alpha);
+    /* Level meter, right of the name: red at rest, yellow at the peaks. */
     float mx0 = x + w - 20 - METER_BARS * 7, my = y + 72;
     for (int b = 0; b < METER_BARS; b++) {
         float h = 3 + pv->meter[b] * 26;
-        Rgb c = mix(sp->light, rgb_hex(0xFFE4A0), pv->meter[b]);
-        ui_fill_rect(mx0 + b * 7, my - h, 4, h, c, alpha * (.35f + .65f * pv->meter[b]));
+        Rgb c = mix(C_RED, C_YELLOW, pv->meter[b]);
+        ui_fill_rect(mx0 + b * 7, my - h, 4, h, c, alpha * (.4f + .6f * pv->meter[b]));
     }
     /* Progress through the song's turn, and the time. */
     int secs = pv->frames / 60;
     snprintf(time, sizeof time, "%d:%02d", secs / 60, secs % 60);
     float bar_x = x + 20, bar_w = w - 40, bar_y = y + 86;
     float prog = clampf(pv->frames / (PLAY_FOR * 60.f), 0, 1);
-    ui_fill_rect(bar_x, bar_y, bar_w, 3, rgb_hex(0x3A2F4A), alpha);
-    ui_fill_rect(bar_x, bar_y, bar_w * prog, 3, sp->light, alpha);
-    ui_draw_text(time, "Segoe UI", 12, 400, 0, bar_x, bar_y + 8, rgb_hex(0x9A8FB0), rgb_hex(0x9A8FB0), alpha);
+    ui_fill_rect(bar_x, bar_y, bar_w, 4, rgb_hex(0x34343C), alpha);
+    ui_fill_rect(bar_x, bar_y, bar_w * prog, 4, C_YELLOW, alpha);
+    ui_draw_text(time, "Segoe UI", 12, 400, 0, bar_x, bar_y + 9, C_DIM, C_DIM, alpha);
     /* Previous, play/stop, next. */
     float cx = (PANEL_X + PANEL_R) / 2.f + dx, by = PLAYER_BTN_Y;
-    Rgb bc = rgb_hex(0xEADFC8);
+    Rgb bc = C_TEXT;
     fill_tri(cx - 62, by, cx - 50, by - 9, cx - 50, by + 9, bc, alpha * .85f);
     fill_tri(cx - 74, by, cx - 62, by - 9, cx - 62, by + 9, bc, alpha * .85f);
     fill_tri(cx + 62, by, cx + 50, by - 9, cx + 50, by + 9, bc, alpha * .85f);
     fill_tri(cx + 74, by, cx + 62, by - 9, cx + 62, by + 9, bc, alpha * .85f);
-    scene_glow(cx, by, 30, sp->light, .25f * alpha);
     if (pv->on) {
-        ui_fill_rect(cx - 9, by - 10, 18, 20, rgb_hex(0xFFF1D0), alpha);
+        ui_fill_rect(cx - 9, by - 10, 6, 20, C_YELLOW, alpha);
+        ui_fill_rect(cx + 3, by - 10, 6, 20, C_YELLOW, alpha);
     } else {
-        fill_tri(cx - 8, by - 12, cx + 13, by, cx - 8, by + 12, rgb_hex(0xFFF1D0), alpha);
+        fill_tri(cx - 8, by - 12, cx + 13, by, cx - 8, by + 12, C_YELLOW, alpha);
     }
+}
+
+/* PLAY in red with a yellow frame (like the HUD's health bar), QUIT in charcoal. */
+static void hud_button(float x, float y, float w, float h, const char *label, bool primary, bool focus, bool enabled, float t) {
+    Rgb fill = primary ? (enabled ? C_RED : rgb_hex(0x4A2622)) : rgb_hex(0x23232A);
+    ui_fill_rect(x, y, w, h, fill, .96f);
+    if (primary && enabled) ui_fill_rect(x, y, w, h * .45f, rgb(1, 1, 1), .10f);
+    Rgb border = focus ? C_YELLOW : primary ? C_AMBER : rgb_hex(0x56565E);
+    frame_rect(x, y, w, h, focus ? 4 : 2, border, focus ? .75f + .25f * sinf(t * 6) : .9f);
+    float tw = ui_text_width(label, HEAD, 28, 400, 3);
+    Rgb tc = enabled ? (focus ? C_YELLOW : rgb(1, 1, 1)) : C_DIM;
+    shadow_text(label, HEAD, 28, 400, 3, x + w / 2 - tw / 2, y + h / 2 - 17, tc, rgb(0, 0, 0), 1);
 }
 
 static void draw_ui(float t) {
@@ -876,61 +953,46 @@ static void draw_ui(float t) {
     float k = ease_out((t - ui.tab_t0) / .32f);
     int dir = ui.tab > ui.tab_from ? 1 : -1;
     float dx = (1 - k) * 36 * dir, alpha = k;
-    /* The highlight glides to the selected row. */
+    /* The highlight glides to the selected row: a red bar, like the health bar. */
     bool on_row = ui.selected >= 0 && ui.selected < tab_count[ui.tab];
     if (on_row) {
         float y = ui.hl_y;
-        Rgb c = spirits[ui.tab].light;
-        ui_fill_rect(PANEL_X - 14, y + 2, PANEL_R - PANEL_X + 22, ROW_H - 4, c, .07f);
-        ui_fill_rect(PANEL_X - 14, y + 2, 3, ROW_H - 4, c, .95f);
-        scene_glow(PANEL_X - 12, y + ROW_H / 2.f, 16, c, .35f);
+        ui_fill_rect(PANEL_X - 14, y + 3, PANEL_R - PANEL_X + 26, ROW_H - 6, C_RED, .22f);
+        ui_fill_rect(PANEL_X - 14, y + 3, 5, ROW_H - 6, C_YELLOW, 1);
     }
     for (int r = 0; r < tab_count[ui.tab]; r++) draw_row(r, &tab_rows[ui.tab][r], dx, alpha, &pv);
     if (ui.tab == 3) draw_player(&pv, dx, alpha);
     else if (on_row && tab_rows[ui.tab][ui.selected].about) {
-        /* What the selected option does, under a thin rule in the tab's colour. */
+        /* What the selected option does, under a short red rule. */
         float y = row_y(tab_count[ui.tab]) + 22;
-        ui_fill_rect(PANEL_X, y, 46, 2, spirits[ui.tab].light, .7f * alpha);
+        ui_fill_rect(PANEL_X, y, 46, 3, C_RED, .9f * alpha);
         ui_draw_text(tab_rows[ui.tab][ui.selected].about, "Segoe UI", 14.5f, 400, 0, PANEL_X + dx, y + 14,
-                     rgb_hex(0xB8AC92), rgb_hex(0xB8AC92), alpha);
+                     rgb_hex(0xBDB7AA), rgb_hex(0xBDB7AA), alpha);
     }
 
-    float lx, ly;
-    foil_light(t, 0, 0, -1, &lx, &ly);   /* drifting on its own, not following the mouse */
-    ui_button(PLAY_X, BTN_Y, PLAY_W, BTN_H, "PLAY", 20, true, ui.selected == ITEM_PLAY, play_enabled(), lx, ly, t);
-    ui_button(QUIT_X, BTN_Y, QUIT_W, BTN_H, "QUIT", 20, false, ui.selected == ITEM_QUIT, true, lx, ly, t);
+    hud_button(PLAY_X, BTN_Y, PLAY_W, BTN_H, "PLAY", true, ui.selected == ITEM_PLAY, play_enabled(), t);
+    hud_button(QUIT_X, BTN_Y, QUIT_W, BTN_H, "QUIT", false, ui.selected == ITEM_QUIT, true, t);
     const char *keys = "\xE2\x86\x91\xE2\x86\x93 select    \xE2\x86\x90\xE2\x86\x92 change    Q E  tabs    [ ]  track    M  music    Esc  quit";
-    ui_draw_text(keys, "Segoe UI", 12, 400, 1, PANEL_X, TABLET_Y + TABLET_H - 44, rgb_hex(0x7C7262), rgb_hex(0x7C7262), 1);
+    ui_draw_text(keys, "Segoe UI", 12, 400, 1, PANEL_X, BOX_Y + BOX_H - 44, rgb_hex(0x77736A), rgb_hex(0x77736A), 1);
 
-    /* A picture option: its before/after on the last frame the game saved, over the scene. */
+    /* A picture option: its before/after on the last frame the game saved, over the cover. */
     if (on_row && tab_rows[ui.tab][ui.selected].kind == ROW_OPTION && preview_supported(tab_rows[ui.tab][ui.selected].id) &&
         preview_ready()) {
         float a = ease_out((t - ui.selected_t0) / .3f);
-        float px = 40, py = 226, pw = 556, ph = pw * 9 / 16.f;
-        ui_fill_rect(0, 0, TABLET_X - 20, UI_BASE_H, rgb(0, 0, 0), .55f * a);
-        static FoilSurface card;
-        if (foil_begin(&card, px - 18, py - 50, pw + 36, ph + 74, 14, rgb(.9f, .92f, 1))) {
-            foil_frame(&card, 6, 10);
-            foil_recess(&card, px - 2, py - 2, pw + 4, ph + 4, 4, .4f);
-            foil_finish(&card);
-        }
-        float lx, ly;
-        foil_light(t, 0, 0, -1, &lx, &ly);   /* drifting on its own, not following the mouse */
-        if (a > .99f) foil_draw(&card, lx, ly, t);
-        else ui_panel(px - 18, py - 50, pw + 36, ph + 74, 14, rgb_hex(0x14131A), rgb_hex(0x0A090D), .92f * a, rgb_hex(0xD9B567), .45f * a);
-        ui_draw_text("PREVIEW  \xC2\xB7  YOUR LAST GAME FRAME", "Segoe UI Semibold", 12, 600, 3, px, py - 30,
-                     spirits[ui.tab].light, spirits[ui.tab].light, a);
+        float px = 40, py = 226, pw = 480, ph = pw * 9 / 16.f;
+        ui_fill_rect(0, 0, BOX_X - 16, UI_BASE_H, rgb(0, 0, 0), .55f * a);
+        hud_box(px - 16, py - 48, pw + 32, ph + 70, a, 0);
+        ui_draw_text("PREVIEW  \xC2\xB7  YOUR LAST GAME FRAME", "Segoe UI Semibold", 12, 600, 3, px, py - 30, C_YELLOW, C_YELLOW, a);
         if (a > .05f) preview_draw(tab_rows[ui.tab][ui.selected].id, px, py, pw, ph, t);
-        ui_panel(px - 1, py - 1, pw + 2, ph + 2, 4, rgb(0, 0, 0), rgb(0, 0, 0), 0, rgb_hex(0xD9B567), .5f * a);
     }
 
-    /* Under the armlet, on every tab: what is playing. */
+    /* Under the cover, on every tab: what is playing. */
     if (pv.ready && pv.on) {
         char name[64], line[96];
         song_name(pv.song, name, sizeof name);
         snprintf(line, sizeof line, "\xE2\x99\xAA  %s", name);
-        float w = ui_text_width(line, "Segoe UI Semibold", 14, 600, 1);
-        ui_draw_text(line, "Segoe UI Semibold", 14, 600, 1, CASE_X + CASE_W / 2.f - w / 2, CASE_Y + CASE_H + 16, rgb_hex(0xF6DFA6), rgb_hex(0xC99B4E), .85f);
+        float w = ui_text_width(line, "Segoe UI Semibold", 15, 600, 1);
+        ui_draw_text(line, "Segoe UI Semibold", 15, 600, 1, CASE_X + CASE_W / 2.f - w / 2, 640, C_YELLOW, C_AMBER, .9f);
     }
 }
 
@@ -942,69 +1004,43 @@ static void layout(int pixel_w) {
 /* Advances the animations by dt seconds. */
 static void animate(float dt) {
     float k = 1 - expf(-dt * 10);
-    float target = ui.tab < 4 ? (float)ui.tab : ui.focus;   /* four spirits on the armlet; CHEATS has none */
-    float d = remainderf(target - ui.focus, 4);
-    ui.focus += d * (1 - expf(-dt * 6));
     float hy = ui.selected >= 0 && ui.selected < tab_count[ui.tab] ? row_y(ui.selected) : ui.hl_y;
     ui.hl_y += (hy - ui.hl_y) * k;
     ui.flash *= expf(-dt * 3);
 }
 
-/* The steelbook on the left: the logo in gold and the Gold Armlet embossed in dark steel,
- * the four spirits set in sockets below them; the tablet of settings in the same steel. */
-static FoilSurface case_surf, tablet_surf;
-static const float gem_dx[4] = { -114, -38, 38, 114 };   /* the spirits' sockets, in tab order */
-#define GEM_Y (CASE_Y + CASE_H - 104)
-
-static void build_case(void) {
-    if (!foil_begin(&case_surf, CASE_X, CASE_Y, CASE_W, CASE_H, 16, rgb(.86f, .90f, 1.0f))) return;
-    float cx = CASE_X + CASE_W / 2.f;
-    foil_frame(&case_surf, 18, 8);
-    float bottom = logo.w ? foil_art(&case_surf, &logo, cx, CASE_Y + 46, 320, FOIL_GOLD, 1.0f, .7f) : CASE_Y + 150;
-    if (!logo.w) foil_text(&case_surf, "BEYOND OASIS", "Palatino Linotype", 44, 700, 6, cx, CASE_Y + 110, -.9f, FOIL_GOLD);
-    float room = GEM_Y - 40 - (bottom + 26);              /* the armlet fills the space down to the sockets */
-    float width = armlet.w ? fminf(330, room * armlet.w / (float)armlet.h) : 0;
-    if (armlet.w) foil_art(&case_surf, &armlet, cx, bottom + 26 + (room - width * armlet.h / armlet.w) / 2, width, FOIL_ART, .9f, .6f);
-    for (int k = 0; k < 4; k++) foil_ring(&case_surf, cx + gem_dx[k], GEM_Y, 19, 2.2f);
-    foil_rule(&case_surf, CASE_X + 70, CASE_X + CASE_W - 70, GEM_Y - 38, 1.1f);
-    foil_text(&case_surf, "NATIVE PC EDITION", "Segoe UI Semibold", 13, 600, 5, cx, CASE_Y + CASE_H - 52, .7f, FOIL_HOLO);
-    foil_finish(&case_surf);
-}
-
-static void build_tablet(void) {
-    if (!foil_begin(&tablet_surf, TABLET_X, TABLET_Y, TABLET_W, TABLET_H, 18, rgb(.84f, .86f, 1.0f))) return;
-    foil_frame(&tablet_surf, 12, 10);
-    foil_rule(&tablet_surf, TABLET_X + 40, TABLET_X + TABLET_W - 40, TAB_Y + TAB_H + 9, 1);
-    foil_recess(&tablet_surf, PANEL_X - 20, ROWS_Y - 8, PANEL_R - PANEL_X + 34, BTN_Y - ROWS_Y - 2, 8, .35f);
-    foil_finish(&tablet_surf);
+/* The left side: the title screen in a HUD frame, the name in the game's lettering. */
+static void draw_cover(float t) {
+    float x = CASE_X, y = CASE_Y, w = CASE_W, h = CASE_H;
+    ui_fill_rect(x + 10, y + 12, w + 8, h + 8, rgb(0, 0, 0), .5f);       /* shadow */
+    hud_box(x - 8, y - 8, w + 16, h + 16, 1, ui.flash * .6f);
+    if (cover.w) draw_art(&cover, x, y, w, h, 0, (float)cover.w, 1);
+    else ui_fill_rect(x, y, w, h, rgb_hex(0x101018), 1);
+    float ty = y + h + 34;
+    const char *name = "STREETS OF RAGE";
+    float nw = ui_text_width(name, HEAD, 54, 400, 2);
+    shadow_text(name, HEAD, 54, 400, 2, x + w / 2 - nw / 2, ty, C_YELLOW, rgb_hex(0x8A140A), 1);
+    ui_fill_rect(x + 60, ty + 78, w - 120, 3, C_RED, .9f);
+    const char *sub = "NATIVE PC EDITION";
+    float sw = ui_text_width(sub, "Segoe UI Semibold", 14, 600, 6);
+    ui_draw_text(sub, "Segoe UI Semibold", 14, 600, 6, x + w / 2 - sw / 2, ty + 92, C_TEXT, C_DIM, .9f);
+    /* A neon flicker along the red rule, now and then. */
+    float flick = sinf(t * 1.7f) > .97f ? .5f : 0;
+    if (flick > 0) ui_fill_rect(x + 60, ty + 78, w - 120, 3, rgb(1, .6f, .4f), flick);
 }
 
 static void render(float t) {
     ui.t = t;
-    float lx, ly;
-    foil_light(t, 0, 0, -1, &lx, &ly);   /* drifting on its own, not following the mouse */
-    if (foil_backdrop(t)) {
-        foil_shadow(CASE_X + 10, CASE_Y + 18, CASE_W, CASE_H, 18);
-        foil_shadow(TABLET_X + 8, TABLET_Y + 14, TABLET_W, TABLET_H, 20);
-    }
-    foil_atmosphere(t, .9f);
-    build_case();
-    build_tablet();
-    /* The case, then its spirits glowing in their sockets. */
-    foil_draw(&case_surf, lx, ly, t);
-    for (int k = 0; k < 4; k++) {
-        bool open = ui.tab == k;
-        float pulse = open ? .85f + .15f * sinf(t * 2.2f) + ui.flash * .4f : .35f;
-        scene_orb(k, CASE_X + CASE_W / 2.f + gem_dx[k], GEM_Y, open ? 15 : 13, t, pulse);
-    }
-    foil_draw(&tablet_surf, lx, ly, t);
+    draw_backdrop(t);
+    draw_cover(t);
+    hud_box(BOX_X, BOX_Y, BOX_W, BOX_H, 1, ui.flash * .4f);
     draw_ui(t);
 }
 
 static void update_rom_status(void) {
     if (rom_ok) snprintf(rom_status, sizeof rom_status, "Verified \xE2\x9C\x93");
     else if (!settings.rom_path[0]) snprintf(rom_status, sizeof rom_status, "Not selected");
-    else snprintf(rom_status, sizeof rom_status, "Not the USA cartridge");
+    else snprintf(rom_status, sizeof rom_status, "Not Streets of Rage (World)");
 }
 
 static void init_common(void) {
@@ -1026,11 +1062,10 @@ static void art_write_png(const Art *a, const char *base, const char *suffix) {
 
 int launcher_screenshot(const char *png, int width, int tab, float t) {
     init_common();
-    art_write_png(&armlet, png, ".armlet.png");
-    art_write_png(&logo, png, ".logo.png");
+    art_write_png(&cover, png, ".cover.png");
+    art_write_png(&pano, png, ".street.png");
     layout(width);
     ui.tab = ui.tab_from = (tab % TABS + TABS) % TABS;
-    ui.focus = (float)ui.tab;
     ui.selected = tab_count[ui.tab] > 1 ? 1 : 0;
     ui.hl_y = row_y(ui.selected);
     ui.tab_t0 = -10;
@@ -1051,7 +1086,7 @@ static void choose_rom(SDL_Window *win) {
     ofn.lpstrFilter = L"Genesis / Mega Drive ROM (*.md;*.bin;*.gen;*.smd)\0*.md;*.bin;*.gen;*.smd\0All files\0*.*\0";
     ofn.lpstrFile = file;
     ofn.nMaxFile = 1024;
-    ofn.lpstrTitle = L"Choose your Beyond Oasis (USA) ROM";
+    ofn.lpstrTitle = L"Choose your Streets of Rage ROM";
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
     if (!GetOpenFileNameW(&ofn)) return;
     char path[1024];
@@ -1062,7 +1097,6 @@ static void choose_rom(SDL_Window *win) {
     music_stop();
     art_prepare();
     update_rom_status();
-    foil_free(&case_surf);              /* the new ROM's art: emboss the case again */
     music_start();
 #else
     (void)win;
@@ -1120,7 +1154,7 @@ int launcher_run(const char *ini_path) {
     ui.tab_t0 = -10;
     ui.changed_item = -1;
     ui.selected = ITEM_PLAY;
-    if (!rom_ok) { ui.tab = ui.tab_from = 2; ui.focus = 2; ui.selected = 0; }   /* the ROM row */
+    if (!rom_ok) { ui.tab = ui.tab_from = 2; ui.selected = 0; }   /* the ROM row */
     ui.hl_y = row_y(ui.selected >= 0 && ui.selected < 100 ? ui.selected : 0);
     music_start();
 

@@ -14,8 +14,12 @@
 #define GAME_KNOWS_RAM  0
 /* Widescreen: replaces the game's own scrolling and camera routines (widescreen.c). */
 #define GAME_WIDESCREEN 0
+/* A wider picture at all (Streets of Rage: its own patches, sor_wide.c). */
+#define GAME_WIDE_VIEW  1
 /* The launcher: its soundtrack player, menu sounds and art run the game's sound driver
  * and read its graphics (launcher.c, ost.c). */
-#define GAME_LAUNCHER   0
+#define GAME_LAUNCHER   1
+/* The sound driver is Sega's SMPS 68k (ost.c), not Beyond Oasis's. */
+#define GAME_SMPS       1
 
 #endif

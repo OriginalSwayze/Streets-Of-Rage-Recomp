@@ -254,6 +254,7 @@ static void draw_plane(uint8_t *out, int w, int extra, int line, uint32_t nt, in
 
 /* Window plane: unscrolled, replaces plane A where the window is active. */
 static bool window_covers(int x, int line) {
+    if (vdp_opts.window_narrow && (x < 0 || x >= 320)) return false;
     int wv = (vdp.reg[18] & 0x1F) * 8;
     bool down = vdp.reg[18] & 0x80;
     if (down ? line >= wv : line < wv) return true;

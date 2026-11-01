@@ -164,6 +164,7 @@ static bool elemental(const HdFrame *f, int i) {
 }
 
 void fx_game_frame(HdFrame *f, bool world, float cam_x, float cam_y) {
+    if (!GAME_KNOWS_RAM) world = false;     /* the spirits, items and ground are Beyond Oasis's */
     /* A jump of the camera is a new scene: the old particles do not belong in it. */
     if (have_cam && (fabsf(cam_x - last_cam_x) > 64 || fabsf(cam_y - last_cam_y) > 64)) nparts = 0;
     last_cam_x = cam_x; last_cam_y = cam_y; have_cam = true;

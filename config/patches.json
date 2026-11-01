@@ -1,9 +1,59 @@
 {
   "comment": "Instruction-level patches applied by the recompiler (tools/lib/codegen.mjs). Each one reads a runtime variable from runtime/src/recomp_rt.h; the variables default to values that reproduce the original instruction exactly. Streets of Rage has none yet: each is empty until the game's own spot is found.",
-  "spriteCull": { "pcs": [] },
-  "cameraClamp": { "minTest": null, "minSet": null, "maxLoad": null },
-  "playerDamage": { "pc": null },
-  "hitDamage": { "pcs": {} },
-  "playerSpeed": { "pcs": {} },
-  "randomDrop": { "dropPc": null, "placePc": null }
+  "spriteCull": {
+    "pcs": []
+  },
+  "cameraClamp": {
+    "minTest": null,
+    "minSet": null,
+    "maxLoad": null
+  },
+  "playerDamage": {
+    "pc": null
+  },
+  "hitDamage": {
+    "pcs": {}
+  },
+  "sorHit": {
+    "comment": "Where a hit takes health off its target (a0, +$32); the attacker is a1. \"d0\" for sub.w d0,$32(a0), \"#2\" for subq.w #2,$32(a0).",
+    "pcs": {
+      "009BD6": "d0",
+      "00A14E": "d0",
+      "00A17A": "d0",
+      "00A1F8": "d0",
+      "00A9F2": "#2",
+      "00A9FC": "d0",
+      "00F08A": "d0",
+      "00F396": "d0",
+      "013FA0": "d0",
+      "014A58": "d0",
+      "0155EE": "d0",
+      "015632": "d0"
+    },
+    "changePc": "004E6E"
+  },
+  "sorCull": {
+    "comment": "Streets of Rage sprite pieces: sub_00B0FE keeps a piece whose X (hardware, +$80) is in [$60, $1E0); widescreen widens it.",
+    "loPc": "00B0FE",
+    "hiPc": "00B104"
+  },
+  "sorWide": {
+    "comment": "Streets of Rage edges, widened by the widescreen width: the players' clamp (screen 32-288), where enemies walk in (328, -8), the wake test of an enemy waiting off screen (screen X + $80 in $70-$1D0, i.e. -16 to 336), and the game's check of its enemies (sub_000810, which resets the game on a bad one) accepting one still being set up (+$E = 0). Waves from the level table stay where the level puts them: the table also places scenery (the shutters) and enemies waiting in doorways. (Widening the other in-view and on-screen tests as well left waves that never ended.)",
+    "clampLeft": "0043F4",
+    "clampWidth": "0043F6",
+    "checkFresh": "000862",
+    "inView": {
+      "0097E8": "-$70",
+      "0097F0": "+$1D0"
+    },
+    "spawnRight": "000CAE",
+    "spawnLeft": "000CB8"
+  },
+  "playerSpeed": {
+    "pcs": {}
+  },
+  "randomDrop": {
+    "dropPc": null,
+    "placePc": null
+  }
 }

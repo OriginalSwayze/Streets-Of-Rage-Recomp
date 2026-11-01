@@ -10,7 +10,7 @@
 typedef struct {
     uint8_t *data;                      /* encoded delta */
     uint32_t len;
-    uint16_t pad;                       /* pad_state[0] of the older frame */
+    uint32_t pad;                       /* both pads of the older frame (player 2 in the top half) */
 } Entry;
 
 #define MAX_ENTRIES 65536               /* about 18 minutes at 60 fps; the byte budget binds first */
@@ -20,7 +20,7 @@ static int first, count;                /* oldest entry, number of entries */
 static size_t used, budget;
 static uint8_t *head, *scratch;         /* newest snapshot, workspace */
 static size_t head_len;
-static uint16_t head_pad;               /* pad input of the frame that starts at head */
+static uint32_t head_pad;               /* pad input of the frame that starts at head */
 static bool resumed;                    /* head is the machine's state after stepping back */
 
 static void put_varint(uint8_t **o, uint32_t v) {
@@ -88,7 +88,7 @@ void rewind_reset(size_t budget_bytes) {
 }
 
 /* Call once per frame, before running it, with the pad input it will use. */
-void rewind_push(uint16_t pad) {
+void rewind_push(uint32_t pad) {
     if (!budget || !head || !scratch) return;
     uint8_t *cur = scratch;
     size_t len = state_save(cur, STATE_MAX);
@@ -117,7 +117,7 @@ void rewind_push(uint16_t pad) {
 
 /* Steps back one frame: the machine is put in the state before that frame, and *pad is
  * the input it was played with (for redrawing it). False when there is nothing left. */
-bool rewind_step(uint16_t *pad) {
+bool rewind_step(uint32_t *pad) {
     if (!count) return false;
     int last = (first + count - 1) % MAX_ENTRIES;
     Entry *e = &ring[last];

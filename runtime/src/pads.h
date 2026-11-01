@@ -13,6 +13,10 @@ void pads_init(void);
 void pads_event(const SDL_Event *e);
 /* The controller used last, or the first connected; NULL with none. */
 SDL_GameController *pads_active(void);
+/* The controller of player 0 or 1, in the order they were connected; NULL if there are
+ * not that many. */
+SDL_GameController *pads_player(int player);
+int pads_count(void);
 /* Rumbles the active controller: low and high frequency motors (0-1) for ms. */
 void pads_rumble(float low, float high, int ms);
 

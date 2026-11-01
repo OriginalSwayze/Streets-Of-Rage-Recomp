@@ -17,6 +17,7 @@
 #include "preview.h"
 #include "fx.h"
 #include "combat.h"
+#include "ai.h"
 #include "recomp_rt.h"
 #include "automap.h"
 #include "texpack.h"
@@ -49,14 +50,15 @@ static void print_pc_profile(void) {
 
 /* ---- Scripted input for headless runs ------------------------------------------
  * --press "FRAME:BUTTONS[:FRAMES],..." holds BUTTONS (letters U D L R A B C S) from
- * FRAME for FRAMES frames (default 4). Several entries may overlap. */
-typedef struct { int frame, len; uint16_t bits; } Press;
-static Press presses[256];
+ * FRAME for FRAMES frames (default 4). Several entries may overlap. --press2 does the same
+ * for player 2's pad. */
+typedef struct { int frame, len; uint16_t bits; int player; } Press;
+static Press presses[16384];
 static int press_count;
 
-static void parse_presses(const char *spec) {
+static void parse_presses(const char *spec, int player) {
     while (*spec && press_count < (int)(sizeof presses / sizeof *presses)) {
-        Press p = { atoi(spec), 4, 0 };
+        Press p = { atoi(spec), 4, 0, player };
         const char *c = strchr(spec, ':');
         if (!c) break;
         for (c++; *c && *c != ':' && *c != ','; c++) {
@@ -75,10 +77,10 @@ static void parse_presses(const char *spec) {
     }
 }
 
-static uint16_t scripted_pad(int frame) {
+static uint16_t scripted_pad(int frame, int player) {
     uint16_t bits = 0;
     for (int i = 0; i < press_count; i++)
-        if (frame >= presses[i].frame && frame < presses[i].frame + presses[i].len) bits |= presses[i].bits;
+        if (presses[i].player == player && frame >= presses[i].frame && frame < presses[i].frame + presses[i].len) bits |= presses[i].bits;
     return bits;
 }
 
@@ -160,15 +162,23 @@ static void apply_settings(void) {
     hd_texpack = texpack_count() > 0;
 }
 
-/* The finishing steps for this frame (hd_post), with the camera from the game's RAM: the
- * plane A layer struct at $FF1716 holds it (+00 x, +04 y) while a map layer is active. */
+/* The finishing steps for this frame (hd_post), with the camera from the game's RAM.
+ * Beyond Oasis: the plane A layer struct at $FF1716 holds it (+00 x, +04 y) while a map
+ * layer is active. Streets of Rage: a game is on (not the attract demo) and the camera's
+ * X is at $FFE002 (the streets do not scroll up or down). */
 static HdPost finishing(int scale, float t) {
     const uint8_t *layer = bus.ram + 0x1716;
     HdPost p = { settings.sharpen, settings.lighting, settings.elements, settings.footsteps,
                  false, 0, 0, t, scale < 1 ? 1 : scale, vdp_opts.extra_width };
-    p.world = GAME_KNOWS_RAM && (layer[0x27] & 1) && !vdp_opts.mask_sides;
-    p.cam_x = (float)(int16_t)(layer[0] << 8 | layer[1]);
-    p.cam_y = (float)(int16_t)(layer[4] << 8 | layer[5]);
+    p.hdr = settings.hdr;
+    if (GAME_KNOWS_RAM) {
+        p.world = (layer[0x27] & 1) && !vdp_opts.mask_sides;
+        p.cam_x = (float)(int16_t)(layer[0] << 8 | layer[1]);
+        p.cam_y = (float)(int16_t)(layer[4] << 8 | layer[5]);
+    } else {
+        p.world = (bus.ram[0xFF18] & 3) && !bus.ram[0xFF2A] && !vdp_opts.mask_sides;
+        p.cam_x = (float)(int16_t)(bus.ram[0xE002] << 8 | bus.ram[0xE003]);
+    }
     return p;
 }
 
@@ -279,6 +289,7 @@ int main(int argc, char **argv) {
     uint32_t watch[16];
     int watch_count = 0;
     int check_from = -1, check_to = -1;     /* --state-check A B */
+    uint32_t *check_pads = NULL;            /* the pads of frames A to B */
     int rewind_check = 0;                   /* --rewind-check K */
     bool no_launcher = false;
     const char *launcher_shot = NULL;
@@ -326,10 +337,27 @@ int main(int argc, char **argv) {
                 if (*p == ',') p++;
             }
         }
-        else if (!strcmp(argv[i], "--press") && i + 1 < argc) parse_presses(argv[++i]);
+        else if (!strcmp(argv[i], "--press") && i + 1 < argc) parse_presses(argv[++i], 0);
+        else if (!strcmp(argv[i], "--press2") && i + 1 < argc) parse_presses(argv[++i], 1);
+        else if (!strcmp(argv[i], "--press-file") && i + 1 < argc) {
+            /* --press-file F: --press entries from a file, for scripts too long for a command line. */
+            FILE *pf = fopen(argv[++i], "rb");
+            if (pf) {
+                fseek(pf, 0, SEEK_END);
+                long n = ftell(pf);
+                fseek(pf, 0, SEEK_SET);
+                char *spec = malloc((size_t)n + 1);
+                if (spec && fread(spec, 1, (size_t)n, pf) == (size_t)n) { spec[n] = 0; parse_presses(spec, 0); }
+                free(spec);
+                fclose(pf);
+            }
+        }
+        else if (!strcmp(argv[i], "--player2") && i + 1 < argc) { settings.player2 = !strcmp(argv[++i], "ai"); test_overrides = true; }
         else if (!strcmp(argv[i], "--shots") && i + 2 < argc) { shot_every = atoi(argv[++i]); shot_dir = argv[++i]; }
         else if (!strcmp(argv[i], "--widescreen") && i + 1 < argc) { settings.widescreen = atoi(argv[++i]) != 0; test_overrides = true; }
         else if (!strcmp(argv[i], "--overclock") && i + 1 < argc) { settings.overclock = atoi(argv[++i]); test_overrides = true; }   /* percent */
+        else if (!strcmp(argv[i], "--lighting") && i + 1 < argc) { settings.lighting = atoi(argv[++i]) & 3; test_overrides = true; }   /* 0-3 */
+        else if (!strcmp(argv[i], "--hdr") && i + 1 < argc) { settings.hdr = atoi(argv[++i]) % 3; test_overrides = true; }   /* 0-2 */
         else if (!strcmp(argv[i], "--sharpen") && i + 1 < argc) { settings.sharpen = atoi(argv[++i]) & 3; test_overrides = true; }   /* 0-3 */
         else if (!strcmp(argv[i], "--lighting") && i + 1 < argc) { settings.lighting = atoi(argv[++i]) % 3; test_overrides = true; }   /* 0-2 */
         else if (!strcmp(argv[i], "--elements") && i + 1 < argc) { settings.elements = atoi(argv[++i]) != 0; test_overrides = true; }
@@ -340,7 +368,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--water") && i + 1 < argc) { settings.water = atoi(argv[++i]) != 0; test_overrides = true; }
         else if (!strcmp(argv[i], "--texture-pack") && i + 1 < argc) { snprintf(settings.texture_pack, sizeof settings.texture_pack, "%s", argv[++i]); test_overrides = true; }
         else if (!strcmp(argv[i], "--dump-tiles") && i + 1 < argc) { settings.dump_tiles = atoi(argv[++i]) != 0; test_overrides = true; }
-        else if (!strcmp(argv[i], "--scaler") && i + 1 < argc) { settings.scaler = atoi(argv[++i]) != 0; test_overrides = true; }   /* 0 edge, 1 smooth */
+        else if (!strcmp(argv[i], "--scaler") && i + 1 < argc) { settings.scaler = atoi(argv[++i]) % 3; test_overrides = true; }   /* 0 edge, 1 smooth, 2 sharp */
         else if (!strcmp(argv[i], "--audio") && i + 1 < argc) { settings.audio = atoi(argv[++i]) % 3; test_overrides = true; }   /* 0-2 */
         else if (!strcmp(argv[i], "--volume") && i + 1 < argc) { settings.volume = atoi(argv[++i]); test_overrides = true; }   /* 0-100 */
         else if (!strcmp(argv[i], "--filter") && i + 1 < argc) { settings.filter = atoi(argv[++i]) % FILTER_COUNT; test_overrides = true; }   /* 0 off, 1 scanlines, 2 CRT, 3 LCD */
@@ -428,6 +456,9 @@ int main(int argc, char **argv) {
             test_overrides = true;
             if (!strcmp(c, "health")) settings.cheat_health = true;
             else if (!strcmp(c, "spirit")) settings.cheat_spirit = true;
+            else if (!strcmp(c, "lives")) settings.cheat_lives = true;
+            else if (!strcmp(c, "specials")) settings.cheat_specials = true;
+            else if (!strcmp(c, "time")) settings.cheat_time = true;
             else if (!strcmp(c, "weapons")) settings.cheat_weapons = true;
             else if (!strcmp(c, "double")) settings.cheat_attack = 1;
             else if (!strcmp(c, "quadruple")) settings.cheat_attack = 2;
@@ -542,11 +573,17 @@ int main(int argc, char **argv) {
         FILE *hf = hash_log ? fopen(hash_log, "w") : NULL;
         for (int f = 0; f < headless_frames; f++) {
             if (profile_frames && f == headless_frames - profile_frames) pc_profile = calloc(ROM_SIZE / 2, 4);
-            pad_state[0] = scripted_pad(f);
+            pad_state[0] = scripted_pad(f, 0);
+            pad_state[1] = settings.player2 ? ai_pad() : scripted_pad(f, 1);
             if (f == check_from) len_a = state_save(snap_a, sizeof snap_a);
             if (f == check_to) len_b = state_save(snap_b, sizeof snap_b);
+            /* The pads as played (the AI partner's too), for replaying the checked frames. */
+            if (f >= check_from && f < check_to) {
+                if (!check_pads) check_pads = malloc((size_t)(check_to - check_from) * sizeof *check_pads);
+                if (check_pads) check_pads[f - check_from] = PADS_BOTH();
+            }
             if (rewind_check && f == headless_frames - rewind_check) len_ref = state_save(snap_ref, sizeof snap_ref);
-            rewind_push(pad_state[0]);
+            rewind_push(PADS_BOTH());
             cheats_frame();
             machine_run_frame(framebuffer, FB_W);
             if (vdp_opts.hd_capture) { hd_frame_done(); fx_after_frame(false); }
@@ -639,7 +676,11 @@ int main(int argc, char **argv) {
         if (len_a && len_b) {
             static uint8_t again[STATE_MAX];
             bool loaded = state_load(snap_a, len_a);
-            for (int f = check_from; f < check_to; f++) { pad_state[0] = scripted_pad(f); machine_run_frame(framebuffer, FB_W); }
+            for (int f = check_from; f < check_to; f++) {
+                uint32_t p = check_pads ? check_pads[f - check_from] : 0;
+                pad_state[0] = (uint16_t)p; pad_state[1] = (uint16_t)(p >> 16);
+                machine_run_frame(framebuffer, FB_W);
+            }
             size_t len = state_save(again, sizeof again);
             printf("state check %d-%d: snapshot %zu bytes, %s\n", check_from, check_to, len_a,
                    loaded && len == len_b && !memcmp(again, snap_b, len) ? "replay identical" : "REPLAY DIFFERS");
@@ -649,7 +690,7 @@ int main(int argc, char **argv) {
         if (rewind_check && len_ref) {
             static uint8_t now[STATE_MAX];
             rewind_push(0);
-            uint16_t p;
+            uint32_t p;
             int steps = 0;
             while (steps < rewind_check && rewind_step(&p)) steps++;
             size_t len = state_save(now, sizeof now);
@@ -687,9 +728,10 @@ int main(int argc, char **argv) {
             uint32_t *pixels = malloc((size_t)filter_w * filter_h * 4);
             if (target && pixels) {
                 SDL_SetRenderTarget(sr, target);
-                bool hd = settings.internal_scale > 1 || settings.water || hd_texpack;   /* as the window draws it */
+                bool hd = settings.internal_scale > 1 || settings.smooth_motion || settings.water || hd_texpack;   /* as the window draws it */
                 hd_time = 1.0f;
-                if (hd) hd_compose(settings.internal_scale);
+                if (hd && settings.smooth_motion) hd_compose_at(settings.internal_scale, 1.0f);   /* as the window draws it */
+                else if (hd) hd_compose(settings.internal_scale);
                 int tw = hd ? hd_w : frame_width(), th = hd ? hd_h : vdp_screen_height();
                 SDL_Texture *t = SDL_CreateTexture(sr, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STATIC, tw, th);
                 HdPost post = finishing(hd ? hd_w / frame_width() : 1, 1.0f);
@@ -697,7 +739,7 @@ int main(int argc, char **argv) {
                 Uint64 p0 = SDL_GetPerformanceCounter();
                 const uint32_t *finished = hd_post(hd ? hd_px : framebuffer, tw, th, hd ? hd_w : FB_W, &post);
                 printf("finishing steps: %.2f ms at %dx%d\n", (SDL_GetPerformanceCounter() - p0) * 1000.0 / SDL_GetPerformanceFrequency(), tw, th);
-                SDL_UpdateTexture(t, NULL, finished, tw * 4);
+                SDL_UpdateTexture(t, NULL, finished, (hd || finished != framebuffer ? tw : FB_W) * 4);   /* the frame buffer is FB_W wide */
                 SDL_SetRenderDrawColor(sr, 0, 0, 0, 255);
                 SDL_RenderClear(sr);
                 Uint64 t0 = SDL_GetPerformanceCounter();
@@ -926,10 +968,11 @@ int main(int argc, char **argv) {
         if (now >= next) {
             const Uint8 *keys = SDL_GetKeyboardState(NULL);
             bool rewinding = settings.rewind && input_held(IN_REWIND, keys, pads_active());
-            uint16_t old_pad;
+            uint32_t old_pad;
             if (rewinding && rewind_step(&old_pad)) {
                 /* Redraw the frame we stepped back to, then return to the state before it. */
-                pad_state[0] = old_pad;
+                pad_state[0] = (uint16_t)old_pad;
+                pad_state[1] = (uint16_t)(old_pad >> 16);
                 machine_run_frame(framebuffer, FB_W);
                 if (vdp_opts.hd_capture) { hd_frame_done(); fx_after_frame(false); }
                 rewind_restore_head();
@@ -939,8 +982,12 @@ int main(int argc, char **argv) {
                  * (the last one's sound is heard). */
                 int runs = input_held(IN_FAST, keys, pads_active()) ? settings.fast_speed + 2 : 1;
                 for (int r = 0; r < runs; r++) {
-                    pad_state[0] = input_pad_bits(keys, pads_active());
-                    rewind_push(pad_state[0]);
+                    /* Two controllers and no AI partner: the first is player 1's, the second
+                     * player 2's. Otherwise player 1 plays on whichever was used last. */
+                    bool two = !settings.player2 && pads_count() >= 2;
+                    pad_state[0] = input_pad_bits(keys, two ? pads_player(0) : pads_active());
+                    pad_state[1] = settings.player2 ? ai_pad() : two ? input_pad_bits(NULL, pads_player(1)) : 0;
+                    rewind_push(PADS_BOTH());
                     cheats_frame();
                     machine_run_frame(framebuffer, FB_W);
                     if (vdp_opts.hd_capture) { hd_frame_done(); fx_after_frame(true); }

@@ -22,6 +22,8 @@ typedef struct { uint32_t pc; RecompBlock fn; } RecompEntry;
 /* Patched instructions (config/patches.json); 0 keeps the original behavior. */
 extern uint32_t patch_cull_left, patch_cull_widen;
 extern int patch_cam_margin;
+extern uint32_t patch_sor_x_lo, patch_sor_x_hi;   /* Streets of Rage sprite culling (sorCull) */
+extern int patch_sor_wide;                         /* Streets of Rage: widescreen pixels per side (sorWide) */
 extern int patch_no_damage;             /* infinite health cheat (cheats.c) */
 extern int patch_attack;                /* attack power cheat: 0 normal, 1 double, 2 quadruple, 3 one-hit kills */
 extern int patch_speed;                 /* move speed cheat: the player's movement per tick in percent (100 = normal) */
@@ -76,6 +78,31 @@ static inline uint32_t hit_damage(uint32_t target, uint32_t v) {
     default: damage = rd16(target + 0x8A) + rd16(target + 0x92) + 1; break;
     }
     return (v & 0xF000) | (damage > 0xFFF ? 0xFFF : damage);
+}
+
+/* Streets of Rage (sorHit, config/patches.json): the health a hit takes off its target.
+ * The players are the objects at $FFB800 and $FFB880: with infinite health they lose
+ * none; their hits on anything else are scaled by the attack power cheat, a one-hit kill
+ * taking all the target's health and one more (below 0 is dead). */
+static inline uint32_t sor_hit(uint32_t target, uint32_t attacker, uint32_t damage) {
+    uint32_t t = target & 0xFFFF, a = attacker & 0xFFFF;
+    bool t_player = t == 0xB800 || t == 0xB880, a_player = a == 0xB800 || a == 0xB880;
+    if (t_player && patch_no_damage) return 0;
+    if (!a_player || t_player || !patch_attack || !damage) return damage;
+    switch (patch_attack) {
+    case 1: damage *= 2; break;
+    case 2: damage *= 4; break;
+    default: { int16_t hp = (int16_t)rd16(target + 0x32); damage = hp < 0 ? 1u : (uint32_t)hp + 1; break; }
+    }
+    return damage > 0x7FFF ? 0x7FFF : damage;
+}
+
+/* The health change at $4E6E (sorHit.changePc): d7 is added to the target's health; a
+ * hit's is negative, from the object in the target's +$7E. */
+static inline uint32_t sor_change(uint32_t target, uint32_t d7) {
+    if (!(d7 & 0x8000)) return d7;                         /* health gained */
+    uint32_t d = sor_hit(target, 0xFF0000 | rd16(target + 0x7E), (0x10000 - d7) & 0xFFFF);
+    return (0x10000 - d) & 0xFFFF;
 }
 
 /* The movement of an object for this tick (16.16), scaled by the move speed cheat when

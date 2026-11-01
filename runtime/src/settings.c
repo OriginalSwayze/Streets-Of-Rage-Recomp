@@ -71,8 +71,9 @@ void settings_load(const char *path) {
         else if (!strcmp(k, "volume")) settings.volume = atoi(v);
         else if (!strcmp(k, "ost_mode")) settings.ost_mode = atoi(v);
         else if (!strcmp(k, "sharpen")) settings.sharpen = atoi(v);
-        else if (!strcmp(k, "scaler")) settings.scaler = !strcmp(v, "smooth");
+        else if (!strcmp(k, "scaler")) settings.scaler = !strcmp(v, "smooth") ? 1 : !strcmp(v, "sharp") ? 2 : 0;
         else if (!strcmp(k, "lighting")) settings.lighting = atoi(v);
+        else if (!strcmp(k, "hdr_look")) settings.hdr = atoi(v);
         else if (!strcmp(k, "elements")) settings.elements = parse_bool(v);
         else if (!strcmp(k, "footsteps")) settings.footsteps = parse_bool(v);
         else if (!strcmp(k, "water")) settings.water = parse_bool(v);
@@ -80,6 +81,7 @@ void settings_load(const char *path) {
         else if (!strcmp(k, "rumble")) settings.rumble = atoi(v);
         else if (!strcmp(k, "fast_speed")) settings.fast_speed = atoi(v);
         else if (!strcmp(k, "play_timer")) settings.play_timer = parse_bool(v);
+        else if (!strcmp(k, "player2")) settings.player2 = atoi(v) == 1;
         else if (!strcmp(k, "texture_pack")) snprintf(settings.texture_pack, sizeof settings.texture_pack, "%s", v);
         else if (!strcmp(k, "dump_tiles")) settings.dump_tiles = parse_bool(v);
         else if (!strcmp(k, "audio")) settings.audio = atoi(v);
@@ -88,6 +90,9 @@ void settings_load(const char *path) {
         else if (outfit_ini_load(k, v)) {}
         else if (!strcmp(k, "cheat_health")) settings.cheat_health = parse_bool(v);
         else if (!strcmp(k, "cheat_spirit")) settings.cheat_spirit = parse_bool(v);
+        else if (!strcmp(k, "cheat_lives")) settings.cheat_lives = parse_bool(v);
+        else if (!strcmp(k, "cheat_specials")) settings.cheat_specials = parse_bool(v);
+        else if (!strcmp(k, "cheat_time")) settings.cheat_time = parse_bool(v);
         else if (!strcmp(k, "cheat_weapons")) settings.cheat_weapons = parse_bool(v);
         else if (!strcmp(k, "cheat_attack")) settings.cheat_attack = atoi(v);
         else if (!strcmp(k, "cheat_speed")) settings.cheat_speed = atoi(v);
@@ -104,7 +109,8 @@ void settings_load(const char *path) {
     if (settings.volume < 0 || settings.volume > 100) settings.volume = 100;
     if (settings.ost_mode < 0 || settings.ost_mode >= OST_MODE_COUNT) settings.ost_mode = OST_MODE_ALL;
     if (settings.sharpen < 0 || settings.sharpen > 3) settings.sharpen = 0;
-    if (settings.lighting < 0 || settings.lighting > 2) settings.lighting = 0;
+    if (settings.lighting < 0 || settings.lighting > 3) settings.lighting = 0;
+    if (settings.hdr < 0 || settings.hdr > 2) settings.hdr = 0;
     if (settings.audio < 0 || settings.audio > 2) settings.audio = 0;
     if (settings.cheat_attack < 0 || settings.cheat_attack > 3) settings.cheat_attack = 0;
     if (settings.cheat_speed < 0 || settings.cheat_speed > 2) settings.cheat_speed = 0;
@@ -140,8 +146,9 @@ void settings_save(const char *path) {
     fprintf(f, "volume=%d\n", settings.volume);
     fprintf(f, "ost_mode=%d\n", settings.ost_mode);
     fprintf(f, "sharpen=%d\n", settings.sharpen);
-    fprintf(f, "scaler=%s\n", settings.scaler ? "smooth" : "edge");
+    fprintf(f, "scaler=%s\n", settings.scaler == 2 ? "sharp" : settings.scaler ? "smooth" : "edge");
     fprintf(f, "lighting=%d\n", settings.lighting);
+    fprintf(f, "hdr_look=%d\n", settings.hdr);
     fprintf(f, "elements=%d\n", settings.elements);
     fprintf(f, "footsteps=%d\n", settings.footsteps);
     fprintf(f, "water=%d\n", settings.water);
@@ -149,12 +156,16 @@ void settings_save(const char *path) {
     fprintf(f, "rumble=%d\n", settings.rumble);
     fprintf(f, "fast_speed=%d\n", settings.fast_speed);
     fprintf(f, "play_timer=%d\n", settings.play_timer);
+    fprintf(f, "player2=%d\n", settings.player2);
     fprintf(f, "texture_pack=%s\n", settings.texture_pack);
     fprintf(f, "dump_tiles=%d\n", settings.dump_tiles);
     fprintf(f, "audio=%d\n", settings.audio);
     fprintf(f, "ost_track=%d\n", settings.ost_track);
     fprintf(f, "cheat_health=%d\n", settings.cheat_health);
     fprintf(f, "cheat_spirit=%d\n", settings.cheat_spirit);
+    fprintf(f, "cheat_lives=%d\n", settings.cheat_lives);
+    fprintf(f, "cheat_specials=%d\n", settings.cheat_specials);
+    fprintf(f, "cheat_time=%d\n", settings.cheat_time);
     fprintf(f, "cheat_weapons=%d\n", settings.cheat_weapons);
     fprintf(f, "cheat_attack=%d\n", settings.cheat_attack);
     fprintf(f, "cheat_speed=%d\n", settings.cheat_speed);
@@ -168,7 +179,7 @@ void settings_save(const char *path) {
 }
 
 int settings_extra_width(void) {
-    if (!settings.widescreen || !GAME_WIDESCREEN) return 0;
+    if (!settings.widescreen || !(GAME_WIDESCREEN || GAME_WIDE_VIEW)) return 0;
     /* Genesis pixels are slightly wide (4:3 over 320x224), so convert the
      * display aspect to a pixel count using the 320x224 -> 4:3 pixel aspect. */
     double par = (4.0 / 3.0) / (320.0 / 224.0);
@@ -203,8 +214,9 @@ void settings_option_text(int id, char *out, size_t n) {
     case OPT_MUSIC:      snprintf(out, n, "%s", settings.launcher_music ? "On" : "Off"); break;
     case OPT_OST_MODE:   snprintf(out, n, "%s", ost_modes[settings.ost_mode]); break;
     case OPT_SHARPEN:    snprintf(out, n, "%s", sharpen_names[settings.sharpen]); break;
-    case OPT_SCALER:     snprintf(out, n, "%s", settings.scaler ? "Smooth (xBR)" : "Edge"); break;
-    case OPT_LIGHTING:   snprintf(out, n, "%s", settings.lighting == 2 ? "Bright" : settings.lighting ? "Soft" : "Off"); break;
+    case OPT_SCALER:     snprintf(out, n, "%s", settings.scaler == 2 ? "Sharp" : settings.scaler ? "Smooth (xBR)" : "Edge"); break;
+    case OPT_LIGHTING:   snprintf(out, n, "%s", settings.lighting == 3 ? "Neon" : settings.lighting == 2 ? "Bright" : settings.lighting ? "Soft" : "Off"); break;
+    case OPT_HDR:        snprintf(out, n, "%s", settings.hdr == 2 ? "Strong" : settings.hdr ? "On" : "Off"); break;
     case OPT_ELEMENTS:   snprintf(out, n, "%s", settings.elements ? "On" : "Off"); break;
     case OPT_FOOTSTEPS:  snprintf(out, n, "%s", settings.footsteps ? "On" : "Off"); break;
     case OPT_WATER:      snprintf(out, n, "%s", settings.water ? "On" : "Off"); break;
@@ -212,6 +224,7 @@ void settings_option_text(int id, char *out, size_t n) {
     case OPT_RUMBLE:     snprintf(out, n, "%s", settings.rumble == 2 ? "Strong" : settings.rumble ? "Light" : "Off"); break;
     case OPT_FAST:       snprintf(out, n, "%d\xC3\x97", settings.fast_speed + 2); break;
     case OPT_TIMER:      snprintf(out, n, "%s", settings.play_timer ? "On" : "Off"); break;
+    case OPT_PLAYER2:    snprintf(out, n, "%s", settings.player2 ? "AI partner" : "Second controller"); break;
     case OPT_RANDOMIZER:
         if (!settings.randomizer) snprintf(out, n, "Off");
         else snprintf(out, n, "%s (seed %u)", settings.randomizer == 2 ? "Items + weapons" : "Items", settings.randomizer_seed);
@@ -241,6 +254,9 @@ void settings_option_text(int id, char *out, size_t n) {
     case OPT_LAUNCHER:   snprintf(out, n, "%s", settings.show_launcher ? "On" : "Off"); break;
     case OPT_CHEAT_HEALTH:  snprintf(out, n, "%s", settings.cheat_health ? "On" : "Off"); break;
     case OPT_CHEAT_SPIRIT:  snprintf(out, n, "%s", settings.cheat_spirit ? "On" : "Off"); break;
+    case OPT_CHEAT_LIVES:   snprintf(out, n, "%s", settings.cheat_lives ? "On" : "Off"); break;
+    case OPT_CHEAT_SPECIALS: snprintf(out, n, "%s", settings.cheat_specials ? "On" : "Off"); break;
+    case OPT_CHEAT_TIME:    snprintf(out, n, "%s", settings.cheat_time ? "On" : "Off"); break;
     case OPT_CHEAT_WEAPONS: snprintf(out, n, "%s", settings.cheat_weapons ? "On" : "Off"); break;
     case OPT_CHEAT_ATTACK:  snprintf(out, n, "%s", attack_names[settings.cheat_attack & 3]); break;
     case OPT_CHEAT_SPEED:   snprintf(out, n, "%s", speed_names[settings.cheat_speed % 3]); break;
@@ -315,8 +331,9 @@ void settings_option_change(int id, int dir) {
     case OPT_MUSIC:    settings.launcher_music = !settings.launcher_music; break;
     case OPT_OST_MODE: settings.ost_mode = settings_cycle(settings.ost_mode, OST_MODE_COUNT, dir); break;
     case OPT_SHARPEN:  settings.sharpen = settings_cycle(settings.sharpen, 4, dir); break;
-    case OPT_SCALER:   settings.scaler = !settings.scaler; break;
-    case OPT_LIGHTING: settings.lighting = settings_cycle(settings.lighting, 3, dir); break;
+    case OPT_SCALER:   settings.scaler = settings_cycle(settings.scaler, 3, dir); break;
+    case OPT_LIGHTING: settings.lighting = settings_cycle(settings.lighting, 4, dir); break;
+    case OPT_HDR:      settings.hdr = settings_cycle(settings.hdr, 3, dir); break;
     case OPT_ELEMENTS: settings.elements = !settings.elements; break;
     case OPT_FOOTSTEPS: settings.footsteps = !settings.footsteps; break;
     case OPT_WATER:    settings.water = !settings.water; break;
@@ -324,6 +341,7 @@ void settings_option_change(int id, int dir) {
     case OPT_RUMBLE:   settings.rumble = settings_cycle(settings.rumble, 3, dir); break;
     case OPT_FAST:     settings.fast_speed = settings_cycle(settings.fast_speed, 3, dir); break;
     case OPT_TIMER:    settings.play_timer = !settings.play_timer; break;
+    case OPT_PLAYER2:  settings.player2 = !settings.player2; break;
     case OPT_RANDOMIZER: {
         bool was_off = !settings.randomizer;
         settings.randomizer = settings_cycle(settings.randomizer, 3, dir);
@@ -342,6 +360,9 @@ void settings_option_change(int id, int dir) {
     case OPT_AUDIO:    settings.audio = settings_cycle(settings.audio, 3, dir); break;
     case OPT_CHEAT_HEALTH:  settings.cheat_health = !settings.cheat_health; break;
     case OPT_CHEAT_SPIRIT:  settings.cheat_spirit = !settings.cheat_spirit; break;
+    case OPT_CHEAT_LIVES:   settings.cheat_lives = !settings.cheat_lives; break;
+    case OPT_CHEAT_SPECIALS: settings.cheat_specials = !settings.cheat_specials; break;
+    case OPT_CHEAT_TIME:    settings.cheat_time = !settings.cheat_time; break;
     case OPT_CHEAT_WEAPONS: settings.cheat_weapons = !settings.cheat_weapons; break;
     case OPT_CHEAT_ATTACK:  settings.cheat_attack = settings_cycle(settings.cheat_attack, 4, dir); break;
     case OPT_CHEAT_SPEED:   settings.cheat_speed = settings_cycle(settings.cheat_speed, 3, dir); break;

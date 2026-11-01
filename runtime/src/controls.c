@@ -106,9 +106,20 @@ void controls_render(double time_s) {
     now = time_s;
     if (!open_) return;
     ui_fill_rect(0, 0, UI_BASE_W, UI_BASE_H, rgb(0, 0, 0), .55f);
-    ui_panel(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 18, rgb_hex(0x171B26), rgb_hex(0x0B0D12), 1, rgb_hex(0xD9B567), .35f);
-    ui_draw_text("CONTROLS", "Palatino Linotype", 34, 700, 7, LIST_X - 2, PANEL_Y + 26, rgb_hex(0xFBEBB8), rgb_hex(0xC08A2C), 1);
-    Rgb head = rgb_hex(0xC9A45C);
+    /* The game's HUD: charcoal in a yellow frame, red bars. */
+    Rgb yellow = rgb_hex(0xF8D838), red = rgb_hex(0xE0381C);
+    ui_fill_rect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, rgb_hex(0x15151A), .95f);
+    for (int k = 0; k < 4; k++) {
+        float th = 4;
+        if (k == 0) ui_fill_rect(PANEL_X, PANEL_Y, PANEL_W, th, yellow, 1);
+        if (k == 1) ui_fill_rect(PANEL_X, PANEL_Y + PANEL_H - th, PANEL_W, th, yellow, 1);
+        if (k == 2) ui_fill_rect(PANEL_X, PANEL_Y, th, PANEL_H, yellow, 1);
+        if (k == 3) ui_fill_rect(PANEL_X + PANEL_W - th, PANEL_Y, th, PANEL_H, yellow, 1);
+    }
+    ui_draw_text("CONTROLS", "Impact", 40, 400, 5, LIST_X + 2, PANEL_Y + 26, rgb_hex(0x8A140A), rgb_hex(0x8A140A), .9f);
+    ui_draw_text("CONTROLS", "Impact", 40, 400, 5, LIST_X - 1, PANEL_Y + 23, yellow, rgb_hex(0xF0A030), 1);
+    ui_fill_rect(LIST_X, PANEL_Y + 76, 110, 3, red, .9f);
+    Rgb head = red;
     ui_draw_text("KEYBOARD", "Segoe UI Semibold", 11.5f, 600, 3.5f, KEY_X, LIST_Y - 26, head, head, 1);
     ui_draw_text("CONTROLLER", "Segoe UI Semibold", 11.5f, 600, 3.5f, PAD_X, LIST_Y - 26, head, head, 1);
 
@@ -116,8 +127,8 @@ void controls_render(double time_s) {
         float y = row_y(i);
         bool focus = selected == i;
         if (focus) {
-            ui_fill_rect(LIST_X - 14, y + 1, LIST_R - LIST_X + 24, ROW_H - 2, rgb_hex(0xD9B567), .08f);
-            ui_fill_rect(LIST_X - 14, y + 1, 3, ROW_H - 2, rgb_hex(0xE8C77A), .95f);
+            ui_fill_rect(LIST_X - 14, y + 1, LIST_R - LIST_X + 24, ROW_H - 2, red, .22f);
+            ui_fill_rect(LIST_X - 14, y + 1, 5, ROW_H - 2, yellow, 1);
         }
         Rgb lc = focus ? rgb_hex(0xFFFFFF) : rgb_hex(0xC5CAD5);
         if (i == ROW_RESET) { ui_draw_text("Reset to defaults", "Segoe UI", 17, 400, 0, LIST_X, y + 7, lc, lc, 1); continue; }
@@ -130,7 +141,7 @@ void controls_render(double time_s) {
                          KEY_X, y + 9, rgb_hex(0xF3DDA4), rgb_hex(0xF3DDA4), a);
             continue;
         }
-        Rgb vc = focus ? rgb_hex(0xF3DDA4) : rgb_hex(0xE6E9EF);
+        Rgb vc = focus ? yellow : rgb_hex(0xE8D49A);
         if (focus && now < captured_until) vc = rgb_hex(0x8FD19E);
         ui_draw_text(input_key_name(i), "Segoe UI Semibold", 16.5f, 600, 0, KEY_X, y + 7, vc, vc, 1);
         ui_draw_text(input_button_name(i), "Segoe UI Semibold", 16.5f, 600, 0, PAD_X, y + 7, vc, vc, 1);

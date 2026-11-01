@@ -16,14 +16,16 @@ typedef struct {
     bool smooth_motion;                 /* draw between the game's 30 Hz ticks (hd.c, motion.c) */
     int  filter;                        /* FILTER_* (filter.h): off, scanlines, CRT, LCD */
     int  sharpen;                       /* sharpening: 0 off, 1 light, 2 medium, 3 strong (hd_sharpen) */
-    int  scaler;                        /* layer scaler: 0 edge (Scale2x/3x), 1 smooth (xBR rules) */
-    int  lighting;                      /* glow of bright pixels: 0 off, 1 soft, 2 bright (hd_post) */
+    int  scaler;                        /* layer scaler: 0 edge (Scale2x/3x), 1 smooth (xBR rules), 2 sharp (plain blocks) */
+    int  lighting;                      /* glow of bright pixels: 0 off, 1 soft, 2 bright, 3 neon (hd_post) */
+    int  hdr;                           /* HDR look: 0 off, 1 on, 2 strong (hd_post) */
     bool elements;                      /* particles from spirits and magic (fx.c) */
     bool footsteps;                     /* dust, grass and splashes where Ali walks (fx.c) */
     bool water;                         /* water shimmers, foams, glints and reflects (hd_water) */
     int  combat_info;                   /* 0 off, 1 damage numbers, 2 numbers and enemy health bars (combat.c) */
     int  rumble;                        /* controller rumble on hits: 0 off, 1 light, 2 strong (combat.c) */
     int  fast_speed;                    /* fast-forward while its key is held: 0 2x, 1 3x, 2 4x */
+    int  player2;                       /* player 2: 0 a second controller, 1 the AI partner (ai.c) */
     bool play_timer;                    /* this session's play time in the picture's corner (combat.c) */
     char texture_pack[64];              /* folder in texture_packs/, empty for none (texpack.h) */
     bool dump_tiles;                    /* write every tile shown to texture_packs/dump/ */
@@ -42,6 +44,9 @@ typedef struct {
     int  bind_pad[11];                  /* input.h IN_*: SDL game controller button for each action */
     bool cheat_health;                  /* infinite health: no damage, health held full */
     bool cheat_spirit;                  /* infinite spirit power */
+    bool cheat_lives;                   /* lives held at 3 or more (both players) */
+    bool cheat_specials;                /* a special attack always left (both players) */
+    bool cheat_time;                    /* the round timer held at 99 */
     bool cheat_weapons;                 /* weapons never break */
     int  cheat_attack;                  /* attack power: 0 normal, 1 double, 2 quadruple, 3 one-hit kills */
     int  cheat_speed;                   /* move speed: 0 normal, 1 fast (1.5x), 2 very fast (2x) */
@@ -67,7 +72,8 @@ enum { OPT_WIDESCREEN, OPT_ASPECT, OPT_FULLSCREEN, OPT_INTEGER, OPT_WINDOW, OPT_
        OPT_MUSIC, OPT_OST_MODE,          /* launcher music on/off, soundtrack player mode */
        OPT_SHARPEN, OPT_SCALER, OPT_LIGHTING, OPT_AUDIO, OPT_ELEMENTS, OPT_FOOTSTEPS, OPT_WATER,
        OPT_TEXPACK, OPT_DUMP,
-       OPT_COMBAT, OPT_RUMBLE, OPT_FAST, OPT_TIMER, OPT_RANDOMIZER };
+       OPT_COMBAT, OPT_RUMBLE, OPT_FAST, OPT_TIMER, OPT_RANDOMIZER,
+       OPT_PLAYER2, OPT_CHEAT_LIVES, OPT_CHEAT_SPECIALS, OPT_CHEAT_TIME, OPT_HDR };
 enum { OST_MODE_ALL, OST_MODE_REPEAT, OST_MODE_SHUFFLE, OST_MODE_COUNT };
 void settings_set_volume_fraction(float v);         /* sets volume from a slider (0-1), in steps of 5 */                    /* all three cheats as presets: Off, Health, Health + spirit, All */
 void settings_option_text(int id, char *out, size_t n);

@@ -27,10 +27,9 @@ typedef struct { ItemKind kind; const char *label; int id; } Item;
 #define TABS 5
 #define MAX_ROWS 10
 static const char *const tab_names[TABS] = { "GAME", "DISPLAY", "EFFECTS", "CHEATS", "MORE" };
-static const int tab_spirit[TABS] = { 2, 0, 1, SPIRIT_ARMLET, 3 };     /* Bow, Dytto, Efreet, the armlet, Shade */
 static const Item tab_items[TABS][MAX_ROWS] = {
     { { ITEM_ACTION, "Resume", ACT_RESUME }, { ITEM_SLOT, "Save state", ACT_SAVE }, { ITEM_SLOT, "Load state", ACT_LOAD },
-      { ITEM_ACTION, "Map", ACT_MAP }, { ITEM_ACTION, "Stats", ACT_STATS },
+      { ITEM_OPTION, "Player 2", OPT_PLAYER2 }, { ITEM_ACTION, "Stats", ACT_STATS },
       { ITEM_OPTION, "Rewind", OPT_REWIND }, { ITEM_OPTION, "Fast-forward", OPT_FAST },
       { ITEM_ACTION, "Reset game", ACT_RESET }, { ITEM_ACTION, "Quit game", ACT_QUIT } },
     { { ITEM_OPTION, "Widescreen", OPT_WIDESCREEN }, { ITEM_OPTION, "Aspect ratio", OPT_ASPECT },
@@ -38,18 +37,45 @@ static const Item tab_items[TABS][MAX_ROWS] = {
       { ITEM_OPTION, "Scaler", OPT_SCALER }, { ITEM_OPTION, "Filter", OPT_FILTER },
       { ITEM_OPTION, "Sharpening", OPT_SHARPEN }, { ITEM_OPTION, "Smooth motion", OPT_SMOOTH },
       { ITEM_OPTION, "Sprite flicker fix", OPT_FLICKER }, { ITEM_OPTION, "Slowdown fix", OPT_OVERCLOCK } },
-    { { ITEM_OPTION, "Lighting", OPT_LIGHTING }, { ITEM_OPTION, "Spirit effects", OPT_ELEMENTS },
-      { ITEM_OPTION, "Water", OPT_WATER }, { ITEM_OPTION, "Footsteps", OPT_FOOTSTEPS },
-      { ITEM_OPTION, "Combat info", OPT_COMBAT } },
-    { { ITEM_OPTION, "Infinite health", OPT_CHEAT_HEALTH }, { ITEM_OPTION, "Infinite spirit", OPT_CHEAT_SPIRIT },
-      { ITEM_OPTION, "Unbreakable weapons", OPT_CHEAT_WEAPONS }, { ITEM_OPTION, "Attack power", OPT_CHEAT_ATTACK },
-      { ITEM_OPTION, "Move speed", OPT_CHEAT_SPEED }, { ITEM_OPTION, "Randomizer", OPT_RANDOMIZER } },
+    { { ITEM_OPTION, "Lighting", OPT_LIGHTING }, { ITEM_OPTION, "HDR look", OPT_HDR },
+      { ITEM_OPTION, "Combat info", OPT_COMBAT }, { ITEM_OPTION, "Play timer", OPT_TIMER } },
+    { { ITEM_OPTION, "Infinite health", OPT_CHEAT_HEALTH }, { ITEM_OPTION, "Infinite lives", OPT_CHEAT_LIVES },
+      { ITEM_OPTION, "Infinite specials", OPT_CHEAT_SPECIALS }, { ITEM_OPTION, "Infinite time", OPT_CHEAT_TIME },
+      { ITEM_OPTION, "Attack power", OPT_CHEAT_ATTACK } },
     { { ITEM_OPTION, "Volume", OPT_VOLUME }, { ITEM_OPTION, "Audio", OPT_AUDIO },
-      { ITEM_ACTION, "Controls", ACT_CONTROLS }, { ITEM_ACTION, "Ali's outfit", ACT_OUTFIT },
-      { ITEM_OPTION, "Rumble", OPT_RUMBLE }, { ITEM_OPTION, "Play timer", OPT_TIMER },
+      { ITEM_ACTION, "Controls", ACT_CONTROLS }, { ITEM_OPTION, "Rumble", OPT_RUMBLE },
       { ITEM_OPTION, "Texture pack", OPT_TEXPACK }, { ITEM_OPTION, "Dump tiles", OPT_DUMP } },
 };
-static const int tab_count[TABS] = { 9, 10, 5, 6, 8 };
+static const int tab_count[TABS] = { 9, 10, 4, 5, 6 };
+
+/* ---- Look: the game's HUD, a yellow frame on charcoal, red bars (as the launcher) ------- */
+#define C_YELLOW rgb_hex(0xF8D838)
+#define C_AMBER  rgb_hex(0xF0A030)
+#define C_RED    rgb_hex(0xE0381C)
+#define C_INK    rgb_hex(0x15151A)
+#define C_TEXT   rgb_hex(0xE9E5DC)
+#define C_DIM    rgb_hex(0x8E8A82)
+#define HEAD     "Impact"
+
+static void frame_rect(float x, float y, float w, float h, float thick, Rgb c, float a) {
+    ui_fill_rect(x, y, w, thick, c, a);
+    ui_fill_rect(x, y + h - thick, w, thick, c, a);
+    ui_fill_rect(x, y + thick, thick, h - 2 * thick, c, a);
+    ui_fill_rect(x + w - thick, y + thick, thick, h - 2 * thick, c, a);
+}
+
+static void hud_box(float x, float y, float w, float h, float alpha) {
+    ui_fill_rect(x, y, w, h, C_INK, .92f * alpha);
+    frame_rect(x, y, w, h, 4, C_YELLOW, alpha);
+    frame_rect(x + 4, y + 4, w - 8, h - 8, 2, rgb(0, 0, 0), .8f * alpha);
+}
+
+static void shadow_text(const char *s, const char *face, float px, int weight, float tracking, float x, float y,
+                        Rgb c, Rgb shade, float alpha) {
+    float d = px / 16;
+    ui_draw_text(s, face, px, weight, tracking, x + d, y + d, shade, shade, alpha * .9f);
+    ui_draw_text(s, face, px, weight, tracking, x, y, c, mix(c, C_AMBER, .35f), alpha);
+}
 
 /* What each option and action does, for the card on the right. */
 static const char *about(const Item *it) {
@@ -59,38 +85,41 @@ static const char *about(const Item *it) {
         case ACT_RESET: return "Starts the game over from the beginning. Unsaved progress is lost.";
         case ACT_QUIT: return "Closes the game. Unsaved progress is lost; the game's own saves stay.";
         case ACT_CONTROLS: return "The keyboard key and controller button for every action.";
-        case ACT_MAP: return "Fills in as you explore: everything that has been on screen in this area, with Ali's place blinking.";
-        case ACT_STATS: return NULL;
-        case ACT_OUTFIT: return "Pick colours for Ali's clothes, hair, skin and jewellery, and animate them if you like (shimmer, pulse, rainbow, flame), with a preview before you apply them.";
+            case ACT_STATS: return NULL;
         }
     if (it->kind == ITEM_SLOT) return NULL;
     switch (it->id) {
-    case OPT_WIDESCREEN: return "Shows more of the world at the sides, streamed by the game's own map code. Off is the original 4:3 picture.";
+    case OPT_WIDESCREEN: return "Shows more of the street at the sides, and the enemies walking in from beyond the old edges. Off is the original 4:3 picture.";
     case OPT_ASPECT: return "The shape of the widescreen picture.";
     case OPT_INTEGER: return "Scales by whole numbers only, so every game pixel is the same size (black borders around the picture).";
     case OPT_INTERNAL: return "Draws each layer at a higher resolution, rounding the edges of the pixel art. Native is the original look; 6x (2544 x 1344) is for 1440p and 4K screens and needs a fast CPU.";
-    case OPT_SCALER: return "How the layers are scaled for the internal resolution: Edge rounds corners, Smooth (xBR) follows curves and slopes.";
+    case OPT_SCALER: return "How the layers are scaled for the internal resolution: Edge rounds corners, Smooth (xBR) follows curves and slopes, Sharp keeps every pixel square, exactly as drawn. Edge and Smooth leave dither patterns crisp.";
     case OPT_FILTER: return "Scanlines, a curved CRT tube or an LCD grid laid over the picture, like the screens of the time.";
     case OPT_SHARPEN: return "Crisper edges after scaling, without halos: soft edges are sharpened, hard pixel edges are left alone.";
     case OPT_SMOOTH: return "The game moves things 30 times a second; this draws each sprite between its moves, so motion is fluid on fast screens.";
     case OPT_FLICKER: return "Lifts the hardware's limit of sprites on one line, so crowded scenes no longer flicker.";
     case OPT_OVERCLOCK: return "Gives the console's processor more time each frame, so busy scenes no longer slow down. Music and speed stay the same.";
-    case OPT_LIGHTING: return "Fire, magic, gems and bright metal glow softly into their surroundings. Daylight scenes are left as they are.";
+    case OPT_LIGHTING: return "Bright light glows into its surroundings: Soft and Bright for anything bright, Neon for the signs, lamp bulbs and lit windows of the street only (never the fighters or the HUD), with a wider glow that buzzes and now and then flickers.";
+    case OPT_HDR: return "A high-dynamic-range grade for any screen: deeper shadows, brighter highlights and richer colour, so the neon and the street lights stand out against the night. Strong goes further.";
     case OPT_TEXPACK: return "High-resolution replacements for the game's tiles, from a folder in texture_packs next to the game. None is the original art.";
     case OPT_DUMP: return "Writes every tile shown on screen once to texture_packs/dump, named by its key: the starting point for making a pack.";
     case OPT_FOOTSTEPS: return "Ali kicks up what is under his feet as he walks: puffs of dust on sand and stone, bits of grass, splashes and rings in water.";
     case OPT_ELEMENTS: return "The spirits and their magic give off particles by element: embers from fire, drops from water, wisps from shadow, leaves from plants. Ali, the people of Oasis, enemies, items and the HUD give none.";
     case OPT_WATER: return "The sea, rivers and pools roll with slow swells, foam where they meet the shore and anyone standing in them, glint along the crests and reflect the people and things above them.";
-    case OPT_CHEAT_HEALTH: return "Ali takes no damage and his health stays full, whatever hits him.";
+    case OPT_CHEAT_HEALTH: return "Both players take no damage from enemies and their health stays full. Falling into a pit still costs a life.";
+    case OPT_CHEAT_LIVES: return "Both players always have at least three lives left.";
+    case OPT_CHEAT_SPECIALS: return "There is always a police car to call: the special attack never runs out.";
+    case OPT_CHEAT_TIME: return "The round timer stays at 99, so time never runs out.";
     case OPT_CHEAT_SPIRIT: return "Spirit power stays full, so the spirits can be called and kept as long as you like.";
     case OPT_CHEAT_WEAPONS: return "Weapons never wear out: a weapon keeps its uses however often it strikes.";
-    case OPT_CHEAT_ATTACK: return "Enemies take double or four times the damage from every hit, or fall to a single one. Bosses too.";
+    case OPT_CHEAT_ATTACK: return "Enemies take double or four times the damage from the players' hits, or fall to a single one. Bosses too.";
     case OPT_CHEAT_SPEED: return "Ali walks and runs one and a half or two times as fast. Walls still stop him. If a scripted scene stalls, set it back to Normal.";
     case OPT_REWIND: return "Hold the rewind key to step back in time.";
+    case OPT_PLAYER2: return "Who plays player 2. Second controller: a friend on another controller joins with Start. AI partner: the computer joins as player 2, fights beside you and keeps up with you.";
     case OPT_RANDOMIZER: return "Chests, pots, enemies and the items lying about give other restoratives (and, with weapons, other weapons) than they used to. Each spot keeps its prize for the seed; turning it on picks a new seed. Keys, upgrades, spirit stones and the Bomb never change, so the game can always be finished.";
     case OPT_FAST: return "How fast the game runs while the fast-forward key is held (Tab, or RB on a controller; change it in Controls).";
     case OPT_COMBAT: return "The damage of every hit rises from the enemy as a number, gold for a one-hit kill; with health bars, a bar over an enemy shows what it has left for a few seconds after each hit.";
-    case OPT_RUMBLE: return "The controller rumbles when Ali lands a hit, harder for a kill and when he is hit, and softly when a spirit is called.";
+    case OPT_RUMBLE: return "The controller rumbles when you land a hit, harder for a knockout and when you are hit, and long and low when the police car is called.";
     case OPT_TIMER: return "This session's play time in the top corner of the picture, for speedruns and keeping track. The total is under Stats.";
     case OPT_VOLUME: return "The game's volume.";
     case OPT_AUDIO: return "Original is the console's sound as emulated. Clean removes aliasing, the hum and clipping; Rich adds wider stereo and a light room.";
@@ -137,7 +166,6 @@ static float hl_y;
 static bool confirm_pending;            /* reset/quit asked once, waiting for a second press */
 static int confirm_item;
 static float mouse_x, mouse_y, mouse_t = -1;   /* for the light on the steel (layout units) */
-static FoilSurface panel_surf, card_surf;
 
 bool menu_is_open(void) { return open_; }
 
@@ -202,8 +230,7 @@ void menu_open(const uint32_t *fb, int fb_w, int fb_h, int fb_pitch, int game_x,
     frame = malloc((size_t)fb_w * fb_h * 4);
     for (int y = 0; y < fb_h; y++) memcpy(frame + (size_t)y * fb_w, fb + (size_t)y * fb_pitch, (size_t)fb_w * 4);
 
-    /* Backdrop: the frame where the game shows it, blurred, darkened into the night, with
-     * the shadows of the steel panel and the card. */
+    /* Backdrop: the frame where the game shows it, blurred, darkened, with a red haze. */
     free(backdrop);
     backdrop = calloc((size_t)out_w * out_h, 4);
     for (int y = 0; y < game_h; y++)
@@ -218,12 +245,10 @@ void menu_open(const uint32_t *fb, int fb_w, int fb_h, int fb_pitch, int game_x,
             float u = (x - ui_ox) / ui_s, v = (y - ui_oy) / ui_s;
             float vig = 1 - .35f * smooth(.3f, 1.1f, sqrtf((u - 640) * (u - 640) / (640.f * 640.f) + (v - 360) * (v - 360) / (360.f * 360.f)));
             Rgb c = scale(unpack(backdrop[y * out_w + x]), .36f * vig);
-            c = mix(c, scale(rgb(.05f, .04f, .09f), vig), .35f);              /* the night's violet */
+            c = mix(c, scale(rgb(.10f, .02f, .02f), vig), .35f);              /* a red haze */
             c = add(c, rgb(1, 1, 1), (hashf((uint32_t)(y * out_w + x)) - .5f) * 2.5f / 255);   /* dither against banding */
             backdrop[y * out_w + x] = pack(c);
         }
-    foil_shadow_into(backdrop, TAB_X0 + 10, TAB_Y0 + 16, TAB_W0, TAB_H0, 20);
-    foil_shadow_into(backdrop, CARD_X + 10, CARD_Y + 16, CARD_W, CARD_H, 20);
 }
 
 void menu_select(int k, int row) {
@@ -444,8 +469,8 @@ static void draw_slot(float x, float y, float w, float t, float alpha) {
                 ui_blend_px(xx, yy, c, alpha);
             } else {
                 float a = clampf(1 - fabsf(d - .5f) / (1.6f * ui_s / 1.5f + .6f), 0, 1);
-                Rgb holo = mix(rgb(1, .9f, .6f), hue((u - px) / pw * .8f + (v - py) / ph * .5f + t * .03f), .45f);
-                ui_blend_px(xx, yy, holo, a * .9f * alpha);
+                (void)t;
+                ui_blend_px(xx, yy, C_YELLOW, a * .9f * alpha);
             }
         }
     if (!slot_info.exists) {
@@ -492,26 +517,19 @@ static float draw_wrapped(const char *text, float x, float y, float width, float
 
 /* The card on the right, for the selected row. */
 static void draw_card(float t, float alpha) {
-    const Spirit *sp = &spirits[tab_spirit[tab]];
-    if (foil_begin(&card_surf, CARD_X, CARD_Y, CARD_W, CARD_H, 16, rgb(.86f, .88f, 1))) {
-        foil_frame(&card_surf, 8, 10);
-        foil_recess(&card_surf, CARD_X + 18, CARD_Y + 18, CARD_W - 36, CARD_H - 36, 8, .3f);
-        foil_finish(&card_surf);
-    }
-    float lx, ly;
-    foil_light(t, mouse_x, mouse_y, mouse_t, &lx, &ly);
-    foil_draw(&card_surf, lx, ly, t);
+    hud_box(CARD_X, CARD_Y, CARD_W, CARD_H, alpha);
     const Item *it = item_at(selected);
-    float x = CARD_X + 28, w = CARD_W - 56, y = CARD_Y + 24;
-    if (!it) {                          /* on the tab bar: the tab's spirit */
-        scene_orb(tab_spirit[tab], CARD_X + CARD_W / 2.f, CARD_Y + 190, 52, t, 1);
-        char line[64];
-        snprintf(line, sizeof line, "%s  \xC2\xB7  %s", sp->name, tab_names[tab]);
-        float lw = ui_text_width(line, "Palatino Linotype", 24, 700, 4);
-        ui_draw_text(line, "Palatino Linotype", 24, 700, 4, CARD_X + (CARD_W - lw) / 2, CARD_Y + 290, rgb_hex(0xFFF1D0), rgb_hex(0xD9B567), alpha);
+    float x = CARD_X + 28, w = CARD_W - 56, y = CARD_Y + 26;
+    if (!it) {                          /* on the tab bar: the game's name and the tab */
+        const char *name = "STREETS OF RAGE";
+        float nw = ui_text_width(name, HEAD, 48, 400, 2);
+        shadow_text(name, HEAD, 48, 400, 2, CARD_X + (CARD_W - nw) / 2, CARD_Y + 170, C_YELLOW, rgb_hex(0x8A140A), alpha);
+        ui_fill_rect(CARD_X + 120, CARD_Y + 246, CARD_W - 240, 3, C_RED, .9f * alpha);
+        float lw = ui_text_width(tab_names[tab], HEAD, 26, 400, 4);
+        ui_draw_text(tab_names[tab], HEAD, 26, 400, 4, CARD_X + (CARD_W - lw) / 2, CARD_Y + 268, C_TEXT, C_TEXT, alpha);
         const char *hint = "\xE2\x86\x90 \xE2\x86\x92  or  Q / E  to change tabs";
         float hw = ui_text_width(hint, "Segoe UI", 14, 400, 1);
-        ui_draw_text(hint, "Segoe UI", 14, 400, 1, CARD_X + (CARD_W - hw) / 2, CARD_Y + 340, rgb_hex(0x8F8673), rgb_hex(0x8F8673), alpha);
+        ui_draw_text(hint, "Segoe UI", 14, 400, 1, CARD_X + (CARD_W - hw) / 2, CARD_Y + 330, C_DIM, C_DIM, alpha);
         return;
     }
     char head[64];
@@ -521,22 +539,10 @@ static void draw_card(float t, float alpha) {
         for (const char *p = it->label; *p && k < sizeof head - 1; p++) head[k++] = (char)((*p >= 'a' && *p <= 'z') ? *p - 32 : *p);
         head[k] = 0;
     }
-    ui_draw_text(head, "Segoe UI Semibold", 12.5f, 600, 4, x, y, sp->light, sp->light, alpha);
-    ui_fill_rect(x, y + 24, 40, 2, sp->light, .7f * alpha);
-    y += 44;
+    shadow_text(head, HEAD, 24, 400, 2, x, y - 4, C_YELLOW, rgb(0, 0, 0), alpha);
+    ui_fill_rect(x, y + 30, 46, 3, C_RED, .9f * alpha);
+    y += 48;
     if (it->kind == ITEM_SLOT) { draw_slot(x, y, w, t, alpha); return; }
-    if (it->kind == ITEM_ACTION && it->id == ACT_MAP) {
-        float mh = CARD_H - 44 - 24 - 110;
-        ui_fill_rect(x, y, w, mh, rgb_hex(0x07050A), .55f * alpha);
-        if (!automap_draw(x + 6, y + 6, w - 12, mh - 12, t, alpha)) {
-            const char *none = "Nothing of this area seen yet.";
-            float nw = ui_text_width(none, "Segoe UI", 15, 400, 0);
-            ui_draw_text(none, "Segoe UI", 15, 400, 0, x + (w - nw) / 2, y + mh / 2 - 10, rgb_hex(0x8F8673), rgb_hex(0x8F8673), alpha);
-        }
-        ui_panel(x - 1, y - 1, w + 2, mh + 2, 4, rgb(0, 0, 0), rgb(0, 0, 0), 0, rgb_hex(0xD9B567), .5f * alpha);
-        draw_wrapped(about(it), x, y + mh + 18, w, 15.5f, rgb_hex(0xD8CDB6), alpha);
-        return;
-    }
     if (it->kind == ITEM_ACTION && it->id == ACT_STATS) {
         char lines[12][64];
         int n = combat_stats_lines(lines, 12);
@@ -545,44 +551,30 @@ static void draw_card(float t, float alpha) {
             if (!tab_at) continue;
             *tab_at = 0;
             float ly = y + i * 38 + (i >= 2 ? 22 : 0);   /* this session, then all sessions */
-            if (i == 2) ui_fill_rect(x, ly - 18, w, 1, sp->light, .35f * alpha);
-            ui_draw_text(lines[i], "Segoe UI", 16, 400, 0, x, ly, rgb_hex(0xD8CDB6), rgb_hex(0xD8CDB6), alpha);
+            if (i == 2) ui_fill_rect(x, ly - 18, w, 1, C_RED, .5f * alpha);
+            ui_draw_text(lines[i], "Segoe UI", 16, 400, 0, x, ly, C_TEXT, C_TEXT, alpha);
             float vw = ui_text_width(tab_at + 1, "Segoe UI Semibold", 17, 600, 0);
-            ui_draw_text(tab_at + 1, "Segoe UI Semibold", 17, 600, 0, x + w - vw, ly - 1, rgb_hex(0xFFE4A0), rgb_hex(0xFFE4A0), alpha);
+            ui_draw_text(tab_at + 1, "Segoe UI Semibold", 17, 600, 0, x + w - vw, ly - 1, C_YELLOW, C_YELLOW, alpha);
         }
         return;
     }
     if (it->kind == ITEM_OPTION && preview_supported(it->id) && preview_ready()) {
         float ph = w * 9 / 16.f;
         preview_draw(it->id, x, y, w, ph, t);
-        ui_panel(x - 1, y - 1, w + 2, ph + 2, 4, rgb(0, 0, 0), rgb(0, 0, 0), 0, rgb_hex(0xD9B567), .5f * alpha);
+        frame_rect(x - 3, y - 3, w + 6, ph + 6, 2, C_AMBER, .8f * alpha);
         y += ph + 18;
     } else {
-        /* No picture: the tab's spirit stands in for it. */
-        scene_orb(tab_spirit[tab], CARD_X + CARD_W / 2.f, y + 110, 44, t, .8f);
-        y += 220;
+        y += 8;
     }
     const char *text = about(it);
-    if (text) y = draw_wrapped(text, x, y, w, 15.5f, rgb_hex(0xD8CDB6), alpha);
+    if (text) y = draw_wrapped(text, x, y, w, 15.5f, C_TEXT, alpha);
     if (it->kind == ITEM_OPTION) {
         char value[64];
         settings_option_text(it->id, value, sizeof value);
         char line[96];
         snprintf(line, sizeof line, "Now: %s", value);
-        ui_draw_text(line, "Segoe UI Semibold", 15, 600, 0, x, y + 8, rgb_hex(0xFFE4A0), rgb_hex(0xFFE4A0), alpha);
+        ui_draw_text(line, "Segoe UI Semibold", 15, 600, 0, x, y + 8, C_YELLOW, C_YELLOW, alpha);
     }
-}
-
-/* The steel panel: the title stamped in gold, a holographic frame and rule, the rows'
- * recess. */
-static void build_panel(void) {
-    if (!foil_begin(&panel_surf, TAB_X0, TAB_Y0, TAB_W0, TAB_H0, 18, rgb(.84f, .86f, 1))) return;
-    foil_frame(&panel_surf, 12, 10);
-    float tw = ui_text_width("PAUSED", "Palatino Linotype", 40, 700, 8);
-    foil_text(&panel_surf, "PAUSED", "Palatino Linotype", 40, 700, 8, LIST_X - 2 + tw / 2, TAB_Y0 + 56, -.9f, FOIL_GOLD);
-    foil_rule(&panel_surf, TAB_X0 + 36, TAB_X0 + TAB_W0 - 36, TABS_Y + TABS_H + 9, 1);
-    foil_recess(&panel_surf, LIST_X - 22, LIST_Y - 8, LIST_R - LIST_X + 36, TAB_Y0 + TAB_H0 - 64 - (LIST_Y - 8), 8, .35f);
-    foil_finish(&panel_surf);
 }
 
 void menu_render(double time_s) {
@@ -593,30 +585,28 @@ void menu_render(double time_s) {
     float in = ease_out((float)(now - opened_at) / .35f);
 
     memcpy(ui_px, backdrop, (size_t)ui_w * ui_h * 4);
-    foil_atmosphere(t, .75f);
-    const Spirit *sp = &spirits[tab_spirit[tab]];
 
-    /* The steel panel, the title stamped into it, with the open tab's spirit beside it. */
-    build_panel();
-    float lx, ly;
-    foil_light(t, mouse_x, mouse_y, mouse_t, &lx, &ly);
-    foil_draw(&panel_surf, lx, ly, t);
-    (void)in;
-    scene_orb(tab_spirit[tab], LIST_R - 16, TAB_Y0 + 54, 16, t, .9f);
+    /* The panel, "PAUSED" in the game's lettering. */
+    hud_box(TAB_X0, TAB_Y0, TAB_W0, TAB_H0, 1);
+    shadow_text("PAUSED", HEAD, 46, 400, 6, LIST_X - 2, TAB_Y0 + 24, C_YELLOW, rgb_hex(0x8A140A), 1);
+    if (sinf(t * 1.7f) > .97f) ui_fill_rect(LIST_X, TAB_Y0 + 80, 120, 3, rgb(1, .6f, .4f), .6f);   /* a neon flicker */
+    ui_fill_rect(LIST_X, TAB_Y0 + 80, 120, 3, C_RED, .9f);
 
-    /* The tabs. */
+    /* The tabs: the open one filled yellow, like the HUD's frame. */
     for (int k = 0; k < TABS; k++) {
-        float x = TABS_X + k * TABW, cx = x + TABW / 2.f;
+        float x = TABS_X + k * TABW + 3, w = TABW - 6, cx = x + w / 2.f;
         bool on = tab == k;
-        const Spirit *s = &spirits[tab_spirit[k]];
         if (on) {
-            ui_fill_rect(x + 6, TABS_Y, TABW - 12, TABS_H, s->light, selected < 0 ? .11f : .06f);
-            for (int i = 0; i < 3; i++) ui_fill_rect(x + 14 - i * 3, TABS_Y + TABS_H - 3 - i, TABW - 28 + i * 6, 2, s->light, .5f - i * .15f);
+            ui_fill_rect(x, TABS_Y + 10, w, TABS_H - 20, C_YELLOW, 1);
+            ui_fill_rect(x, TABS_Y + TABS_H - 14, w, 4, C_RED, 1);
+            if (selected < 0) frame_rect(x - 3, TABS_Y + 7, w + 6, TABS_H - 14, 2, rgb(1, 1, 1), .5f + .3f * sinf(t * 6));
+        } else {
+            ui_fill_rect(x, TABS_Y + 10, w, TABS_H - 20, rgb_hex(0x24242B), .9f);
+            frame_rect(x, TABS_Y + 10, w, TABS_H - 20, 1, rgb_hex(0x4A4A52), 1);
         }
-        scene_orb(tab_spirit[k], cx, TABS_Y + 22, on ? 14 : 11, t, on ? 1 : .45f);
-        Rgb tc = on ? mix(rgb_hex(0xFFF4DA), s->light, .25f) : rgb_hex(0x8A8170);
-        float tw = ui_text_width(tab_names[k], "Segoe UI Semibold", 12, 600, 3);
-        ui_draw_text(tab_names[k], "Segoe UI Semibold", 12, 600, 3, cx - tw / 2, TABS_Y + 43, tc, tc, 1);
+        Rgb tc = on ? C_INK : C_DIM;
+        float tw = ui_text_width(tab_names[k], HEAD, 19, 400, 2);
+        ui_draw_text(tab_names[k], HEAD, 19, 400, 2, cx - tw / 2, TABS_Y + 20, tc, tc, 1);
     }
 
     /* The rows slide in from the side the tab came from; the highlight glides. */
@@ -624,25 +614,24 @@ void menu_render(double time_s) {
     float dx = (1 - k) * 32 * (tab > tab_from ? 1 : -1) - (1 - in) * 40, alpha = k * in;
     if (selected >= 0) {
         hl_y += (row_y(selected) - hl_y) * (1 - expf(-dt * 14));
-        ui_fill_rect(LIST_X - 14, hl_y + 3, LIST_R - LIST_X + 22, ROW_H - 6, sp->light, .08f);
-        ui_fill_rect(LIST_X - 14, hl_y + 3, 3, ROW_H - 6, sp->light, .95f);
-        scene_glow(LIST_X - 12, hl_y + ROW_H / 2.f, 14, sp->light, .3f);
+        ui_fill_rect(LIST_X - 14, hl_y + 3, LIST_R - LIST_X + 22, ROW_H - 6, C_RED, .22f);
+        ui_fill_rect(LIST_X - 14, hl_y + 3, 5, ROW_H - 6, C_YELLOW, 1);
     }
     for (int i = 0; i < tab_count[tab]; i++) {
         const Item *it = &tab_items[tab][i];
         float y = row_y(i);
         bool focus = selected == i;
         bool danger = it->kind == ITEM_ACTION && (it->id == ACT_RESET || it->id == ACT_QUIT);
-        Rgb lc = focus ? (danger && confirm_pending ? rgb_hex(0xF2A08F) : rgb_hex(0xFFFFFF)) : rgb_hex(0xD8CDB6);
+        Rgb lc = focus ? (danger && confirm_pending ? rgb_hex(0xF2A08F) : rgb(1, 1, 1)) : C_TEXT;
         ui_draw_text(it->label, "Segoe UI", 17.5f, 400, 0, LIST_X + dx, y + 9, lc, lc, alpha);
         char value[48] = "";
         if (it->kind == ITEM_OPTION) settings_option_text(it->id, value, sizeof value);
         else if (it->kind == ITEM_SLOT) snprintf(value, sizeof value, "Slot %d", settings.state_slot);
         if (!value[0]) continue;
         float pulse = changed_row == i ? 1 - ease_out((float)(now - changed_at) / .35f) : 0;
-        Rgb vc = focus ? rgb_hex(0xFFE4A0) : rgb_hex(0xEBD9AE);
+        Rgb vc = focus ? C_YELLOW : rgb_hex(0xE8D49A);
         if (pulse > 0) vc = mix(vc, rgb(1, 1, 1), pulse * .8f);
-        Rgb ac = focus ? sp->light : rgb_hex(0x6A5F4C);
+        Rgb ac = focus ? C_YELLOW : rgb_hex(0x5E5A52);
         float px = 17.5f + pulse * 1.5f;
         float vw = ui_text_width(value, "Segoe UI Semibold", px, 600, 0);
         float vx = LIST_R - 20 - vw;
@@ -655,7 +644,7 @@ void menu_render(double time_s) {
         ui_draw_text(value, "Segoe UI Semibold", px, 600, 0, vx + dx, y + 9 - pulse * .8f, vc, vc, alpha);
     }
     const char *keys = "\xE2\x86\x91\xE2\x86\x93 select    \xE2\x86\x90\xE2\x86\x92 change    Q E  tabs    Enter  select    Esc  resume";
-    ui_draw_text(keys, "Segoe UI", 12, 400, 1, LIST_X, TAB_Y0 + TAB_H0 - 44, rgb_hex(0x7C7262), rgb_hex(0x7C7262), in);
+    ui_draw_text(keys, "Segoe UI", 12, 400, 1, LIST_X, TAB_Y0 + TAB_H0 - 44, rgb_hex(0x77736A), rgb_hex(0x77736A), in);
 
     draw_card(t, in);
 
@@ -663,8 +652,9 @@ void menu_render(double time_s) {
         float a = clampf((float)(toast_until - now) / .4f, 0, 1);
         float w = ui_text_width(toast, "Segoe UI Semibold", 16, 600, 1) + 48;
         float x = CARD_X + (CARD_W - w) / 2, y = CARD_Y + CARD_H + 24;
-        ui_panel(x, y, w, 40, 20, rgb_hex(0x2A2416), rgb_hex(0x1A160D), .92f * a, rgb_hex(0xE8C77A), .6f * a);
-        ui_draw_text(toast, "Segoe UI Semibold", 16, 600, 1, x + 24, y + 9, rgb_hex(0xF3DDA4), rgb_hex(0xF3DDA4), a);
+        ui_fill_rect(x, y, w, 40, rgb_hex(0x3A100A), .94f * a);
+        frame_rect(x, y, w, 40, 2, C_YELLOW, a);
+        ui_draw_text(toast, "Segoe UI Semibold", 16, 600, 1, x + 24, y + 9, C_YELLOW, C_YELLOW, a);
     }
     controls_render(time_s);
     outfit_render(time_s);

@@ -54,7 +54,7 @@ file(GLOB RECOMP_TOOLS ${CMAKE_SOURCE_DIR}/tools/*.mjs ${CMAKE_SOURCE_DIR}/tools
 add_custom_command(
   OUTPUT ${RECOMP_SOURCES}
   COMMAND node ${CMAKE_SOURCE_DIR}/tools/recomp.mjs
-  DEPENDS ${RECOMP_TOOLS} ${CMAKE_SOURCE_DIR}/config/patches.json
+  DEPENDS ${RECOMP_TOOLS} ${CMAKE_SOURCE_DIR}/config/patches.json ${CMAKE_SOURCE_DIR}/config/entries.json
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   COMMENT "Recompiling the ROM to C")
 add_library(recomp STATIC ${RECOMP_SOURCES})
@@ -87,6 +87,7 @@ add_executable(StreetsOfRage WIN32
   runtime/src/filter.c
   runtime/src/input.c
   runtime/src/pads.c
+  runtime/src/ai.c
   runtime/src/combat.c
   runtime/src/automap.c
   runtime/src/controls.c

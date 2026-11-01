@@ -1,8 +1,12 @@
 /* Built-in cheats: RAM values held every frame, like a Pro Action Replay, plus recompiler
- * patches (config/patches.json): playerDamage for infinite health, hitDamage for the
- * attack power (double, quadruple, one-hit kills), playerSpeed for the move speed.
+ * patches (config/patches.json).
  *
- * RAM used (from the disassembly):
+ * Streets of Rage (docs/ram.md): sorHit routes every hit's damage through sor_hit
+ * (recomp_rt.h) for infinite health and the attack power; lives ($FFFF20/23), specials
+ * ($FFFF21/24) and the round timer ($FFFB01) are held in RAM.
+ *
+ * Beyond Oasis: playerDamage for infinite health, hitDamage for the attack power (double,
+ * quadruple, one-hit kills), playerSpeed for the move speed. RAM used:
  *   $FF19E8         player object; word +$00 is 2 while the player exists
  *   $FF1A70/$FF1A72 max / current health  (player +$88/+$8A)
  *   $FF1A74/$FF1A76 max / current spirit  (player +$8C/+$8E; max is 0 before the first spirit)
@@ -111,11 +115,32 @@ uint32_t random_drop_swap(uint32_t item, uint32_t place) {
 }
 
 void cheats_frame(void) {
-    if (!GAME_KNOWS_RAM) {              /* only the codes typed in: the built-in ones need the game's RAM */
+    if (!GAME_KNOWS_RAM) {              /* Streets of Rage (docs/ram.md) */
         if (strcmp(user_spec, settings.cheat_codes)) {
             memcpy(user_spec, settings.cheat_codes, sizeof user_spec);
             user_count = 0;
             parse(user_spec, user_codes, &user_count, 64);
+        }
+        /* Damage goes through sor_hit (recomp_rt.h): none for the players with infinite
+         * health, more from their hits with the attack power. */
+        patch_no_damage = settings.cheat_health;
+        patch_attack = settings.cheat_attack;
+        static uint8_t timer_held;
+        uint8_t in = bus.ram[0xFF18];
+        if (bus.ram[0xFF2A] || !(in & 3)) timer_held = 0;      /* the demo, or between games */
+        else {
+            for (int p = 0; p < 2; p++) {
+                if (!(in & (1 << p))) continue;
+                uint16_t obj = p ? 0xB880 : 0xB800, hp = peek16(obj + 0x32);
+                if (settings.cheat_health && peek16(obj) && hp < 0x50) poke16(obj + 0x32, 0x50);
+                if (settings.cheat_lives && bus.ram[0xFF20 + 3 * p] < 3) bus.ram[0xFF20 + 3 * p] = 3;
+                if (settings.cheat_specials && !bus.ram[0xFF21 + 3 * p]) bus.ram[0xFF21 + 3 * p] = 1;
+            }
+            /* The timer never goes down: held at the highest it has been this stretch (it
+             * starts each part of a round full). */
+            uint8_t t = bus.ram[0xFB01];
+            if (!settings.cheat_time || t > timer_held) timer_held = t;
+            else if (t < timer_held) bus.ram[0xFB01] = timer_held;
         }
         apply(user_codes, user_count);
         apply(codes, code_count);
@@ -139,3 +164,4 @@ void cheats_frame(void) {
     apply(user_codes, user_count);
     apply(codes, code_count);
 }
+

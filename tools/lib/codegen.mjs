@@ -27,6 +27,29 @@ const REPLACED = new Map([
     ['{ uint32_t v = random_drop(rd16(A(0) + 0x8C), rd16(A(0) + 0x8) << 16 | rd16(A(0) + 0xC)); setw(&D(0), v); logicw(v); }']]],
   [parseInt(PATCHES.randomDrop.placePc, 16), ['move.w	(a0)+,d1',
     ['{ uint32_t v = random_drop(rd16(A(0)), A(0)); A(0) += 2; setw(&D(1), v); logicw(v); }']]],
+  // Streets of Rage: every hit's damage goes through sor_hit (attack power, no damage).
+  ...Object.entries(PATCHES.sorHit?.pcs ?? {}).map(([pc, src]) => [parseInt(pc, 16), [
+    src === '#2' ? 'subq.w	#2,$32(a0)' : `sub.w	${src},$32(a0)`,
+    [`{ uint32_t d = sor_hit(A(0), A(1), ${src === '#2' ? '2u' : `D(${src[1]}) & 0xFFFFu`}); wr16(A(0) + 0x32, subw(d, rd16(A(0) + 0x32))); }`]]]),
+  // and the health change most hits go through (d7 < 0), its attacker in the target's +$7E.
+  [parseInt(PATCHES.sorHit?.changePc, 16), ['add.w	d7,$32(a0)',
+    ['{ uint32_t d = sor_change(A(0), D(7) & 0xFFFFu); wr16(A(0) + 0x32, addw(d, rd16(A(0) + 0x32))); }']]],
+  [parseInt(PATCHES.sorCull?.loPc, 16), ['cmpi.w	#$60,d0', ['cmpw(patch_sor_x_lo, D(0) & 0xFFFFu);']]],
+  [parseInt(PATCHES.sorCull?.hiPc, 16), ['cmpi.w	#$1E0,d0', ['cmpw(patch_sor_x_hi, D(0) & 0xFFFFu);']]],
+  // Streets of Rage edges (sorWide): the original constant, widened by patch_sor_wide.
+  ...(PATCHES.sorWide ? [
+    [parseInt(PATCHES.sorWide.clampLeft, 16), ['moveq	#$20,d2', ['D(2) = (uint32_t)(0x20 - patch_sor_wide); logicl(D(2));']]],
+    [parseInt(PATCHES.sorWide.clampWidth, 16), ['move.w	#$100,d3', ['{ uint32_t v = (0x100u + 2u * (uint32_t)patch_sor_wide) & 0xFFFFu; setw(&D(3), v); logicw(v); }']]],
+    [parseInt(PATCHES.sorWide.spawnRight, 16), ['addi.w	#$148,d0', ['setw(&D(0), addw(0x148u + (uint32_t)patch_sor_wide, D(0) & 0xFFFFu));']]],
+    [parseInt(PATCHES.sorWide.spawnLeft, 16), ['subq.w	#8,d0', ['setw(&D(0), subw(8u + (uint32_t)patch_sor_wide, D(0) & 0xFFFFu));']]],
+    [parseInt(PATCHES.sorWide.onscreenLeft, 16), ['move.w	($FFFFE002).w,d0', ['{ uint32_t v = (rd16(0xFFE002) - (uint32_t)patch_sor_wide) & 0xFFFFu; setw(&D(0), v); logicw(v); }']]],
+    [parseInt(PATCHES.sorWide.onscreenRight, 16), ['addi.w	#$144,d0', ['setw(&D(0), addw(0x144u + (uint32_t)patch_sor_wide, D(0) & 0xFFFFu));']]],
+    [parseInt(PATCHES.sorWide.fleeRight, 16), ['addi.w	#$140,d0', ['setw(&D(0), addw(0x140u + (uint32_t)patch_sor_wide, D(0) & 0xFFFFu));']]],
+    [parseInt(PATCHES.sorWide.checkFresh, 16), ['cmpi.w	#$4000,d1', ['cmpw((D(1) & 0xFFFFu) ? 0x4000u : 0u, D(1) & 0xFFFFu);']]],
+    // The in-view tests: cmpi.w #edge,$28(a0), the low edge moved left and the high one right.
+    ...Object.entries(PATCHES.sorWide.inView ?? {}).map(([pc, edge]) => [parseInt(pc, 16), [`cmpi.w	#${edge.slice(1)},$28(a0)`,
+      [`cmpw((0x${edge.slice(2)}u ${edge[0]} (uint32_t)patch_sor_wide) & 0xFFFFu, rd16(A(0) + 0x28));`]]]),
+  ] : []),
   ...Object.entries(PATCHES.playerSpeed.pcs).map(([pc, field]) => [parseInt(pc, 16), [`move.l	${field}(a6),d0`,
     [`D(0) = player_move(A(6), rd32(A(6) + 0x${field.slice(1)}));`, 'logicl(D(0));']]]),
 ].filter(([pc]) => !Number.isNaN(pc)));   // a game without that patch leaves it null

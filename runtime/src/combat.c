@@ -1,13 +1,11 @@
 /* Combat info, rumble and stats: see combat.h.
  *
- * Health, from the disassembly: every object's hit handler takes the damage stored at +$86
- * off its HP at +$8A (after its defence, +$92), clamped at 0. Ali is the main list's slot
- * 0 ($FF19E8, HP also at $FF1A72); slots 1-3 are the spirit's (a summon waits for slot 1,
- * $FF1AA4, to be free); the enemies and people are from slot 4. A villager or creature
- * (types $0032, $003C) is never an enemy.
+ * Health, from the disassembly (docs/ram.md): objects are $80-byte slots from $FFB800,
+ * the players in the first two; health is the word at +$32, and every hit subtracts the
+ * attacker's power from it (below 0 is dead). Anything that hits back (+$34) is an enemy.
  *
- * Numbers and bars live in the same world coordinates as fx.c's particles (picture
- * positions plus the camera), placed over the sprites the enemy drew (motion.c). */
+ * Numbers and bars live in world coordinates (picture positions plus the camera at
+ * $FFE002), over the enemy's feet (its screen position, +$28/+$2C). */
 #include "combat.h"
 
 #include <math.h>
@@ -16,14 +14,13 @@
 #include <string.h>
 
 #include "genesis.h"
-#include "motion.h"
 #include "pads.h"
 #include "settings.h"
 
-#define MAIN_LIST 0xFF19E8
-#define OBJ_SIZE  0xBC
-#define FIRST_ENEMY 4
-#define SLOTS 21
+#define OBJECTS   0xFFB800
+#define OBJ_SIZE  0x80
+#define FIRST_ENEMY 2
+#define SLOTS 32
 
 static uint16_t peek16(uint32_t a) { a &= 0xFFFF; return (uint16_t)(bus.ram[a] << 8 | bus.ram[(a + 1) & 0xFFFF]); }
 
@@ -31,12 +28,13 @@ static uint16_t peek16(uint32_t a) { a &= 0xFFFF; return (uint16_t)(bus.ram[a] <
 typedef struct {
     uint16_t type, hp, max;
     float x0, y0, x1, y1;               /* its sprites' box, world coordinates */
-    bool boxed;
+    bool boxed, dead, enemy;
     int bar_age;                        /* frames since it was last hurt; <0: no bar */
     float shown;                        /* the bar's pale part, catching up with the health */
 } Slot;
 static Slot slots[SLOTS];
-static uint16_t ali_hp, spirit_type;
+static uint16_t player_hp;
+static uint8_t specials;
 static bool have_last;
 
 typedef struct { float x, y; int value, age; bool big; } Number;
@@ -69,62 +67,60 @@ static void add_number(const Slot *s, int value, bool big) {
 }
 
 void combat_frame(const HdFrame *f, bool world, float cam_x, float cam_y, bool live) {
-    if (!GAME_KNOWS_RAM) return;
     if (live) { session_s += 1 / 59.922743; total.play_s += 1 / 59.922743; }
     for (int i = 0; i < nnumbers; ) {          /* numbers rise and go */
         if (++numbers[i].age >= 54) { memmove(numbers + i, numbers + i + 1, sizeof numbers[0] * (size_t)(--nnumbers - i)); continue; }
         i++;
     }
-    /* Where each object's sprites are this frame. */
-    float bx0[SLOTS], by0[SLOTS], bx1[SLOTS], by1[SLOTS];
-    bool boxed[SLOTS] = { false };
-    for (int k = 0; k < 80; k++) {
-        const HdSprite *s = &f->sprites[k];
-        uint32_t obj;
-        uint16_t kind;
-        if (!s->drawn || (s->attr & 0x8000) || !motion_entry_owner(k, &obj, &kind)) continue;
-        if (obj < MAIN_LIST || obj >= MAIN_LIST + SLOTS * OBJ_SIZE || (obj - MAIN_LIST) % OBJ_SIZE) continue;
-        int i = (int)(obj - MAIN_LIST) / OBJ_SIZE;
-        float x0 = s->x + f->extra + cam_x, y0 = s->y + cam_y, x1 = x0 + s->w, y1 = y0 + s->h;
-        if (!boxed[i]) { bx0[i] = x0; by0[i] = y0; bx1[i] = x1; by1[i] = y1; boxed[i] = true; }
-        else { bx0[i] = fminf(bx0[i], x0); by0[i] = fminf(by0[i], y0); bx1[i] = fmaxf(bx1[i], x1); by1[i] = fmaxf(by1[i], y1); }
-    }
-    uint16_t hp_now = peek16(0x1A72), spirit_now = peek16(MAIN_LIST + OBJ_SIZE);
-    bool player = peek16(MAIN_LIST) == 2;
+    if (!world) { have_last = false; return; }
+    uint16_t p1x = peek16(OBJECTS + 0x10), p1z = peek16(OBJECTS + 0x14);
     for (int i = FIRST_ENEMY; i < SLOTS; i++) {
         Slot *s = &slots[i];
-        uint32_t a = MAIN_LIST + (uint32_t)i * OBJ_SIZE;
-        uint16_t type = peek16(a), hp = peek16(a + 0x8A);
-        bool enemy = type && type != 0x0032 && type != 0x003C;
-        if (boxed[i]) { s->x0 = bx0[i]; s->y0 = by0[i]; s->x1 = bx1[i]; s->y1 = by1[i]; s->boxed = true; }
-        if (!have_last || type != s->type || !enemy) {
+        uint32_t a = OBJECTS + (uint32_t)i * OBJ_SIZE;
+        /* The kind of object is the first byte; the second changes with what it does. */
+        uint16_t type = bus.ram[a & 0xFFFF];
+        int16_t raw = (int16_t)peek16(a + 0x32);
+        uint16_t hp = raw < 0 ? 0 : (uint16_t)raw;
+        /* Something that fights: it hits back (attack power). Items and effects do not. */
+        bool enemy = type && (s->enemy || bus.ram[(a + 0x34) & 0xFFFF]);
+        /* Its feet are at its screen position; the body stands about 64 pixels above. */
+        float x = (float)((int16_t)peek16(a + 0x28) - 0x80) + f->extra + cam_x;
+        float y = (float)((int16_t)peek16(a + 0x2C) - 0x80) + cam_y;
+        s->x0 = x - 12; s->x1 = x + 12; s->y0 = y - 64; s->y1 = y; s->boxed = true;
+        if (!have_last || type != s->type || !enemy || !s->enemy) {
+            s->enemy = enemy;
             /* A new object in this slot (or none): its health now is its full health. */
-            s->type = type; s->hp = s->max = hp; s->bar_age = -1; s->shown = 1;
-            if (!boxed[i]) s->boxed = false;
+            s->type = type; s->hp = s->max = hp; s->dead = raw < 0; s->bar_age = -1; s->shown = 1;
             continue;
         }
         if (hp > s->max) s->max = hp;
-        if (hp < s->hp && world && s->boxed) {
-            int d = s->hp - hp;
-            bool kill = hp == 0;
+        bool kill = raw < 0 && !s->dead;
+        if (hp < s->hp || kill) {
+            int d = s->hp - hp + (kill ? 1 : 0);
             if (settings.combat_info) add_number(s, d, kill && d >= s->max);
             if (live) {
                 total.dealt += (uint32_t)d;
                 if ((uint32_t)d > total.biggest) total.biggest = (uint32_t)d;
                 if (kill) { total.defeated++; session_defeated++; }
-                if (kill) rumble(.45f, .7f, 150); else rumble(.2f, .45f, 80);
+                /* Felt when it is likely player 1's hit: the enemy is next to him. */
+                int dx = (int)peek16(a + 0x10) - p1x, dz = (int)peek16(a + 0x14) - p1z;
+                if (dx > -64 && dx < 64 && dz > -12 && dz < 12) { if (kill) rumble(.45f, .7f, 150); else rumble(.2f, .45f, 80); }
             }
             s->bar_age = 0;
         } else if (s->bar_age >= 0 && ++s->bar_age > 150) s->bar_age = -1;
+        s->dead = raw < 0;
         float ratio = s->max ? (float)hp / s->max : 0;
         s->shown = s->shown > ratio ? fmaxf(ratio, s->shown - .012f) : ratio;
         s->hp = hp;
     }
-    if (have_last && live && player) {
-        if (hp_now < ali_hp) { total.taken += ali_hp - hp_now; total.hits_taken++; rumble(.85f, .5f, 220); }
-        if (spirit_now && !spirit_type) { total.summons++; rumble(.35f, .15f, 300); }
+    /* Player 1 hurt, and the specials called (by either player). */
+    uint16_t hp_now = peek16(OBJECTS + 0x32);
+    uint8_t specials_now = bus.ram[0xFF21] + bus.ram[0xFF24];
+    if (have_last && live && peek16(OBJECTS) && !(hp_now & 0x8000)) {
+        if (hp_now < player_hp) { total.taken += player_hp - hp_now; total.hits_taken++; rumble(.85f, .5f, 220); }
+        if (specials_now < specials) { total.summons++; rumble(.6f, .3f, 400); }
     }
-    ali_hp = hp_now; spirit_type = spirit_now;
+    player_hp = hp_now; specials = specials_now;
     have_last = true;
 }
 
@@ -239,7 +235,7 @@ void combat_stats_load(const char *base_dir) {
         else if (!strcmp(line, "damage_dealt")) total.dealt = (uint32_t)strtoul(v, NULL, 10);
         else if (!strcmp(line, "damage_taken")) total.taken = (uint32_t)strtoul(v, NULL, 10);
         else if (!strcmp(line, "hits_taken")) total.hits_taken = (uint32_t)strtoul(v, NULL, 10);
-        else if (!strcmp(line, "spirits_called")) total.summons = (uint32_t)strtoul(v, NULL, 10);
+        else if (!strcmp(line, "specials_called")) total.summons = (uint32_t)strtoul(v, NULL, 10);
         else if (!strcmp(line, "biggest_hit")) total.biggest = (uint32_t)strtoul(v, NULL, 10);
     }
     fclose(f);
@@ -250,13 +246,13 @@ void combat_stats_save(const char *base_dir) {
     snprintf(path, sizeof path, "%sstats.ini", base_dir);
     FILE *f = fopen(path, "w");
     if (!f) return;
-    fprintf(f, "# Beyond Oasis play stats, over all sessions\n");
+    fprintf(f, "# Streets of Rage play stats, over all sessions\n");
     fprintf(f, "play_seconds=%.0f\n", total.play_s);
     fprintf(f, "enemies_defeated=%u\n", total.defeated);
     fprintf(f, "damage_dealt=%u\n", total.dealt);
     fprintf(f, "damage_taken=%u\n", total.taken);
     fprintf(f, "hits_taken=%u\n", total.hits_taken);
-    fprintf(f, "spirits_called=%u\n", total.summons);
+    fprintf(f, "specials_called=%u\n", total.summons);
     fprintf(f, "biggest_hit=%u\n", total.biggest);
     fclose(f);
 }
@@ -280,7 +276,7 @@ int combat_stats_lines(char lines[][64], int max) {
     LINE("Biggest hit\t%u", total.biggest);
     LINE("Hits taken\t%u", total.hits_taken);
     LINE("Damage taken\t%u", total.taken);
-    LINE("Spirits called\t%u", total.summons);
+    LINE("Specials called\t%u", total.summons);
 #undef LINE
     return n;
 }
