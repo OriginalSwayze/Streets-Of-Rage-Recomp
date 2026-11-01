@@ -1,4 +1,5 @@
 #include "settings.h"
+#include "fighters.h"
 #include "outfit.h"
 #include "genesis.h"
 #include "filter.h"
@@ -41,6 +42,7 @@ static bool parse_bool(const char *v) { return !strcmp(v, "1") || !strcmp(v, "tr
 void settings_load(const char *path) {
     input_defaults();
     outfit_defaults();
+    fighters_defaults();
     FILE *f = fopen(path, "r");
     if (!f) return;
     char line[1200];
@@ -88,6 +90,7 @@ void settings_load(const char *path) {
         else if (!strcmp(k, "ost_track")) settings.ost_track = atoi(v);
         else if (input_ini_load(k, v)) {}
         else if (outfit_ini_load(k, v)) {}
+        else if (fighters_ini_load(k, v)) {}
         else if (!strcmp(k, "cheat_health")) settings.cheat_health = parse_bool(v);
         else if (!strcmp(k, "cheat_spirit")) settings.cheat_spirit = parse_bool(v);
         else if (!strcmp(k, "cheat_lives")) settings.cheat_lives = parse_bool(v);
@@ -175,6 +178,7 @@ void settings_save(const char *path) {
     fprintf(f, "cheat_codes=%s\n", settings.cheat_codes);
     input_ini_save(f);
     outfit_ini_save(f);
+    fighters_ini_save(f);
     fclose(f);
 }
 

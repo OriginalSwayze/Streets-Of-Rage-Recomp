@@ -18,6 +18,7 @@
 #include "fx.h"
 #include "combat.h"
 #include "ai.h"
+#include "fighters.h"
 #include "recomp_rt.h"
 #include "automap.h"
 #include "texpack.h"
@@ -276,6 +277,7 @@ int main(int argc, char **argv) {
     char ini[1100];
     path_in_base(ini, sizeof ini, "settings.ini");
     savestate_init(base_dir);
+    fighters_preview_load(base_dir);
     settings_load(ini);
 
     int headless_frames = 0;
@@ -298,6 +300,7 @@ int main(int argc, char **argv) {
     const char *menu_shot = NULL;
     int menu_w = 1920, menu_h = 1080;
     bool controls_shot = false, outfit_page_shot = false;
+    int fighters_shot = -1;
     int menu_tab = -1, menu_row = 0;    /* --menu-tab TAB ROW, with --menu-shot */
     bool save_preview = false;          /* --save-preview: keep the last frame for the launcher's previews */
     int save_to = 0;
@@ -474,6 +477,7 @@ int main(int argc, char **argv) {
         }
         else if (!strcmp(argv[i], "--controls-shot")) controls_shot = true;   /* with --menu-shot: the Controls page */
         else if (!strcmp(argv[i], "--outfit-shot")) outfit_page_shot = true;  /* with --menu-shot: the outfit page */
+        else if (!strcmp(argv[i], "--fighters-shot") && i + 1 < argc) fighters_shot = atoi(argv[++i]);   /* with --menu-shot: fighter N's colours page */
         else if (!strcmp(argv[i], "--save-preview")) save_preview = true;
         else if (!strcmp(argv[i], "--menu-tab") && i + 2 < argc) { menu_tab = atoi(argv[++i]); menu_row = atoi(argv[++i]); }
         else if (!strcmp(argv[i], "--randomizer-check")) {
@@ -822,6 +826,7 @@ int main(int argc, char **argv) {
             menu_open(framebuffer, frame_width(), vdp_screen_height(), FB_W, r.x, r.y, r.w, r.h, menu_w, menu_h, 1);
             if (controls_shot) controls_open();
             if (outfit_page_shot) outfit_open();
+            if (fighters_shot >= 0) fighters_open(fighters_shot);
             if (menu_tab >= 0) {
                 HdPost here = finishing(1, 0);
                 preview_set_world(here.world, here.cam_x, here.cam_y, ali_x(), ali_y());

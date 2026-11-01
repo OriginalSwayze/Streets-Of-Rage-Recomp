@@ -21,5 +21,7 @@
 #define GAME_LAUNCHER   1
 /* The sound driver is Sega's SMPS 68k (ost.c), not Beyond Oasis's. */
 #define GAME_SMPS       1
+/* The fighters' colours: the players' sprites are told apart by their tile blocks (fighters.c). */
+#define GAME_FIGHTERS   1
 
 #endif

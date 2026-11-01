@@ -88,6 +88,7 @@ add_executable(StreetsOfRage WIN32
   runtime/src/input.c
   runtime/src/pads.c
   runtime/src/ai.c
+  runtime/src/fighters.c
   runtime/src/combat.c
   runtime/src/automap.c
   runtime/src/controls.c

@@ -5,6 +5,7 @@
  * Rows glide and slide like the launcher's, embers drift over the game, and every choice
  * makes the game's own menu sound (played by main.c through menu_sound). */
 #include "menu.h"
+#include "fighters.h"
 #include "controls.h"
 #include "outfit.h"
 #include "preview.h"
@@ -21,12 +22,13 @@
 #include <string.h>
 
 typedef enum { ITEM_ACTION, ITEM_SLOT, ITEM_OPTION } ItemKind;
-enum { ACT_RESUME, ACT_SAVE, ACT_LOAD, ACT_RESET, ACT_QUIT, ACT_CONTROLS, ACT_OUTFIT, ACT_MAP, ACT_STATS };
+enum { ACT_RESUME, ACT_SAVE, ACT_LOAD, ACT_RESET, ACT_QUIT, ACT_CONTROLS, ACT_OUTFIT, ACT_MAP, ACT_STATS,
+       ACT_FIGHTER0, ACT_FIGHTER1, ACT_FIGHTER2 };
 typedef struct { ItemKind kind; const char *label; int id; } Item;
 
-#define TABS 5
+#define TABS 6
 #define MAX_ROWS 10
-static const char *const tab_names[TABS] = { "GAME", "DISPLAY", "EFFECTS", "CHEATS", "MORE" };
+static const char *const tab_names[TABS] = { "GAME", "DISPLAY", "EFFECTS", "COLOURS", "CHEATS", "MORE" };
 static const Item tab_items[TABS][MAX_ROWS] = {
     { { ITEM_ACTION, "Resume", ACT_RESUME }, { ITEM_SLOT, "Save state", ACT_SAVE }, { ITEM_SLOT, "Load state", ACT_LOAD },
       { ITEM_OPTION, "Player 2", OPT_PLAYER2 }, { ITEM_ACTION, "Stats", ACT_STATS },
@@ -39,6 +41,7 @@ static const Item tab_items[TABS][MAX_ROWS] = {
       { ITEM_OPTION, "Sprite flicker fix", OPT_FLICKER }, { ITEM_OPTION, "Slowdown fix", OPT_OVERCLOCK } },
     { { ITEM_OPTION, "Lighting", OPT_LIGHTING }, { ITEM_OPTION, "HDR look", OPT_HDR },
       { ITEM_OPTION, "Combat info", OPT_COMBAT }, { ITEM_OPTION, "Play timer", OPT_TIMER } },
+    { { ITEM_ACTION, "Axel", ACT_FIGHTER0 }, { ITEM_ACTION, "Adam", ACT_FIGHTER1 }, { ITEM_ACTION, "Blaze", ACT_FIGHTER2 } },
     { { ITEM_OPTION, "Infinite health", OPT_CHEAT_HEALTH }, { ITEM_OPTION, "Infinite lives", OPT_CHEAT_LIVES },
       { ITEM_OPTION, "Infinite specials", OPT_CHEAT_SPECIALS }, { ITEM_OPTION, "Infinite time", OPT_CHEAT_TIME },
       { ITEM_OPTION, "Attack power", OPT_CHEAT_ATTACK } },
@@ -46,7 +49,7 @@ static const Item tab_items[TABS][MAX_ROWS] = {
       { ITEM_ACTION, "Controls", ACT_CONTROLS }, { ITEM_OPTION, "Rumble", OPT_RUMBLE },
       { ITEM_OPTION, "Texture pack", OPT_TEXPACK }, { ITEM_OPTION, "Dump tiles", OPT_DUMP } },
 };
-static const int tab_count[TABS] = { 9, 10, 4, 5, 6 };
+static const int tab_count[TABS] = { 9, 10, 4, 3, 5, 6 };
 
 /* ---- Look: the game's HUD, a yellow frame on charcoal, red bars (as the launcher) ------- */
 #define C_YELLOW rgb_hex(0xF8D838)
@@ -86,6 +89,8 @@ static const char *about(const Item *it) {
         case ACT_QUIT: return "Closes the game. Unsaved progress is lost; the game's own saves stay.";
         case ACT_CONTROLS: return "The keyboard key and controller button for every action.";
             case ACT_STATS: return NULL;
+        case ACT_FIGHTER0: case ACT_FIGHTER1: case ACT_FIGHTER2:
+            return "Their hair, clothes and skin in any of the Genesis' 512 colours, still or animated, with a preview. The colours follow the fighter, whoever plays them.";
         }
     if (it->kind == ITEM_SLOT) return NULL;
     switch (it->id) {
@@ -349,6 +354,7 @@ static MenuAction act(int dir, bool activate) {
         if (it->id == ACT_RESUME) return MENU_CLOSE;
         if (it->id == ACT_CONTROLS) { sound(1); controls_open(); return MENU_NONE; }
         if (it->id == ACT_OUTFIT) { sound(1); outfit_open(); return MENU_NONE; }
+        if (it->id >= ACT_FIGHTER0 && it->id <= ACT_FIGHTER2) { sound(1); fighters_open(it->id - ACT_FIGHTER0); return MENU_NONE; }
         if (it->id == ACT_MAP || it->id == ACT_STATS) return MENU_NONE;     /* shown on the card */
         /* Reset and quit lose progress: ask for a second press. */
         if (!confirm_pending || confirm_item != selected) {
@@ -367,13 +373,14 @@ static MenuAction act(int dir, bool activate) {
 MenuAction menu_event(const SDL_Event *e) {
     int dir = 0;
     bool activate = false;
-    if (controls_is_open() || outfit_is_open()) {   /* a page takes all input while it is up */
+    if (controls_is_open() || outfit_is_open() || fighters_is_open()) {   /* a page takes all input while it is up */
         float mx = 0, my = 0;
         if (e->type == SDL_MOUSEMOTION) { mx = e->motion.x; my = e->motion.y; }
         if (e->type == SDL_MOUSEBUTTONDOWN) { mx = e->button.x; my = e->button.y; }
         mx = (mx * mouse_scale - ui_ox) / ui_s;
         my = (my * mouse_scale - ui_oy) / ui_s;
         if (outfit_is_open()) return outfit_event(e, mx, my) ? MENU_SETTINGS : MENU_NONE;
+        if (fighters_is_open()) return fighters_event(e, mx, my) ? MENU_SETTINGS : MENU_NONE;
         bool changed = controls_event(e, mx, my);
         if (!controls_is_open()) sound(2);
         return changed ? MENU_SETTINGS : MENU_NONE;
@@ -543,6 +550,15 @@ static void draw_card(float t, float alpha) {
     ui_fill_rect(x, y + 30, 46, 3, C_RED, .9f * alpha);
     y += 48;
     if (it->kind == ITEM_SLOT) { draw_slot(x, y, w, t, alpha); return; }
+    if (it->kind == ITEM_ACTION && it->id >= ACT_FIGHTER0 && it->id <= ACT_FIGHTER2) {
+        /* The fighter as they are now, live, under the description. */
+        int f = it->id - ACT_FIGHTER0;
+        y = draw_wrapped(about(it), x, y, w, 15.5f, C_TEXT, alpha);
+        if (fighters_have_preview(f)) fighters_draw(f, CARD_X + CARD_W / 2.f, CARD_Y + CARD_H - 40, 3.2f, alpha, t);
+        else draw_wrapped("Start the game once from the launcher to see the fighters here.", x, y + 20, w, 14, C_DIM, alpha);
+        ui_draw_text("Enter to change\xE2\x80\xA6", "Segoe UI Semibold", 14, 600, 0, x, CARD_Y + CARD_H - 30, C_YELLOW, C_YELLOW, alpha);
+        return;
+    }
     if (it->kind == ITEM_ACTION && it->id == ACT_STATS) {
         char lines[12][64];
         int n = combat_stats_lines(lines, 12);
@@ -658,4 +674,5 @@ void menu_render(double time_s) {
     }
     controls_render(time_s);
     outfit_render(time_s);
+    fighters_render(time_s);
 }

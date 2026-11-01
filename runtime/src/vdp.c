@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "m68k.h"
+#include "fighters.h"
 
 /* Debugging (--trace-vram LO HI): log CPU writes and DMAs that touch VRAM [lo, hi). */
 uint32_t vdp_trace_lo, vdp_trace_hi;
@@ -295,6 +296,7 @@ uint16_t vdp_outfit_pick[OUTFIT_BANDS][64];
 uint8_t  vdp_outfit_anim[OUTFIT_BANDS][64];
 uint8_t  vdp_outfit_ref[64];
 static uint16_t vdp_outfit[64];         /* this line's colour for each index */
+static bool fighters_on;                /* Streets of Rage: the players' tables are in vdp_outfit 0-31 */
 static uint8_t outfit_used[64];         /* the indices that have a pick in some band */
 static int outfit_nused, player_bottom, outfit_line = -1;
 static unsigned outfit_frame;
@@ -390,6 +392,7 @@ static void player_frame_start(void) {
         if (vdp_opts.outfit && (vdp_outfit_pick[0][k] != OUTFIT_KEEP || vdp_outfit_pick[1][k] != OUTFIT_KEEP || vdp_outfit_pick[2][k] != OUTFIT_KEEP))
             outfit_used[outfit_nused++] = (uint8_t)k;
     }
+    fighters_on = GAME_FIGHTERS && fighters_colours(vdp_outfit);
     bool h40 = vdp_screen_width() == 320;
     uint32_t sat = (vdp.reg[5] & (h40 ? 0x7E : 0x7F)) << 9;
     motion_player_entries(vdp.vram + sat, h40 ? 80 : 64, player_entry);
@@ -464,6 +467,13 @@ static void draw_sprites(uint8_t *out, int w, int extra, int line) {
                 int c = (cx & 1) ? (b & 0xF) : (b >> 4);
                 if (!c) continue;
                 uint8_t v = (uint8_t)(((attr >> 9) & 0x30) | c | ((attr & 0x8000) ? PRI : 0));
+                /* Streets of Rage: a player's pixel (palette 0, from its tile block) takes that
+                 * player's colour; player 2's are marked with bit 4, so they find their table
+                 * at vdp_outfit 16-31 (sprite_px). */
+                if (fighters_on && !(attr & 0x6000) && (attr & 0x7FF) >= 0x580 && (attr & 0x7FF) < 0x600) {
+                    int p = (attr & 0x7FF) >= 0x5C0;
+                    if (vdp_outfit[p * 16 + c] != OUTFIT_KEEP) v = (uint8_t)(OUTFIT | p << 4 | c | (v & PRI));
+                }
                 if (player_entry[link_now]) {
                     int px = x + sx - player_x0, py = line - player_y0;
                     if (px >= 0 && py >= 0 && px < player_w && py < player_h && !player_now[py * PLAYER_IMG + px])

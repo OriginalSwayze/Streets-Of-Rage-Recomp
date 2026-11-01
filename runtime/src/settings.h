@@ -25,6 +25,8 @@ typedef struct {
     int  combat_info;                   /* 0 off, 1 damage numbers, 2 numbers and enemy health bars (combat.c) */
     int  rumble;                        /* controller rumble on hits: 0 off, 1 light, 2 strong (combat.c) */
     int  fast_speed;                    /* fast-forward while its key is held: 0 2x, 1 3x, 2 4x */
+    int  fighter_color[3][4];           /* Streets of Rage: each fighter's parts, CRAM colour or -1 (fighters.c) */
+    int  fighter_anim[3][4];            /* and their animations (OUTFIT_ANIM_*) */
     int  player2;                       /* player 2: 0 a second controller, 1 the AI partner (ai.c) */
     bool play_timer;                    /* this session's play time in the picture's corner (combat.c) */
     char texture_pack[64];              /* folder in texture_packs/, empty for none (texpack.h) */

@@ -19,6 +19,7 @@
 #include "png.h"
 #include "controls.h"
 #include "outfit.h"
+#include "fighters.h"
 #include "preview.h"
 #include <SDL.h>
 #include <math.h>
@@ -42,7 +43,7 @@
  * and walking right while the camera follows. */
 static Art cover, pano;
 
-#define ART_MAGIC    0x31524F53u       /* cache file tag (bump when the capture changes) */
+#define ART_MAGIC    0x32524F53u       /* cache file tag (bump when the capture changes) */
 #define PANO_TOP     32                 /* the street starts under the HUD */
 #define PANO_MAX_W   1600
 
@@ -66,6 +67,17 @@ static void art_paste(Art *a, const uint32_t *fb, int pitch, int x, int y0, int 
             a->rgb[y * a->w + ax] = fb[(y0 + y) * pitch + i];
             a->mask[y * a->w + ax] = 255;
         }
+}
+
+/* The select screen is up: a sprite of Blaze's still (tiles $680-$6BF) in palette 0. */
+static bool select_screen(void) {
+    uint32_t sat = (vdp.reg[5] & 0x7E) << 9;
+    for (int i = 0; i < 80; i++) {
+        uint32_t e = (sat + i * 8) & 0xFFFF;
+        int attr = vdp.vram[e + 4] << 8 | vdp.vram[e + 5];
+        if (!(attr & 0x6000) && (attr & 0x7FF) >= 0x680 && (attr & 0x7FF) < 0x6C0) return true;
+    }
+    return false;
 }
 
 static void run_frames(uint32_t *fb, int n, uint16_t pad) {
@@ -135,10 +147,19 @@ static void art_capture(void) {
     }
     art_alloc(&cover, 320, 224);
     art_paste(&cover, fb, 320, 0, 0, 224);
-    /* Start through the menus until round 1 is under way (not the demo). */
-    for (int f = 0; f < 4000 && !((bus.ram[0xFF18] & 1) && !bus.ram[0xFF2A] && bus.ram[0xB800]); f++)
-        run_frames(fb, 1, f % 60 < 6 ? PAD_START : 0);
+    /* Start through the menus until round 1 is under way: game mode $16 ($FFFF00; the select
+     * screen, $12, already has player 1 in the game), not the demo. */
+    bool picked = false;
+    for (int f = 0; f < 4000 && !(bus.ram[0xFF01] == 0x16 && (bus.ram[0xFF18] & 1) && !bus.ram[0xFF2A] && bus.ram[0xB800]); f++) {
+        /* The select screen (Blaze's still, tiles $680, in palette 0): the fighters' previews. */
+        if (!picked && select_screen()) { run_frames(fb, 40, 0); fighters_capture_select(); picked = true; }
+        run_frames(fb, 1, f % 150 < 6 ? PAD_START : 0);   /* slow enough for the select screen to show its fighters */
+    }
     run_frames(fb, 120, 0);
+    fighters_capture_colours();         /* palette 0 as the round has it */
+    char *dir = SDL_GetBasePath();
+    fighters_preview_save(dir ? dir : "");
+    if (dir) SDL_free(dir);
     /* Walk right; the street, without sprites, at each step of the camera. */
     vdp_opts.hide_layers = 4;
     art_alloc(&pano, PANO_MAX_W, 224 - PANO_TOP);
@@ -559,11 +580,11 @@ int launcher_ost_check(int seconds) {
 }
 
 /* ---- The settings: five tabs ----------------------------------------------------- */
-typedef enum { ROW_OPTION, ROW_ROM, ROW_CONTROLS, ROW_TRACK, ROW_OUTFIT } RowKind;
+typedef enum { ROW_OPTION, ROW_ROM, ROW_CONTROLS, ROW_TRACK, ROW_OUTFIT, ROW_FIGHTER } RowKind;
 typedef struct { RowKind kind; const char *label; int id; const char *about; } Row;
 
-#define TABS 5
-static const char *const tab_names[TABS] = { "DISPLAY", "EFFECTS", "GAME", "MUSIC", "CHEATS" };
+#define TABS 6
+static const char *const tab_names[TABS] = { "DISPLAY", "EFFECTS", "GAME", "MUSIC", "COLOURS", "CHEATS" };
 static const Row tab_rows[TABS][9] = {
     { { ROW_OPTION, "Widescreen", OPT_WIDESCREEN, "More of the street at the sides; enemies show beyond the old edges." },
       { ROW_OPTION, "Aspect ratio", OPT_ASPECT, "The shape of the widescreen picture." },
@@ -589,13 +610,16 @@ static const Row tab_rows[TABS][9] = {
     { { ROW_OPTION, "Launcher music", OPT_MUSIC, NULL }, { ROW_TRACK, "Track", 0, NULL },
       { ROW_OPTION, "Player", OPT_OST_MODE, NULL }, { ROW_OPTION, "Volume", OPT_VOLUME, NULL },
       { ROW_OPTION, "Audio", OPT_AUDIO, NULL } },
+    { { ROW_FIGHTER, "Axel", 0, "His hair, top, jeans and skin in any colour, still or animated." },
+      { ROW_FIGHTER, "Adam", 1, "His vest, trousers, skin and shoes in any colour, still or animated." },
+      { ROW_FIGHTER, "Blaze", 2, "Her outfit, hair and skin in any colour, still or animated." } },
     { { ROW_OPTION, "Infinite health", OPT_CHEAT_HEALTH, "Both players take no damage from enemies." },
       { ROW_OPTION, "Infinite lives", OPT_CHEAT_LIVES, "Both players always have at least three lives." },
       { ROW_OPTION, "Infinite specials", OPT_CHEAT_SPECIALS, "The police car can always be called." },
       { ROW_OPTION, "Infinite time", OPT_CHEAT_TIME, "The round timer never runs down." },
       { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
 };
-static const int tab_count[TABS] = { 9, 4, 8, 5, 5 };
+static const int tab_count[TABS] = { 9, 4, 8, 5, 3, 5 };
 
 /* ---- Look: the game's HUD, a yellow frame on charcoal, red bars ---------------------- */
 #define C_YELLOW rgb_hex(0xF8D838)
@@ -856,6 +880,14 @@ static void draw_row(int r, const Row *row, float dx, float alpha, const PlayerV
     case ROW_OUTFIT:
         snprintf(value, sizeof value, "-");
         break;
+    case ROW_FIGHTER: {
+        int changed = 0;
+        for (int k = 0; k < 4; k++) changed += settings.fighter_color[row->id][k] >= 0;
+        if (!changed) snprintf(value, sizeof value, "Their own colours");
+        else snprintf(value, sizeof value, "%d part%s recoloured", changed, changed == 1 ? "" : "s");
+        hint = "Enter to change\xE2\x80\xA6";
+        break;
+    }
     case ROW_TRACK:
         song_name(pv->ready ? pv->song : (settings.ost_track >= 0 ? settings.ost_track : title_song >= 0 ? title_song : 0), value, sizeof value);
         hint = pv->on ? "Enter to stop" : "Enter to play";
@@ -986,6 +1018,13 @@ static void draw_ui(float t) {
         if (a > .05f) preview_draw(tab_rows[ui.tab][ui.selected].id, px, py, pw, ph, t);
     }
 
+    /* A fighter's row: the fighter in their colours, over the cover. */
+    if (on_row && tab_rows[ui.tab][ui.selected].kind == ROW_FIGHTER && fighters_have_preview(tab_rows[ui.tab][ui.selected].id)) {
+        float a = ease_out((t - ui.selected_t0) / .3f);
+        ui_fill_rect(CASE_X - 8, CASE_Y - 8, CASE_W + 16, CASE_H + 16, rgb_hex(0x0C0C10), .92f * a);
+        fighters_draw(tab_rows[ui.tab][ui.selected].id, CASE_X + CASE_W / 2.f, CASE_Y + CASE_H - 14, 2.8f, a, t);
+    }
+
     /* Under the cover, on every tab: what is playing. */
     if (pv.ready && pv.on) {
         char name[64], line[96];
@@ -1048,6 +1087,7 @@ static void init_common(void) {
     snprintf(cache_path, sizeof cache_path, "%slauncher_art.cache", bp ? bp : "");
     settings_set_base(bp ? bp : "");
     art_prepare();                      /* (may run the intro, which draws over hd_frame) */
+    fighters_preview_load(bp ? bp : "");
     preview_load(bp ? bp : "");
     if (bp) SDL_free(bp);
     update_rom_status();
@@ -1110,6 +1150,7 @@ static void row_action(SDL_Window *win, int dir) {
     switch (row->kind) {
     case ROW_ROM: if (!dir) { music_sfx(SFX_CONFIRM); choose_rom(win); } return;
     case ROW_CONTROLS: if (!dir) { music_sfx(SFX_CONFIRM); controls_open(); } return;
+    case ROW_FIGHTER: if (!dir) { music_sfx(SFX_CONFIRM); fighters_open(row->id); } return;
     case ROW_OUTFIT:
         if (!dir) {
             char *bp = SDL_GetBasePath();
@@ -1169,11 +1210,12 @@ int launcher_run(const char *ini_path) {
         while (SDL_PollEvent(&e)) {
             pads_event(&e);
             int activate = 0, change = 0;
-            if ((controls_is_open() || outfit_is_open()) && e.type != SDL_QUIT) {
+            if ((controls_is_open() || outfit_is_open() || fighters_is_open()) && e.type != SDL_QUIT) {
                 /* A page takes all input while it is up (mouse points match the layout). */
                 float mx = e.type == SDL_MOUSEMOTION ? e.motion.x : e.type == SDL_MOUSEBUTTONDOWN ? e.button.x : 0;
                 float my = e.type == SDL_MOUSEMOTION ? e.motion.y : e.type == SDL_MOUSEBUTTONDOWN ? e.button.y : 0;
                 if (outfit_is_open()) { outfit_event(&e, mx, my); continue; }
+                if (fighters_is_open()) { fighters_event(&e, mx, my); continue; }
                 controls_event(&e, mx, my);
                 if (!controls_is_open()) music_sfx(SFX_CANCEL);
                 continue;
@@ -1249,6 +1291,7 @@ int launcher_run(const char *ini_path) {
         render(t);
         controls_render(t);
         outfit_render(t);
+        fighters_render(t);
         SDL_UpdateTexture(tex, NULL, ui_px, ui_w * 4);
         SDL_RenderClear(ren);
         SDL_RenderCopy(ren, tex, NULL, NULL);
