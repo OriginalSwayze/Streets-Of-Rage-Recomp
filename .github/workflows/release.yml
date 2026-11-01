@@ -40,7 +40,10 @@ jobs:
           # work folder, pass Windows' 260-character limit. Setup drops the zip's top folder.
           stage=/c/sorstage
           mkdir -p "$stage/src"
+          # Regular files only: the submodules' symlinks (in examples the build never uses)
+          # are links on this runner, some to nothing, and do not unpack on Windows anyway.
           git ls-files -z --recurse-submodules | while IFS= read -r -d '' f; do
+            if [ -L "$f" ] || [ ! -f "$f" ]; then continue; fi
             mkdir -p "$stage/src/$(dirname "$f")"
             cp "$f" "$stage/src/$f" || { echo "could not copy $f"; exit 1; }
           done
