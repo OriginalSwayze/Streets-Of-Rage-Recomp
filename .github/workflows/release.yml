@@ -36,11 +36,16 @@ jobs:
       - name: Append the source
         run: |
           name="Streets-of-Rage-Collection-Setup-${GITHUB_REF_NAME}.exe"
-          mkdir -p "stage/Streets of Rage Collection"
-          git ls-files -z --recurse-submodules | xargs -0 cp -P --parents -t "stage/Streets of Rage Collection"
-          # Symlinks (in the submodules' examples, which the build never uses) do not unpack on Windows.
-          find stage -type l -delete
-          (cd stage && 7z a -tzip -mx=9 ../source.zip "Streets of Rage Collection" > /dev/null)
+          # Staged at the drive's root: the submodules' deepest paths, under the runner's own
+          # work folder, pass Windows' 260-character limit. Setup drops the zip's top folder.
+          stage=/c/sorstage
+          mkdir -p "$stage/src"
+          git ls-files -z --recurse-submodules | while IFS= read -r -d '' f; do
+            mkdir -p "$stage/src/$(dirname "$f")"
+            cp "$f" "$stage/src/$f" || { echo "could not copy $f"; exit 1; }
+          done
+          (cd "$stage" && 7z a -tzip -mx=9 source.zip src > /dev/null)
+          cp "$stage/source.zip" source.zip
           cp build/sor1/Setup.exe "$name"
           cat source.zip >> "$name"
           python -c "import struct,os; f=open('$name','ab'); f.write(struct.pack('<Q', os.path.getsize('source.zip'))); f.write(b'SORPAYLD')"
