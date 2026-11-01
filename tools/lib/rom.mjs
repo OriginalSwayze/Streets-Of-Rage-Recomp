@@ -1,12 +1,12 @@
 // Loads and verifies the user's own ROM. The ROM is never copied into the repo:
-// local.json (gitignored) only stores where it lives on disk.
+// local.json (gitignored) only stores where each game's ROM lives on disk.
 import { createHash } from 'node:crypto';
-import { readFileSync, existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { ROOT, GAME, GAME_INFO } from './game.mjs';
 
-export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-export const ROM_INFO = JSON.parse(readFileSync(join(ROOT, 'config', 'rom.json'), 'utf8'));
+export { ROOT };
+export const ROM_INFO = GAME_INFO.rom;
 
 export function verifyRom(buf) {
   if (buf.length !== ROM_INFO.size) {
@@ -19,12 +19,19 @@ export function verifyRom(buf) {
   return null;
 }
 
+const LOCAL = join(ROOT, 'local.json');
+const readLocal = () => (existsSync(LOCAL) ? JSON.parse(readFileSync(LOCAL, 'utf8')) : {});
+
 export function romPathFromConfig() {
-  const cfg = join(ROOT, 'local.json');
-  if (!existsSync(cfg)) {
-    throw new Error(`No ROM configured. Run: node tools/setup.mjs "<path to ${ROM_INFO.name} ROM>"`);
-  }
-  return JSON.parse(readFileSync(cfg, 'utf8')).romPath;
+  const path = (readLocal().roms || {})[GAME];
+  if (!path) throw new Error(`No ROM configured for ${GAME}. Run: node tools/new-game.mjs "<path to ${ROM_INFO.name} ROM>"`);
+  return path;
+}
+
+export function rememberRomPath(path) {
+  const local = readLocal();
+  local.roms = { ...(local.roms || {}), [GAME]: path };
+  writeFileSync(LOCAL, JSON.stringify(local, null, 2) + '\n');
 }
 
 export function loadRom() {

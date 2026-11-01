@@ -1,0 +1,24 @@
+{
+  "title": "Streets of Rage 3",
+  "exe": "StreetsOfRage3",
+  "series": 3,
+  "rom": {
+    "name": "Streets of Rage 3 (USA)",
+    "serial": "GM MK-1539 -00",
+    "size": 3145728,
+    "sha1": "40a33dd6f9dab0aff26c7525c9b8f342482c7af6",
+    "headerChecksum": "2D96"
+  },
+  "features": {
+    "ram": false,
+    "widescreen": false,
+    "launcher": false,
+    "wideView": true,
+    "smps": false,
+    "fighters": false
+  },
+  "sram": {
+    "present": false,
+    "always": false
+  }
+}

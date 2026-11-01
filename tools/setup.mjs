@@ -1,12 +1,12 @@
-// Usage: node tools/setup.mjs "<path to the ROM named in config/rom.json>"
-// Verifies the ROM and remembers its location in local.json.
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { ROOT, verifyRom, ROM_INFO } from './lib/rom.mjs';
+// Usage: node tools/setup.mjs --game <name> "<path to that game's ROM>"
+// Verifies the ROM against games/<name>/game.json and remembers its location in local.json.
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { verifyRom, rememberRomPath, ROM_INFO } from './lib/rom.mjs';
 
-const arg = process.argv[2];
+const arg = process.argv.slice(2).find((a, k, all) => !a.startsWith('--') && all[k - 1] !== '--game');
 if (!arg) {
-  console.error(`Usage: node tools/setup.mjs "<path to ${ROM_INFO.name} ROM>"`);
+  console.error(`Usage: node tools/setup.mjs --game <name> "<path to ${ROM_INFO.name} ROM>"`);
   process.exit(1);
 }
 const romPath = resolve(arg);
@@ -15,5 +15,5 @@ if (err) {
   console.error(`ROM rejected: ${err}`);
   process.exit(1);
 }
-writeFileSync(join(ROOT, 'local.json'), JSON.stringify({ romPath }, null, 2) + '\n');
+rememberRomPath(romPath);
 console.log(`OK: ${ROM_INFO.name} verified, path saved to local.json`);

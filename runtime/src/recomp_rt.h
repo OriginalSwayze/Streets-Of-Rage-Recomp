@@ -7,9 +7,14 @@
 
 #include "m68kcpu.h"
 #include "genesis.h"
+#include "game.h"
 
 extern unsigned char m68ki_cycles[][0x10000];
-#define CYC(op) USE_CYCLES(m68ki_cycles[0][op])
+/* An instruction's cycles are charged before its body runs, where the interpreter charges
+ * them after; recomp_charged keeps them, so a VDP status or HV read inside the instruction
+ * sees the same point in the line as the interpreter (machine_cycles_in_line). */
+extern int recomp_charged;
+#define CYC(op) (recomp_charged = m68ki_cycles[0][op], USE_CYCLES(recomp_charged))
 
 #define D(n) REG_D[n]
 #define BAIL 0x80000000u                /* returned with a PC: interpret this instruction */
@@ -26,6 +31,7 @@ extern uint32_t patch_sor_x_lo, patch_sor_x_hi;   /* Streets of Rage sprite cull
 extern int patch_sor_wide;                         /* Streets of Rage: widescreen pixels per side (sorWide) */
 extern int patch_no_damage;             /* infinite health cheat (cheats.c) */
 extern int patch_attack;                /* attack power cheat: 0 normal, 1 double, 2 quadruple, 3 one-hit kills */
+extern int patch_free_specials;         /* Streets of Rage 2: special moves cost no health */
 extern int patch_speed;                 /* move speed cheat: the player's movement per tick in percent (100 = normal) */
 extern int patch_random;                /* randomizer: 0 off, 1 restoratives, 2 restoratives and weapons */
 
@@ -80,21 +86,52 @@ static inline uint32_t hit_damage(uint32_t target, uint32_t v) {
     return (v & 0xF000) | (damage > 0xFFF ? 0xFFF : damage);
 }
 
-/* Streets of Rage (sorHit, config/patches.json): the health a hit takes off its target.
- * The players are the objects at $FFB800 and $FFB880: with infinite health they lose
- * none; their hits on anything else are scaled by the attack power cheat, a one-hit kill
- * taking all the target's health and one more (below 0 is dead). */
+/* Each Streets of Rage's two player objects and the health in an object (a word, or in
+ * Streets of Rage 3 a byte) (docs/ram.md, docs/ram-sor2.md, docs/ram-sor3.md). */
+#if GAME_SOR == 3
+#define SOR_P1 0xDF00u
+#define SOR_P2 0xE000u
+#define SOR_HP 0x6Cu
+#define SOR_HP_BYTE 1
+#elif GAME_SOR == 2
+#define SOR_P1 0xEF00u
+#define SOR_P2 0xF000u
+#define SOR_HP 0x80u
+#else
+#define SOR_P1 0xB800u
+#define SOR_P2 0xB880u
+#define SOR_HP 0x32u
+#endif
+static inline bool sor_player(uint32_t object) {
+    uint32_t o = object & 0xFFFF;
+    return (object & 0xFF0000) == 0xFF0000 && (o == SOR_P1 || o == SOR_P2);
+}
+
+/* Streets of Rage (sorHit, games/<name>/patches.json): the health a hit takes off its
+ * target. With infinite health the players lose none; their hits on anything else are
+ * scaled by the attack power cheat, a one-hit kill taking all the target's health and one
+ * more (below 0, or in Streets of Rage 2 0 or below, is dead). */
 static inline uint32_t sor_hit(uint32_t target, uint32_t attacker, uint32_t damage) {
-    uint32_t t = target & 0xFFFF, a = attacker & 0xFFFF;
-    bool t_player = t == 0xB800 || t == 0xB880, a_player = a == 0xB800 || a == 0xB880;
+    bool t_player = sor_player(target), a_player = sor_player(attacker);
     if (t_player && patch_no_damage) return 0;
     if (!a_player || t_player || !patch_attack || !damage) return damage;
     switch (patch_attack) {
     case 1: damage *= 2; break;
     case 2: damage *= 4; break;
-    default: { int16_t hp = (int16_t)rd16(target + 0x32); damage = hp < 0 ? 1u : (uint32_t)hp + 1; break; }
+    default: {
+#ifdef SOR_HP_BYTE
+        damage = rd8(target + SOR_HP);  /* 0 is dead */
+        break;
+#else
+        int16_t hp = (int16_t)rd16(target + SOR_HP); damage = hp < 0 ? 1u : (uint32_t)hp + 1; break;
+#endif
     }
+    }
+#ifdef SOR_HP_BYTE
+    return damage > 0xFF ? 0xFF : damage;
+#else
     return damage > 0x7FFF ? 0x7FFF : damage;
+#endif
 }
 
 /* The health change at $4E6E (sorHit.changePc): d7 is added to the target's health; a

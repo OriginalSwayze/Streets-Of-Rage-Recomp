@@ -1,13 +1,14 @@
 // Extra trusted entry points for the tracer: hand-listed addresses in
-// config/entries.json, code seen running in earlier play (config/coverage.txt, committed,
-// so a fresh build has it), and code the runtime saw running here (coverage.bin).
+// games/<name>/entries.json, code seen running in earlier play (games/<name>/coverage.txt,
+// committed, so a fresh build has it), and code the runtime saw running here
+// (build/<name>/coverage.bin).
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT } from './rom.mjs';
+import { GAME_DIR, BUILD_DIR } from './game.mjs';
 
-// config/coverage.txt: one hex address, or a "start-end" range of even addresses, per line.
+// coverage.txt: one hex address, or a "start-end" range of even addresses, per line.
 export function loadCoverageList() {
-  const file = join(ROOT, 'config', 'coverage.txt'), out = [];
+  const file = join(GAME_DIR, 'coverage.txt'), out = [];
   if (!existsSync(file)) return out;
   for (const line of readFileSync(file, 'utf8').split('\n')) {
     const m = /^([0-9A-Fa-f]+)(?:-([0-9A-Fa-f]+))?/.exec(line.trim());
@@ -18,9 +19,9 @@ export function loadCoverageList() {
 
 export function loadExtraEntries() {
   const entries = [], covered = loadCoverageList();
-  const entriesFile = join(ROOT, 'config', 'entries.json');
+  const entriesFile = join(GAME_DIR, 'entries.json');
   if (existsSync(entriesFile)) for (const s of JSON.parse(readFileSync(entriesFile, 'utf8'))) entries.push(parseInt(s, 16));
-  const cov = join(ROOT, 'build', 'cmake', 'coverage.bin');
+  const cov = join(BUILD_DIR, 'coverage.bin');
   if (existsSync(cov)) {
     // One bit per even address: byte k bit b covers address k*16 + b*2.
     const bits = readFileSync(cov);

@@ -1,13 +1,13 @@
-// Usage: node tools/save-coverage.mjs
-// Adds the code the runtime saw running (build/cmake/coverage.bin) to config/coverage.txt,
+// Usage: node tools/save-coverage.mjs --game <name>
+// Adds the code the runtime saw running (build/<name>/coverage.bin) to games/<name>/coverage.txt,
 // so a fresh build finds it too. The file lists address ranges only, no bytes of the game:
 // one address, or a "start-end" range (hex, end inclusive) of even addresses, per line.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT } from './lib/rom.mjs';
+import { GAME, GAME_DIR, BUILD_DIR } from './lib/game.mjs';
 import { loadCoverageList } from './lib/inputs.mjs';
 
-const bin = join(ROOT, 'build', 'cmake', 'coverage.bin');
+const bin = join(BUILD_DIR, 'coverage.bin');
 if (!existsSync(bin)) { console.error(`${bin} not found: play the game first`); process.exit(1); }
 const set = new Set(loadCoverageList());
 const before = set.size;
@@ -24,5 +24,5 @@ for (let k = 0; k < all.length; ) {
   lines.push(j > k ? `${hex(all[k])}-${hex(all[j])}` : hex(all[k]));
   k = j + 1;
 }
-writeFileSync(join(ROOT, 'config', 'coverage.txt'), lines.join('\n') + '\n');
-console.log(`config/coverage.txt: ${all.length} addresses (${all.length - before} new), ${lines.length} ranges`);
+writeFileSync(join(GAME_DIR, 'coverage.txt'), lines.join('\n') + '\n');
+console.log(`games/${GAME}/coverage.txt: ${all.length} addresses (${all.length - before} new), ${lines.length} ranges`);

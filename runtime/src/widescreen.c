@@ -203,6 +203,7 @@ static uint32_t redraw_rect(uint32_t pc) {
  * in-engine scenes). Logos, the title, menus and story scenes are drawn for 320 pixels,
  * so their sides are masked to black. */
 void widescreen_frame(void) {
+    if (GAME_SOR != 1 && !GAME_WIDESCREEN) { vdp_opts.mask_sides = false; return; }
     if (!GAME_WIDESCREEN) {
         /* Streets of Rage: the sides show the street only during a game, not the demo. */
         bool game = (rd8(0xFFFF18) & 3) && !rd8(0xFFFF2A);

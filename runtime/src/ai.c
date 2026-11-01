@@ -1,16 +1,26 @@
-/* The AI partner: see ai.h. Addresses are in docs/ram.md. */
+/* The AI partner: see ai.h. Addresses are in docs/ram.md (Streets of Rage) and
+ * docs/ram-sor2.md and docs/ram-sor3.md. */
 #include "ai.h"
+#include "game.h"
 #include "genesis.h"
 
-#define P1          0xB800              /* player objects */
-#define P2          0xB880
-#define FIRST_OTHER 0xB900              /* enemies, items and effects */
-#define END_OTHER   0xC800
-#define SLOT        0x80
+/* Where each game keeps its fighters. */
+typedef struct {
+    uint16_t p1, p2;                    /* the player objects */
+    uint16_t first_other, end_other;    /* enemies, items and effects */
+    uint16_t slot;                      /* object size */
+    uint8_t x, z, hp;                   /* world X, depth and health words in an object */
+} Layout;
 
-#define IN_GAME     0xFF18              /* bit 0: player 1 is in the game, bit 1: player 2 */
-#define DEMO        0xFF2A              /* the attract demo is playing */
-#define SPECIALS2   0xFF24              /* player 2's special attacks */
+#if GAME_SOR == 3
+static const Layout L = { 0xDF00, 0xE000, 0xE100, 0xEF00, 0x100, 0x02, 0x06, 0x6C };
+#elif GAME_SOR == 2
+static const Layout L = { 0xEF00, 0xF000, 0xF100, 0xFA00, 0x100, 0x02, 0x06, 0x80 };
+#else
+static const Layout L = { 0xB800, 0xB880, 0xB900, 0xC800, 0x80, 0x10, 0x14, 0x32 };
+#endif
+#define P1 L.p1
+#define P2 L.p2
 
 /* How it fights: where it stands next to its target, and how close counts as in reach. */
 #define REACH_X     28                  /* stand this far from the target's centre */
@@ -24,14 +34,47 @@ static int frame, stuck, last_x, last_z, special_wait, join_wait;
 static uint8_t peek8(uint32_t a) { return bus.ram[a & 0xFFFF]; }
 static int16_t peek16(uint32_t a) { a &= 0xFFFF; return (int16_t)(bus.ram[a] << 8 | bus.ram[(a + 1) & 0xFFFF]); }
 
-static int x_of(uint32_t o) { return peek16(o + 0x10); }
-static int z_of(uint32_t o) { return peek16(o + 0x14); }
-static int screen_x(uint32_t o) { return peek16(o + 0x28) - 0x80; }
-static bool alive(uint32_t o) { return peek16(o) != 0 && peek16(o + 0x32) >= 0 && peek16(o + 0x30) != 0x300; }
+static int x_of(uint32_t o) { return peek16(o + L.x); }
+static int z_of(uint32_t o) { return peek16(o + L.z); }
+/* Health: a byte in Streets of Rage 3, a word in the others. */
+static int hp_of(uint32_t o) { return GAME_SOR == 3 ? peek8(o + L.hp) : peek16(o + L.hp); }
 
-/* Something to fight: in use, alive, hits back (attack power), and on screen. */
+/* Where an object is on screen (0-319 in view). */
+static int screen_x(uint32_t o) {
+#if GAME_SOR == 3
+    return x_of(o) - peek16(0xF710);    /* the camera */
+#elif GAME_SOR == 2
+    return x_of(o) + peek16(0xFC22);    /* the plane's horizontal scroll: minus the camera */
+#else
+    return peek16(o + 0x28) - 0x80;     /* the sprite's X */
+#endif
+}
+
+/* The camera's left edge in world X. */
+static int camera(void) { return x_of(P2) - screen_x(P2); }
+
+static bool alive(uint32_t o) {
+#if GAME_SOR == 3
+    int state = peek16(o);
+    return state != 0 && state != 0x5C && state != 0x5E && hp_of(o) > 0;   /* $5C/$5E: not joined */
+#elif GAME_SOR == 2
+    int state = peek16(o);
+    return state > 0 && state < 0x30 && hp_of(o) > 0;
+#else
+    return peek16(o) != 0 && peek16(o + 0x32) >= 0 && peek16(o + 0x30) != 0x300;
+#endif
+}
+
+/* Something to fight: in use, alive, an enemy, and on screen. */
 static bool enemy(uint32_t o) {
-    if (!alive(o) || peek8(o + 0x34) == 0) return false;
+    if (!alive(o)) return false;
+#if GAME_SOR == 2
+    /* Enemies carry the name the HUD shows ("GALSIA", "Y.SIGNAL"); items and props do not. */
+    uint8_t c0 = peek8(o + 0x78), c1 = peek8(o + 0x79);
+    if (c0 < 'A' || c0 > 'Z' || ((c1 < 'A' || c1 > 'Z') && c1 != '.')) return false;
+#else
+    if (peek8(o + 0x34) == 0) return false;    /* hits back (attack power) */
+#endif
     int sx = screen_x(o);
     return sx > -8 && sx < 328;
 }
@@ -44,27 +87,66 @@ static uint16_t toward(int from, int to, int slack, uint16_t less, uint16_t more
     return 0;
 }
 
+/* Start, held for a moment every 1.5 s: the game only sees a press that lasts. */
+static uint16_t press_start(void) { stuck = 0; return ++join_wait % 90 < 10 ? PAD_START : 0; }
+
+/* Whether player 2 is in, pressing Start to get in when it can. Returns false (and the
+ * pad to send in *pad) while it is not. */
+static bool joined(uint16_t *pad) {
+    *pad = 0;
+#if GAME_SOR == 3
+    /* Like Streets of Rage: player 2 joins a game in progress ($5C/$5E: not in), then picks
+     * a fighter in its corner of the HUD ($5A), with Start too. Once in, Start would pause. */
+    int s2 = peek16(P2);
+    if (bus.ram[0xFB13] || !alive(P1)) { join_wait = 0; return false; }
+    if (s2 == 0x5C || s2 == 0x5E || s2 == 0x5A) { *pad = press_start(); return false; }
+    if (!alive(P2)) return false;
+#elif GAME_SOR == 2
+    /* Player 2 plays only in a two-player game (picked on the title menu). On the select
+     * screen (no player 1 yet) Start picks its fighter; in a round, it comes back in when
+     * it has not joined ($34/$36). Never otherwise: Start would pause. */
+    if (bus.ram[0xFD10] || peek16(0xFC18) != 1) { join_wait = 0; return false; }
+    int s1 = peek16(P1), s2 = peek16(P2);
+    if (s1 == 0 || s2 == 0x34 || s2 == 0x36) { *pad = press_start(); return false; }
+    if (!alive(P2)) return false;
+#else
+    /* Join in once player 1 is playing (not in the demo). Once in, Start would pause. */
+    uint8_t in = peek8(0xFF18);         /* bit 0: player 1 is in the game, bit 1: player 2 */
+    if (peek8(0xFF2A) || !(in & 1)) { join_wait = 0; return false; }
+    if (!(in & 2)) { *pad = press_start(); return false; }
+    if (!alive(P2)) return false;
+#endif
+    join_wait = 0;
+    return true;
+}
+
+/* In trouble: the special. Streets of Rage's police car clears the screen while there are
+ * cars left; the others' cost health, so only with plenty to spare. */
+static bool special_now(int crowd) {
+    if (special_wait || crowd < 2) return false;
+#if GAME_SOR == 3
+    return hp_of(P2) > 0x1A;           /* half of $34 */
+#elif GAME_SOR == 2
+    return hp_of(P2) > 0x30;
+#else
+    return peek16(P2 + 0x32) < 0x14 && peek8(0xFF24);
+#endif
+}
+
 uint16_t ai_pad(void) {
+    if (GAME_SOR < 1 || GAME_SOR > 3) return 0;
     frame++;
     if (special_wait) special_wait--;
 
-    /* Join in once player 1 is playing (not in the demo). Start is held for a moment, as
-     * the game only sees a press that lasts; once in, Start would pause, so never then. */
-    uint8_t in = peek8(IN_GAME);
-    if (peek8(DEMO) || !(in & 1)) { join_wait = 0; return 0; }
-    if (!(in & 2)) {
-        stuck = 0;
-        return ++join_wait % 90 < 10 ? PAD_START : 0;
-    }
-    join_wait = 0;
-    if (!alive(P2)) return 0;
+    uint16_t pad;
+    if (!joined(&pad)) return pad;
 
-    int mx = x_of(P2), mz = z_of(P2), msx = screen_x(P2);
+    int mx = x_of(P2), mz = z_of(P2);
 
     /* The nearest enemy, rows counting double (walking up and down is slow). */
     uint32_t target = 0;
     int best = 1 << 30, crowd = 0;
-    for (uint32_t o = FIRST_OTHER; o < END_OTHER; o += SLOT) {
+    for (uint32_t o = L.first_other; o < L.end_other; o += L.slot) {
         if (!enemy(o)) continue;
         int dx = x_of(o) - mx, dz = z_of(o) - mz;
         int d = (dx < 0 ? -dx : dx) + 2 * (dz < 0 ? -dz : dz);
@@ -72,7 +154,6 @@ uint16_t ai_pad(void) {
         if (d < best) { best = d; target = o; }
     }
 
-    uint16_t pad = 0;
     int want_x, want_z;
     if (target) {
         int tx = x_of(target), tz = z_of(target);
@@ -86,8 +167,7 @@ uint16_t ai_pad(void) {
             int phase = frame % 8;
             if (phase == 0) pad |= dx < 0 ? PAD_LEFT : PAD_RIGHT;
             else if (phase < 4) pad |= PAD_B;
-            /* In trouble: the special clears the screen. */
-            if (peek16(P2 + 0x32) < 0x14 && crowd >= 2 && peek8(SPECIALS2) && !special_wait) {
+            if (special_now(crowd)) {
                 pad = PAD_A;
                 special_wait = 600;
             }
@@ -97,17 +177,20 @@ uint16_t ai_pad(void) {
         }
     } else {
         /* Nothing to fight: keep up with player 1, behind and on another row, out of the
-         * way of his punches (in two-player games they hit each other). The street's rows
-         * run from about 16 to 110. */
+         * way of his punches (in two-player games they hit each other). */
         int px = x_of(P1), pz = z_of(P1);
         want_x = mx <= px ? px - FOLLOW_X : px + FOLLOW_X;
-        want_z = pz >= 60 ? pz - FOLLOW_Z : pz + FOLLOW_Z;
+#if GAME_SOR >= 2
+        want_z = pz >= 0xC0 ? pz - FOLLOW_Z : pz + FOLLOW_Z;   /* rows about $A0-$E8 */
+#else
+        want_z = pz >= 60 ? pz - FOLLOW_Z : pz + FOLLOW_Z;     /* rows about 16-110 */
+#endif
         int dx = want_x - mx, dz = want_z - mz;
         if ((dx < 0 ? -dx : dx) < 24 && (dz < 0 ? -dz : dz) < 6) { stuck = 0; return 0; }
     }
 
-    /* Stay on screen: the camera follows player 1 only. */
-    int cam = mx - msx;
+    /* Stay on screen: the camera follows player 1. */
+    int cam = camera();
     if (want_x < cam + 16) want_x = cam + 16;
     if (want_x > cam + 304) want_x = cam + 304;
 

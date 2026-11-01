@@ -1,9 +1,10 @@
 // Traces the ROM and writes:
-//   build/disasm/game.asm  - readable listing of discovered code
-//   build/analysis.json            - blocks, functions and unresolved jumps (input to the recompiler)
+//   build/<game>/game.asm       - readable listing of discovered code
+//   build/<game>/analysis.json  - blocks, functions and unresolved jumps
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT, loadRom } from './lib/rom.mjs';
+import { loadRom } from './lib/rom.mjs';
+import { BUILD_DIR } from './lib/game.mjs';
 import { format } from './lib/m68k.mjs';
 import { trace } from './lib/trace.mjs';
 import { loadExtraEntries } from './lib/inputs.mjs';
@@ -27,12 +28,12 @@ for (const b of t.blocks) {
   }
 }
 
-const dir = join(ROOT, 'build', 'disasm');
+const dir = BUILD_DIR;
 mkdirSync(dir, { recursive: true });
 writeFileSync(join(dir, 'game.asm'), out.join('\n') + '\n');
 
 const codeBytes = t.blocks.reduce((n, b) => n + (b.end - b.start), 0);
-writeFileSync(join(ROOT, 'build', 'analysis.json'), JSON.stringify({
+writeFileSync(join(BUILD_DIR, 'analysis.json'), JSON.stringify({
   funcs: [...t.funcs].sort((a, b) => a - b),
   blocks: t.blocks.map((b) => ({ start: b.start, end: b.end })),
   unresolved: t.unresolved,

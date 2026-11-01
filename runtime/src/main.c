@@ -176,9 +176,17 @@ static HdPost finishing(int scale, float t) {
         p.world = (layer[0x27] & 1) && !vdp_opts.mask_sides;
         p.cam_x = (float)(int16_t)(layer[0] << 8 | layer[1]);
         p.cam_y = (float)(int16_t)(layer[4] << 8 | layer[5]);
-    } else {
+    } else if (GAME_SOR == 1) {
         p.world = (bus.ram[0xFF18] & 3) && !bus.ram[0xFF2A] && !vdp_opts.mask_sides;
         p.cam_x = (float)(int16_t)(bus.ram[0xE002] << 8 | bus.ram[0xE003]);
+    } else if (GAME_SOR == 2) {          /* in a round (player 1 in play), not the demo */
+        uint16_t s = (uint16_t)(bus.ram[0xEF00] << 8 | bus.ram[0xEF01]);
+        p.world = s && s < 0x30 && !bus.ram[0xFD10] && !vdp_opts.mask_sides;
+        p.cam_x = (float)-(int16_t)(bus.ram[0xFC22] << 8 | bus.ram[0xFC23]);
+    } else if (GAME_SOR == 3) {
+        uint16_t s = (uint16_t)(bus.ram[0xDF00] << 8 | bus.ram[0xDF01]);
+        p.world = s && s != 0x5C && s != 0x5E && s != 0x5A && !bus.ram[0xFB13] && !vdp_opts.mask_sides;
+        p.cam_x = (float)(int16_t)(bus.ram[0xF710] << 8 | bus.ram[0xF711]);
     }
     return p;
 }

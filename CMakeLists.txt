@@ -1,11 +1,30 @@
 cmake_minimum_required(VERSION 3.20)
-project(StreetsOfRageRecomp C CXX)
+project(StreetsOfRageCollection C CXX)
 set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_C_STANDARD 11)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
+
+# ---- The game: games/<GAME>/ ---------------------------------------------------
+# Configure once per game, each in its own folder:
+#   cmake -S . -B build/<game> -G Ninja -DGAME=<game> -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+if(NOT GAME)
+  file(GLOB GAME_DIRS RELATIVE ${CMAKE_SOURCE_DIR}/games ${CMAKE_SOURCE_DIR}/games/*)
+  message(FATAL_ERROR "Pass -DGAME=<name>, one of: ${GAME_DIRS}")
+endif()
+set(GAME_DIR ${CMAKE_SOURCE_DIR}/games/${GAME})
+set(GAME_GEN ${CMAKE_SOURCE_DIR}/generated/${GAME})
+set(GAME_CONFIG ${CMAKE_SOURCE_DIR}/build/${GAME}/config)
+set(GAME_ENV ${CMAKE_COMMAND} -E env GAME=${GAME})
+execute_process(COMMAND ${GAME_ENV} node ${CMAKE_SOURCE_DIR}/tools/game-config.mjs
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} RESULT_VARIABLE GAME_CONFIG_FAILED)
+if(GAME_CONFIG_FAILED)
+  message(FATAL_ERROR "tools/game-config.mjs failed for ${GAME}")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${GAME_DIR}/game.json)
+include(${GAME_CONFIG}/game.cmake)
 
 # ---- SDL2 (static) ----------------------------------------------------------
 set(SDL_SHARED OFF CACHE BOOL "" FORCE)
@@ -27,7 +46,7 @@ add_library(musashi STATIC
   ${MUSASHI_DIR}/m68kdasm.c
   ${MUSASHI_DIR}/softfloat/softfloat.c
   ${MUSASHI_GEN}/m68kops.c)
-target_include_directories(musashi PUBLIC ${MUSASHI_DIR} ${MUSASHI_GEN} ${CMAKE_SOURCE_DIR}/runtime/src)
+target_include_directories(musashi PUBLIC ${MUSASHI_DIR} ${MUSASHI_GEN} ${CMAKE_SOURCE_DIR}/runtime/src ${GAME_CONFIG})
 target_compile_definitions(musashi PUBLIC "MUSASHI_CNF=\"musashi_conf.h\"")
 target_compile_options(musashi PRIVATE -w)
 
@@ -41,31 +60,31 @@ target_include_directories(ymfm PUBLIC third_party/ymfm/src)
 target_compile_options(ymfm PRIVATE -w)
 
 # ---- Recompiled game code (generated from the user's ROM) -------------------------
-set(RECOMP_SOURCES ${CMAKE_SOURCE_DIR}/generated/recomp_table.c)
+set(RECOMP_SOURCES ${GAME_GEN}/recomp_table.c)
 foreach(i RANGE 0 15)
   if(i LESS 10)
     set(id "0${i}")
   else()
     set(id "${i}")
   endif()
-  list(APPEND RECOMP_SOURCES ${CMAKE_SOURCE_DIR}/generated/recomp_${id}.c)
+  list(APPEND RECOMP_SOURCES ${GAME_GEN}/recomp_${id}.c)
 endforeach()
 file(GLOB RECOMP_TOOLS ${CMAKE_SOURCE_DIR}/tools/*.mjs ${CMAKE_SOURCE_DIR}/tools/lib/*.mjs)
 add_custom_command(
   OUTPUT ${RECOMP_SOURCES}
-  COMMAND node ${CMAKE_SOURCE_DIR}/tools/recomp.mjs
-  DEPENDS ${RECOMP_TOOLS} ${CMAKE_SOURCE_DIR}/config/patches.json ${CMAKE_SOURCE_DIR}/config/entries.json
+  COMMAND ${GAME_ENV} node ${CMAKE_SOURCE_DIR}/tools/recomp.mjs
+  DEPENDS ${RECOMP_TOOLS} ${GAME_DIR}/game.json ${GAME_DIR}/patches.json
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   COMMENT "Recompiling the ROM to C")
 add_library(recomp STATIC ${RECOMP_SOURCES})
-target_include_directories(recomp PRIVATE runtime/src)
+target_include_directories(recomp PRIVATE runtime/src ${GAME_CONFIG})
 target_link_libraries(recomp PRIVATE musashi)
 target_compile_options(recomp PRIVATE -O1 -w)
 
 # ---- Runtime ------------------------------------------------------------------
 # WIN32: a windowed program, so no console window opens with the game (main.c attaches
 # to the terminal it was started from, for the test output).
-add_executable(StreetsOfRage WIN32
+add_executable(${GAME_EXE} WIN32
   runtime/src/main.c
   runtime/src/console.c
   runtime/src/machine.c
@@ -87,8 +106,6 @@ add_executable(StreetsOfRage WIN32
   runtime/src/filter.c
   runtime/src/input.c
   runtime/src/pads.c
-  runtime/src/ai.c
-  runtime/src/fighters.c
   runtime/src/combat.c
   runtime/src/automap.c
   runtime/src/controls.c
@@ -101,10 +118,12 @@ add_executable(StreetsOfRage WIN32
   runtime/src/io.c
   runtime/src/settings.c
   runtime/src/z80bus.c
+  runtime/src/ai.c
+  runtime/src/fighters.c
   runtime/src/sound.cpp)
-target_link_libraries(StreetsOfRage PRIVATE recomp musashi z80core ymfm SDL2::SDL2main SDL2::SDL2-static)
-target_compile_options(StreetsOfRage PRIVATE -Wall -Wextra -Wno-unused-parameter)
+target_link_libraries(${GAME_EXE} PRIVATE recomp musashi z80core ymfm SDL2::SDL2main SDL2::SDL2-static)
+target_compile_options(${GAME_EXE} PRIVATE -Wall -Wextra -Wno-unused-parameter)
 if(WIN32)
-  target_link_options(StreetsOfRage PRIVATE -static)
-  target_link_libraries(StreetsOfRage PRIVATE gdi32 comdlg32)
+  target_link_options(${GAME_EXE} PRIVATE -static)
+  target_link_libraries(${GAME_EXE} PRIVATE gdi32 comdlg32)
 endif()

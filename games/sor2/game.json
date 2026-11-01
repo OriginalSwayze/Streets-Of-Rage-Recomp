@@ -1,0 +1,24 @@
+{
+  "title": "Streets of Rage 2",
+  "exe": "StreetsOfRage2",
+  "series": 2,
+  "rom": {
+    "name": "Streets of Rage 2 (USA)",
+    "serial": "GM MK-1054 -00",
+    "size": 2097152,
+    "sha1": "8b656eec9692d88bbbb84787142aa732b44ce0be",
+    "headerChecksum": "7447"
+  },
+  "features": {
+    "ram": false,
+    "widescreen": false,
+    "launcher": false,
+    "wideView": true,
+    "smps": false,
+    "fighters": false
+  },
+  "sram": {
+    "present": false,
+    "always": false
+  }
+}

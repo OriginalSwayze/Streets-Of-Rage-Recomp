@@ -1,10 +1,11 @@
 // Generates C for every traced block:
-//   generated/recomp_00.c .. recomp_15.c  - block functions plus a per-file table
-//   generated/recomp_table.c             - collects the per-file tables
+//   generated/<game>/recomp_00.c .. recomp_15.c  - block functions plus a per-file table
+//   generated/<game>/recomp_table.c             - collects the per-file tables
 // The file count is fixed so the build system knows the outputs in advance.
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT, loadRom } from './lib/rom.mjs';
+import { loadRom } from './lib/rom.mjs';
+import { GEN_DIR } from './lib/game.mjs';
 import { trace } from './lib/trace.mjs';
 import { loadExtraEntries } from './lib/inputs.mjs';
 import { genBlock } from './lib/codegen.mjs';
@@ -15,7 +16,7 @@ const rom = loadRom();
 const t = trace(rom, loadExtraEntries());
 const parts = t.blocks.flatMap((b) => genBlock(rom, b));
 
-const outDir = join(ROOT, 'generated');
+const outDir = GEN_DIR;
 mkdirSync(outDir, { recursive: true });
 
 // Only rewrite files whose content changed, so the C build stays incremental.

@@ -5,7 +5,11 @@
  * attacker's power from it (below 0 is dead). Anything that hits back (+$34) is an enemy.
  *
  * Numbers and bars live in world coordinates (picture positions plus the camera at
- * $FFE002), over the enemy's feet (its screen position, +$28/+$2C). */
+ * $FFE002), over the enemy's feet (its screen position, +$28/+$2C).
+ *
+ * Streets of Rage 2 and 3 (docs/ram-sor2.md, docs/ram-sor3.md): $100-byte slots, health at
+ * +$80 (a word) or +$6C (a byte), 0 being dead; the feet at the world X (+$02) and depth
+ * (+$06). */
 #include "combat.h"
 
 #include <math.h>
@@ -17,12 +21,54 @@
 #include "pads.h"
 #include "settings.h"
 
+#if GAME_SOR == 3
+#define OBJECTS   0xFFDF00
+#define OBJ_SIZE  0x100
+#define SLOTS     16                    /* to $FFEEFF */
+#elif GAME_SOR == 2
+#define OBJECTS   0xFFEF00
+#define OBJ_SIZE  0x100
+#define SLOTS     11                    /* to $FFF9FF */
+#else
 #define OBJECTS   0xFFB800
 #define OBJ_SIZE  0x80
+#define SLOTS     32
+#endif
 #define FIRST_ENEMY 2
-#define SLOTS 32
 
 static uint16_t peek16(uint32_t a) { a &= 0xFFFF; return (uint16_t)(bus.ram[a] << 8 | bus.ram[(a + 1) & 0xFFFF]); }
+
+/* An object's health, signed: Streets of Rage's is dead below 0, the others' at 0. */
+static int16_t health(uint32_t a) {
+    if (GAME_SOR == 3) return bus.ram[(a + 0x6C) & 0xFFFF];
+    return (int16_t)peek16(a + (GAME_SOR == 2 ? 0x80 : 0x32));
+}
+static bool dead_at(int16_t raw) { return GAME_SOR >= 2 ? raw <= 0 : raw < 0; }
+
+/* What is in a slot (0: nothing), and whether it fights. */
+static uint16_t kind(uint32_t a) {
+    if (GAME_SOR >= 2) { uint16_t s = peek16(a); return s >= 0x30 ? 0 : s ? 1 : 0; }   /* $3x-$5x: a player not in */
+    return bus.ram[a & 0xFFFF];         /* the kind of object is the first byte */
+}
+static bool fights(uint32_t a) {
+    if (GAME_SOR == 2) {                /* enemies carry the name the HUD shows ("GALSIA", "Y.SIGNAL") */
+        uint8_t c0 = bus.ram[(a + 0x78) & 0xFFFF], c1 = bus.ram[(a + 0x79) & 0xFFFF];
+        return c0 >= 'A' && c0 <= 'Z' && ((c1 >= 'A' && c1 <= 'Z') || c1 == '.');
+    }
+    if (GAME_SOR == 3) return bus.ram[(a + 0x6D) & 0xFFFF] != 0;     /* it has a full health */
+    return bus.ram[(a + 0x34) & 0xFFFF] != 0;                        /* it hits back (attack power) */
+}
+
+/* Its feet, in world coordinates. */
+static void feet(uint32_t a, const HdFrame *f, float cam_x, float cam_y, float *x, float *y) {
+    if (GAME_SOR >= 2) {
+        *x = (float)(int16_t)peek16(a + 0x02) + f->extra;
+        *y = (float)(int16_t)peek16(a + 0x06) - 4 + cam_y;
+        return;
+    }
+    *x = (float)((int16_t)peek16(a + 0x28) - 0x80) + f->extra + cam_x;
+    *y = (float)((int16_t)peek16(a + 0x2C) - 0x80) + cam_y;
+}
 
 /* ---- What each slot held last frame ---------------------------------------------------- */
 typedef struct {
@@ -73,50 +119,51 @@ void combat_frame(const HdFrame *f, bool world, float cam_x, float cam_y, bool l
         i++;
     }
     if (!world) { have_last = false; return; }
-    uint16_t p1x = peek16(OBJECTS + 0x10), p1z = peek16(OBJECTS + 0x14);
+    uint8_t xo = GAME_SOR >= 2 ? 0x02 : 0x10, zo = GAME_SOR >= 2 ? 0x06 : 0x14;
+    uint16_t p1x = peek16(OBJECTS + xo), p1z = peek16(OBJECTS + zo);
     for (int i = FIRST_ENEMY; i < SLOTS; i++) {
         Slot *s = &slots[i];
         uint32_t a = OBJECTS + (uint32_t)i * OBJ_SIZE;
-        /* The kind of object is the first byte; the second changes with what it does. */
-        uint16_t type = bus.ram[a & 0xFFFF];
-        int16_t raw = (int16_t)peek16(a + 0x32);
+        uint16_t type = kind(a);
+        int16_t raw = health(a);
         uint16_t hp = raw < 0 ? 0 : (uint16_t)raw;
-        /* Something that fights: it hits back (attack power). Items and effects do not. */
-        bool enemy = type && (s->enemy || bus.ram[(a + 0x34) & 0xFFFF]);
-        /* Its feet are at its screen position; the body stands about 64 pixels above. */
-        float x = (float)((int16_t)peek16(a + 0x28) - 0x80) + f->extra + cam_x;
-        float y = (float)((int16_t)peek16(a + 0x2C) - 0x80) + cam_y;
-        s->x0 = x - 12; s->x1 = x + 12; s->y0 = y - 64; s->y1 = y; s->boxed = true;
+        /* Something that fights. Items and effects do not. */
+        bool enemy = type && (s->enemy || fights(a));
+        /* The body stands about 64 pixels above its feet (84 in the later games' bigger sprites). */
+        float x, y;
+        feet(a, f, cam_x, cam_y, &x, &y);
+        s->x0 = x - 12; s->x1 = x + 12; s->y0 = y - (GAME_SOR >= 2 ? 84 : 64); s->y1 = y; s->boxed = true;
         if (!have_last || type != s->type || !enemy || !s->enemy) {
             s->enemy = enemy;
             /* A new object in this slot (or none): its health now is its full health. */
-            s->type = type; s->hp = s->max = hp; s->dead = raw < 0; s->bar_age = -1; s->shown = 1;
+            s->type = type; s->hp = s->max = hp; s->dead = dead_at(raw); s->bar_age = -1; s->shown = 1;
             continue;
         }
         if (hp > s->max) s->max = hp;
-        bool kill = raw < 0 && !s->dead;
+        bool kill = dead_at(raw) && !s->dead;
         if (hp < s->hp || kill) {
-            int d = s->hp - hp + (kill ? 1 : 0);
+            int d = s->hp - hp + (kill && GAME_SOR < 2 ? 1 : 0);
             if (settings.combat_info) add_number(s, d, kill && d >= s->max);
             if (live) {
                 total.dealt += (uint32_t)d;
                 if ((uint32_t)d > total.biggest) total.biggest = (uint32_t)d;
                 if (kill) { total.defeated++; session_defeated++; }
                 /* Felt when it is likely player 1's hit: the enemy is next to him. */
-                int dx = (int)peek16(a + 0x10) - p1x, dz = (int)peek16(a + 0x14) - p1z;
+                int dx = (int)peek16(a + xo) - p1x, dz = (int)peek16(a + zo) - p1z;
                 if (dx > -64 && dx < 64 && dz > -12 && dz < 12) { if (kill) rumble(.45f, .7f, 150); else rumble(.2f, .45f, 80); }
             }
             s->bar_age = 0;
         } else if (s->bar_age >= 0 && ++s->bar_age > 150) s->bar_age = -1;
-        s->dead = raw < 0;
+        s->dead = dead_at(raw);
         float ratio = s->max ? (float)hp / s->max : 0;
         s->shown = s->shown > ratio ? fmaxf(ratio, s->shown - .012f) : ratio;
         s->hp = hp;
     }
     /* Player 1 hurt, and the specials called (by either player). */
-    uint16_t hp_now = peek16(OBJECTS + 0x32);
-    uint8_t specials_now = bus.ram[0xFF21] + bus.ram[0xFF24];
-    if (have_last && live && peek16(OBJECTS) && !(hp_now & 0x8000)) {
+    int16_t raw_now = health(OBJECTS);
+    uint16_t hp_now = raw_now < 0 ? 0 : (uint16_t)raw_now;
+    uint8_t specials_now = GAME_SOR == 1 ? bus.ram[0xFF21] + bus.ram[0xFF24] : 0;   /* the police car */
+    if (have_last && live && kind(OBJECTS) && raw_now >= 0) {
         if (hp_now < player_hp) { total.taken += player_hp - hp_now; total.hits_taken++; rumble(.85f, .5f, 220); }
         if (specials_now < specials) { total.summons++; rumble(.6f, .3f, 400); }
     }
