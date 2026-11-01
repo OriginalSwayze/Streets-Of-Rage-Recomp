@@ -573,6 +573,9 @@ bool launcher_make_menu_sounds(const char *path) {
         ost_start();
         static const uint16_t sfx[4] = { SFX_CURSOR, SFX_CONFIRM, SFX_CANCEL, SFX_ERROR };
         static int16_t pcm[48000 * 2];
+        uint32_t magic = MENU_SOUNDS_MAGIC;
+        fwrite(&magic, 4, 1, f);
+        fwrite(sfx, 2, 4, f);           /* which effects: a cache made for others is made again */
         for (int k = 0; k < 4; k++) {
             ost_command(OST_STOP);
             for (int i = 0; i < 20; i++) { ost_frame(); machine_run_frame(NULL, 320); }

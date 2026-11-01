@@ -23,10 +23,11 @@
 #elif GAME_SOR == 2
 /* Streets of Rage 2: its own driver at $040000 (requests $01xx songs, $02xx-$07xx effects). */
 #define OST_SONGS 26
-#define SFX_CURSOR  0x014C              /* short and soft: 8 frames (--sound-probe ... 0) */
+/* Effects only, $02xx-$04xx ($01xx is the music's class, and OST_PLAY's): */
+#define SFX_CURSOR  0x0424              /* short and soft: 7 frames (--sound-probe ... 0) */
 #define SFX_CONFIRM 0x0429              /* the money pickup's chime */
-#define SFX_CANCEL  0x0124
-#define SFX_ERROR   0x0122
+#define SFX_CANCEL  0x0420
+#define SFX_ERROR   0x0422
 #elif GAME_SMPS
 /* Streets of Rage: Sega's SMPS 68k driver (songs $81-$91, effects $A0-$DF). */
 #define OST_SONGS 16
@@ -42,6 +43,9 @@
 #define SFX_CANCEL  0x03AA
 #define SFX_ERROR   0x0253
 #endif
+
+/* menu_sounds.cache: this tag and the four effects' numbers, then each one's sound. */
+#define MENU_SOUNDS_MAGIC 0x444E534Du   /* "MSND" */
 
 /* The song's name in the player, or NULL to number it. */
 const char *ost_song_name(int song);

@@ -163,12 +163,22 @@ bool motion_entry_owner(int i, uint32_t *object, uint16_t *kind) {
 }
 
 /* Games whose sprite routines are not followed (the Streets of Rage games, updating every
- * frame): each sprite is matched to itself in the previous frame, a sprite with the same
- * tile and size, the nearest if there are several (enemies of one kind share their tiles),
- * and moves as far as it went. A piece that has no match (its animation frame changed
+ * frame): each sprite is matched to itself in the previous frame, a sprite of the same size
+ * showing the same picture, the nearest if there are several (enemies of one kind look
+ * alike), and moves as far as it went. By picture, not tile number: the fighters' tiles are
+ * loaded again every frame, so one tile number holds a different piece from frame to frame. A piece that has no match (its animation frame changed
  * shape) moves with the nearest piece that has one, so a fighter's pieces stay together. */
+static uint32_t picture_of(const HdSprite *c) {
+    uint32_t h = 2166136261u;
+    for (int y = 0; y < c->h; y++)
+        for (int x = 0; x < c->w; x++) h = (h ^ (c->px[y * 32 + x] & 0xFFFFFF)) * 16777619u;
+    return h;
+}
+
 static unsigned frame_moves(const HdFrame *f, int dx[80], int dy[80], int *owned) {
-    static struct { bool drawn; int x, y, w, h; uint16_t tile; } prev[80];
+    static struct { bool drawn; int x, y, w, h; uint32_t picture; } prev[80];
+    uint32_t pic[80];
+    for (int i = 0; i < 80; i++) pic[i] = f->sprites[i].drawn ? picture_of(&f->sprites[i]) : 0;
     static unsigned serial;
     bool matched[80] = { false };
     for (int i = 0; i < 80; i++) {
@@ -176,7 +186,7 @@ static unsigned frame_moves(const HdFrame *f, int dx[80], int dy[80], int *owned
         if (!c->drawn) continue;
         int best = MAX_JUMP * 2 + 1;
         for (int j = 0; j < 80; j++) {
-            if (!prev[j].drawn || prev[j].tile != (c->attr & 0x7FF) || prev[j].w != c->w || prev[j].h != c->h) continue;
+            if (!prev[j].drawn || prev[j].picture != pic[i] || prev[j].w != c->w || prev[j].h != c->h) continue;
             int mx = c->x - prev[j].x, my = c->y - prev[j].y, d = abs(mx) + abs(my);
             if (abs(mx) <= MAX_JUMP && abs(my) <= MAX_JUMP && d < best) { best = d; dx[i] = mx; dy[i] = my; matched[i] = true; }
         }
@@ -197,7 +207,7 @@ static unsigned frame_moves(const HdFrame *f, int dx[80], int dy[80], int *owned
         const HdSprite *c = &f->sprites[i];
         prev[i].drawn = c->drawn;
         prev[i].x = c->x; prev[i].y = c->y; prev[i].w = c->w; prev[i].h = c->h;
-        prev[i].tile = c->attr & 0x7FF;
+        prev[i].picture = pic[i];
     }
     return ++serial;
 }

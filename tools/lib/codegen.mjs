@@ -84,6 +84,26 @@ const REPLACED = new Map([
       ? `{ int32_t lim = ${K} - patch_sor_wide, least = ${K} - (int16_t)rd16(0xFF${cam}u); if (lim < least) lim = least; D(${n}) = (uint32_t)lim << 16; logicl(D(${n})); }`
       : `{ D(${n}) = (uint32_t)(${K} + patch_sor_wide) << 16; logicl(D(${n})); }`]]];
   }),
+  // Streets of Rage 3's plane drawers (sorWideEdge3): `subq.w #8,d6` on a plane's camera X.
+  // "col FLAG" is a column drawer's: when the flag byte's bit 7 says the camera moves left,
+  // the column goes patch_sor_wide further left too. "row" is a row drawer's start, moved
+  // left by patch_sor_wide, but never before the level's start.
+  ...Object.entries(PATCHES.sorWideEdge3 ?? {}).map(([pc, spec]) => {
+    const [kind, flag] = spec.split(' ');
+    return [parseInt(pc, 16), ['subq.w	#8,d6', [kind === 'col'
+      ? `{ uint32_t d = 8u + ((rd8(0xFF${flag}u) & 0x80) ? (uint32_t)patch_sor_wide : 0u); setw(&D(6), subw(d, D(6) & 0xFFFFu)); }`
+      : `{ int32_t x = (int16_t)(D(6) & 0xFFFFu) - 8, w = patch_sor_wide < x ? patch_sor_wide : (x > 0 ? x : 0); setw(&D(6), subw((uint32_t)(8 + w), D(6) & 0xFFFFu)); }`]]];
+  }),
+  // A plane's horizontal scroll (minus the camera) read by a routine that draws from the
+  // screen's left edge (sorWideLoad): "dN ADDR" is move.w ($FFFF<ADDR>).w,dN, loaded as if
+  // the camera were patch_sor_wide further left (never left of the level's start), so the
+  // routine starts at the new edge. Streets of Rage 2's row drawer (sub_003CCA) fills the
+  // plane from there.
+  ...Object.entries(PATCHES.sorWideLoad ?? {}).map(([pc, spec]) => {
+    const [reg, addr] = spec.split(' ');
+    return [parseInt(pc, 16), [`move.w	($FFFF${addr}).w,${reg}`,
+      [`{ int32_t s = (int16_t)rd16(0xFF${addr}u), w = patch_sor_wide < -s ? patch_sor_wide : (-s > 0 ? -s : 0); uint32_t v = (uint32_t)(s + w) & 0xFFFFu; setw(&D(${reg[1]}), v); logicw(v); }`]]];
+  }),
   [parseInt(PATCHES.sorCull?.loPc, 16), ['cmpi.w	#$60,d0', ['cmpw(patch_sor_x_lo, D(0) & 0xFFFFu);']]],
   [parseInt(PATCHES.sorCull?.hiPc, 16), ['cmpi.w	#$1E0,d0', ['cmpw(patch_sor_x_hi, D(0) & 0xFFFFu);']]],
   // Streets of Rage edges (sorWide): the original constant, widened by patch_sor_wide.

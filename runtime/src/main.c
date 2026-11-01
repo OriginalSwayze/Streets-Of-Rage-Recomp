@@ -6,6 +6,7 @@
 #include "settings.h"
 #include "png.h"
 #include "launcher.h"
+#include "ost.h"
 #include "cheats.h"
 #include "hd.h"
 #include "motion.h"
@@ -214,16 +215,26 @@ static int16_t *menu_pcm[4];
 static int menu_pcm_frames[4];
 static SDL_AudioDeviceID menu_audio;
 
+static void read_menu_sounds(FILE *f);
+
 static void load_menu_sounds(void) {
     if (!GAME_LAUNCHER) return;         /* made by the launcher from the game's sound driver */
     char path[1100];
     path_in_base(path, sizeof path, "menu_sounds.cache");
-    FILE *f = fopen(path, "rb");
-    if (!f) {
-        if (!launcher_make_menu_sounds(path)) return;
-        f = fopen(path, "rb");
-        if (!f) return;
+    static const uint16_t want[4] = { SFX_CURSOR, SFX_CONFIRM, SFX_CANCEL, SFX_ERROR };
+    for (int attempt = 0; attempt < 2; attempt++) {
+        FILE *f = fopen(path, "rb");
+        uint32_t magic = 0;
+        uint16_t ids[4] = { 0 };
+        bool current = f && fread(&magic, 4, 1, f) == 1 && magic == MENU_SOUNDS_MAGIC && fread(ids, 2, 4, f) == 4 &&
+                       !memcmp(ids, want, sizeof want);
+        if (current) { read_menu_sounds(f); fclose(f); return; }
+        if (f) fclose(f);
+        if (attempt || !launcher_make_menu_sounds(path)) return;   /* missing, old or for other effects */
     }
+}
+
+static void read_menu_sounds(FILE *f) {
     for (int k = 0; k < 4; k++) {
         int n = 0;
         if (fread(&n, 4, 1, f) != 1 || n <= 0 || n > 48000) break;
@@ -231,7 +242,6 @@ static void load_menu_sounds(void) {
         if (!menu_pcm[k] || fread(menu_pcm[k], 4, (size_t)n, f) != (size_t)n) { free(menu_pcm[k]); menu_pcm[k] = NULL; break; }
         menu_pcm_frames[k] = n;
     }
-    fclose(f);
 }
 
 static void play_menu_sound(int kind) {
