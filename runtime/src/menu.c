@@ -104,7 +104,7 @@ static const char *about(const Item *it) {
     switch (it->id) {
     case OPT_WIDESCREEN: return "Shows more of the street at the sides, and the enemies walking in from beyond the old edges. Off is the original 4:3 picture.";
     case OPT_ASPECT: return "The shape of the widescreen picture.";
-    case OPT_INTEGER: return "Scales by whole numbers only, so every game pixel is the same size (black borders around the picture).";
+    case OPT_INTEGER: return "Scales by whole numbers only, so every game pixel is the same size. That leaves black borders on most screens: on a 1080p screen the picture is 4×, with a band all round. Off, the picture fills the screen.";
     case OPT_INTERNAL: return "Draws each layer at a higher resolution, rounding the edges of the pixel art. Native is the original look; 6x (2544 x 1344) is for 1440p and 4K screens and needs a fast CPU.";
     case OPT_SCALER: return "How the layers are scaled for the internal resolution: Edge rounds corners, Smooth (xBR) follows curves and slopes, Sharp keeps every pixel square, exactly as drawn. Edge and Smooth leave dither patterns crisp.";
     case OPT_FILTER: return "Scanlines, a curved CRT tube or an LCD grid laid over the picture, like the screens of the time.";

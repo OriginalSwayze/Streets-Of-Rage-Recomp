@@ -720,7 +720,7 @@ static const char *const tab_names[TABS] = { "DISPLAY", "EFFECTS", "GAME", "MUSI
 static const Row tab_rows[TABS][9] = {
     { { ROW_OPTION, "Widescreen", OPT_WIDESCREEN, "More of the street at the sides; enemies show beyond the old edges." },
       { ROW_OPTION, "Aspect ratio", OPT_ASPECT, "The shape of the widescreen picture." },
-      { ROW_OPTION, "Integer scaling", OPT_INTEGER, "Whole-number scaling only: every pixel the same size." },
+      { ROW_OPTION, "Integer scaling", OPT_INTEGER, "Whole numbers only, every pixel the same size: borders on most screens (4× on 1080p). Off fills the screen." },
       { ROW_OPTION, "Window", OPT_WINDOW_ALL, "Fullscreen, or a window of this many times the game's size." },
       { ROW_OPTION, "Filter", OPT_FILTER, "Scanlines, a curved CRT tube or an LCD grid over the picture." },
       { ROW_OPTION, "Sharpening", OPT_SHARPEN, "Crisper edges after scaling, without halos (contrast-adaptive)." },

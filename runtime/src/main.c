@@ -275,6 +275,19 @@ static SDL_Rect display_rect(int win_w, int win_h) {
     return r;
 }
 
+/* The window for Window N×: N times the game's size, or the largest whole N that fits the
+ * screen's usable area (without the taskbar, and leaving room for the title bar), so a big
+ * N on a small screen is never cut off. */
+static void window_size(int *w, int *h) {
+    SDL_Rect area;
+    int room_w = 1 << 30, room_h = 1 << 30;
+    if (SDL_GetDisplayUsableBounds(0, &area) == 0) { room_w = area.w; room_h = area.h - 40; }
+    int s = settings.window_scale;
+    while (s > 1 && (frame_width() * s * 15 / 14 > room_w || 224 * s > room_h)) s--;
+    *w = frame_width() * s * 15 / 14;
+    *h = 224 * s;
+}
+
 void console_attach(void);           /* console.c */
 
 int main(int argc, char **argv) {
@@ -865,8 +878,9 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    SDL_Window *win = SDL_CreateWindow(GAME_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                                       frame_width() * settings.window_scale * 15 / 14, 224 * settings.window_scale,
+    int start_w, start_h;
+    window_size(&start_w, &start_h);
+    SDL_Window *win = SDL_CreateWindow(GAME_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, start_w, start_h,
                                        SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI |
                                        (settings.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
     SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
