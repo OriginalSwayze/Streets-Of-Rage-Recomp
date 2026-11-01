@@ -84,6 +84,19 @@ const REPLACED = new Map([
       ? `{ int32_t lim = ${K} - patch_sor_wide, least = ${K} - (int16_t)rd16(0xFF${cam}u); if (lim < least) lim = least; D(${n}) = (uint32_t)lim << 16; logicl(D(${n})); }`
       : `{ D(${n}) = (uint32_t)(${K} + patch_sor_wide) << 16; logicl(D(${n})); }`]]];
   }),
+  // Streets of Rage 2's row drawer draws 44 cells (352 pixels, the screen and a margin) from
+  // its start: (32 - c) from the first map block, then c + 12, or 32 and c - 20 when c > 20.
+  // In widescreen it starts patch_sor_wide further left (sorWideLoad) and must reach as far
+  // past the right edge, so its rows are E = 2 * patch_sor_wide / 8 cells longer (at most 20,
+  // the plane's 64): "cmp" is its cmpi.w #$14,d2, "add" its addi.w #$B,d2, "sub" its
+  // subi.w #$15,d2.
+  ...Object.entries(PATCHES.sorWideRowLen ?? {}).map(([pc, kind]) => {
+    const E = '((2u * (uint32_t)patch_sor_wide + 7u) / 8u > 20u ? 20u : (2u * (uint32_t)patch_sor_wide + 7u) / 8u)';
+    const [text, c] = kind === 'cmp' ? ['cmpi.w	#$14,d2', `cmpw((0x14u - ${E}) & 0xFFFFu, D(2) & 0xFFFFu);`]
+      : kind === 'add' ? ['addi.w	#$B,d2', `setw(&D(2), addw((0xBu + ${E}) & 0xFFFFu, D(2) & 0xFFFFu));`]
+      : ['subi.w	#$15,d2', `setw(&D(2), subw((0x15u - ${E}) & 0xFFFFu, D(2) & 0xFFFFu));`];
+    return [parseInt(pc, 16), [text, [c]]];
+  }),
   // Streets of Rage 3's plane drawers (sorWideEdge3): `subq.w #8,d6` on a plane's camera X.
   // "col FLAG" is a column drawer's: when the flag byte's bit 7 says the camera moves left,
   // the column goes patch_sor_wide further left too. "row" is a row drawer's start, moved

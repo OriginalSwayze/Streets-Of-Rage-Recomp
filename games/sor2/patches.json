@@ -33,5 +33,10 @@
     "003D2A": "d1 FC46",
     "003D4E": "d1 FC46",
     "003D92": "d2 FC46"
+  },
+  "sorWideRowLen": {
+    "003DB2": "cmp",
+    "003DBA": "add",
+    "003DD6": "sub"
   }
 }

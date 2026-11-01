@@ -48,6 +48,7 @@ games/sor3/patches.json moves the screen edges out by the extra width (`patch_so
 | Patch | Where | What |
 |---|---|---|
 | `sorWideLimit` | `$0101C0`, `$01024A` | the players' limits, `$20` and `$128` pixels from the camera (the left one never before the level's start) |
+| `sorWideAdd`, `sorWideEdge3` | `$03167A`/`$03167E`, `$0318D8`/`$0318DC`; `$03171A`, `$031978` | the planes' column drawers (camera + `$148` - 8 moving right, camera - 8 moving left) and row drawers (64 cells from camera - 8), for plane B (camera `$FF8880`) and A (`$FF8890`) |
 | `sorCullList` | `$001BF4`/`$001BFA`, `$002066`/`$00206C`, `$002172`/`$002178` | sprite pieces are drawn between screen X `$60` and `$1C0` (+`$80`) |
 
 The enemies' own on-screen tests (camera + 1 to + `$130` at `$01AC22`, and others like it)

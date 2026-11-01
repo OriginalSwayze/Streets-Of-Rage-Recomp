@@ -47,4 +47,5 @@ instruction):
 | `sorWideAdd` | `$00B48A`/`$00B48E`, `$00D6D4`/`$00D6D8` | the players' limits, camera + `$10` and camera + `$130` (the left one never before the level's start) |
 | `sorWideAdd` | `$003BF8`, `$003C3A`, `$003C5A` | the background streamer, which draws the next column of the level at camera + `$150` |
 | `sorCullList` | `$020DB0`/`$020DB6`, `$021E2C`/`$021E32`, `$021F28`/`$021F2E` | sprite pieces are drawn between screen X `$60` and `$1C0` (+`$80`) |
+| `sorWideLoad`, `sorWideRowLen` | `$003CDC`, `$003D2A`, `$003D4E`, `$003D92`; `$003DB2`, `$003DBA`, `$003DD6` | the row drawer (`sub_003CCA`, as the camera moves down) draws 44 cells (352 pixels) from the camera; it starts at the new left edge and draws as many more cells |
 | `sorCullList` | `$00E236`/`$00E23E` | `sub_00E21A` creates the enemies of the level's spawn table once they are within -32 to 360 pixels of the screen |
