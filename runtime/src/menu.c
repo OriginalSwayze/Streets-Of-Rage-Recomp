@@ -37,7 +37,7 @@ static const Item tab_items[TABS][MAX_ROWS] = {
     { { ITEM_OPTION, "Widescreen", OPT_WIDESCREEN }, { ITEM_OPTION, "Aspect ratio", OPT_ASPECT },
       { ITEM_OPTION, "Integer scaling", OPT_INTEGER }, { ITEM_OPTION, "Internal resolution", OPT_INTERNAL },
       { ITEM_OPTION, "Scaler", OPT_SCALER }, { ITEM_OPTION, "Filter", OPT_FILTER },
-      { ITEM_OPTION, "Sharpening", OPT_SHARPEN }, { ITEM_OPTION, "Smooth motion", OPT_SMOOTH },
+      { ITEM_OPTION, "Sharpening", OPT_SHARPEN }, { ITEM_OPTION, "High frame rate", OPT_SMOOTH },
       { ITEM_OPTION, "Sprite flicker fix", OPT_FLICKER }, { ITEM_OPTION, "Slowdown fix", OPT_OVERCLOCK } },
     { { ITEM_OPTION, "Lighting", OPT_LIGHTING }, { ITEM_OPTION, "HDR look", OPT_HDR },
       { ITEM_OPTION, "Combat info", OPT_COMBAT }, { ITEM_OPTION, "Play timer", OPT_TIMER } },
@@ -109,7 +109,7 @@ static const char *about(const Item *it) {
     case OPT_SCALER: return "How the layers are scaled for the internal resolution: Edge rounds corners, Smooth (xBR) follows curves and slopes, Sharp keeps every pixel square, exactly as drawn. Edge and Smooth leave dither patterns crisp.";
     case OPT_FILTER: return "Scanlines, a curved CRT tube or an LCD grid laid over the picture, like the screens of the time.";
     case OPT_SHARPEN: return "Crisper edges after scaling, without halos: soft edges are sharpened, hard pixel edges are left alone.";
-    case OPT_SMOOTH: return "The game moves things 30 times a second; this draws each sprite between its moves, so motion is fluid on fast screens.";
+    case OPT_SMOOTH: return "Draws at your screen's refresh rate (120, 144 Hz or more): the scrolling and every sprite glide between the game's 60 updates. Adds about one frame of delay.";
     case OPT_FLICKER: return "Lifts the hardware's limit of sprites on one line, so crowded scenes no longer flicker.";
     case OPT_OVERCLOCK: return "Gives the console's processor more time each frame, so busy scenes no longer slow down. Music and speed stay the same.";
     case OPT_LIGHTING: return "Bright light glows into its surroundings: Soft and Bright for anything bright, Neon for the signs, lamp bulbs and lit windows of the street only (never the fighters or the HUD), with a wider glow that buzzes and now and then flickers.";

@@ -1,130 +1,126 @@
-# Streets of Rage Recomp
+# Streets of Rage Collection
 
-A native PC port of **Streets of Rage (World, Sega Genesis / Bare Knuckle)** built from your
-own ROM. No game data is included in this repository: every tool reads your ROM and checks
-its SHA-1 (`3d74dbc81f3472a5bde45bf265e636a72a314667`).
+Native PC ports of **Streets of Rage**, **Streets of Rage 2** and **Streets of Rage 3**
+(Sega Genesis / Mega Drive) in one collection, each built from your own ROM. No game data is
+included in this repository: every tool reads your ROM and checks its SHA-1.
 
-It is a static recompilation, not a decompilation: at build time the game's 68000 machine
+| Game | ROM it needs | SHA-1 |
+|---|---|---|
+| Streets of Rage | Streets of Rage (World) (also sold as Bare Knuckle) | `3d74dbc81f3472a5bde45bf265e636a72a314667` |
+| Streets of Rage 2 | Streets of Rage 2 (USA) | `8b656eec9692d88bbbb84787142aa732b44ce0be` |
+| Streets of Rage 3 | Streets of Rage 3 (USA) | `40a33dd6f9dab0aff26c7525c9b8f342482c7af6` |
+
+They are static recompilations, not decompilations: at build time each game's 68000 machine
 code is translated into C from your ROM, and anything not yet covered runs on an
-interpreter. To play it, see [Playing it](#playing-it).
+interpreter. To play, see [Playing it](#playing-it).
 
 The engine comes from [Beyond Oasis Recomp](https://github.com/OriginalSwayze/beyond-oasis-recomp):
 the recompiler, the Genesis hardware, the renderer, the pause menu, save states and rewind
-work for any cartridge. The features that read a game's own RAM or call its own code are
-switched on per game in [`runtime/src/game.h`](runtime/src/game.h); the Streets of Rage
-ones are mapped in [`docs/ram.md`](docs/ram.md).
+work for any cartridge. Each game's own addresses (its objects, health, camera, sound driver)
+are mapped in [docs/ram.md](docs/ram.md), [docs/ram-sor2.md](docs/ram-sor2.md) and
+[docs/ram-sor3.md](docs/ram-sor3.md).
 
 ## Playing it
 
-**You need your own Streets of Rage (World) ROM.** It is not included and never will be,
-and there is no ready-made .exe to download: the built game contains the game's own code,
-translated to C, so it can only be made on your PC from your copy. The builder does that
-for you:
+**You need your own ROMs.** They are not included and never will be, and there are no
+ready-made game programs to download: a built game contains the game's own code, translated
+to C, so it can only be made on your PC from your copy. Setup does that for you:
 
-1. Download `Streets-of-Rage-Recomp-<version>.zip` from [Releases](../../releases) (not
-   "Source code": that leaves out the third-party code the build needs).
-2. Unzip it somewhere with a short path, for example your Desktop.
-3. Double-click **Build Streets of Rage.bat**. If Windows asks whether to run it, choose
-   Run (or More info, then Run anyway).
-4. Pick your ROM when asked. It has to be the World release (Bare Knuckle and the USA/EU
-   cartridges are the same ROM), unchanged: the builder checks its SHA-1 and tells you if
-   it is a different one.
+1. Download `Streets-of-Rage-Collection-Setup-<version>.exe` from [Releases](../../releases)
+   and run it. If Windows warns about an unknown program, choose More info, then Run anyway.
+2. Pick the install folder (your user's Programs folder by default: no administrator
+   rights needed).
+3. Pick your ROMs: `.md`, `.bin`, `.gen` or a `.zip` with one inside. Each is checked as you
+   pick it (a ROM picked for the wrong game moves to the right one). Skip any game you do not
+   have; run Setup again later to add it.
+4. Setup downloads the build tools it needs into the install folder, unless they are already
+   on your PC: [Node.js](https://nodejs.org/), [CMake](https://cmake.org/),
+   [Ninja](https://ninja-build.org/) and [LLVM-MinGW](https://github.com/mstorsjo/llvm-mingw)
+   (Clang), about 260 MB, each from its publisher's own release and checked against a pinned
+   SHA-256. It then builds each game from its ROM (a few minutes each) and adds the
+   collection to the Start menu (and the desktop, if you like).
 
-The builder then:
+**Streets of Rage Collection** opens on the three games. Each has its own launcher, themed
+after the game, with its settings, its soundtrack and its fighters' colours; its settings,
+saves and save states live in the install folder's `games\<game>` folder. To add a game,
+rebuild, or remove the collection: Settings > Apps > Streets of Rage Collection (Modify runs
+Setup again; Uninstall can keep your saves).
 
-* downloads the build tools it needs into a `toolchain` folder next to it, after asking:
-  [Node.js](https://nodejs.org/), [CMake](https://cmake.org/),
-  [Ninja](https://ninja-build.org/) and [LLVM-MinGW](https://github.com/mstorsjo/llvm-mingw)
-  (Clang), a 260 MB download (about 1 GB unpacked), each from its publisher's own release
-  and checked against a pinned SHA-256. Nothing is installed into Windows; delete the
-  folder to remove them.
-  Tools you already have are used instead.
-* recompiles your ROM to C and builds the game (a few minutes the first time)
-* puts a **Streets of Rage** shortcut on your desktop
+## What it adds
 
-The game is `build/cmake/StreetsOfRage.exe`, with its saves, states and `settings.ini` next
-to it. It opens on a launcher with the settings; the first start plays the game's intro
-once in the background for the launcher's art and the fighters' previews. To update, unzip
-the new release over the old folder (your saves are kept) and run the builder again. It
-needs 64-bit Windows 10 or 11.
+In all three games:
 
-To build it by hand instead, see [Usage](#usage).
-
-## Status
-
-| Part | State |
-|---|---|
-| ROM verification (`tools/setup.mjs`) | done |
-| Code tracer and disassembly (`tools/disasm.mjs`) | done, with the code seen in play (`config/coverage.txt`) |
-| 68000 → C recompiler (`tools/recomp.mjs`, built automatically by CMake) | done: 99.99% of 68000 time runs as native C |
-| Hardware: memory map, VDP, pads, Z80 + YM2612 + PSG sound | done |
-| Launcher in the game's style, with its music | done |
-| Pause menu: save/load slots, display, effects, colours, cheats, controls | done |
-| Save states, rewind, fast-forward, controller hot-plugging | done |
-| AI partner for player 2 (or a second controller) | done |
-| Widescreen (16:9), with the play area and enemy spawns widened to match | done |
-| Internal resolution with a sharp, dither-aware scaler; display filters | done |
-| Neon glow and HDR look | done |
-| Fighters' colours: any of 512 colours per part, animated, with a live preview | done |
-| Cheats (infinite health, lives, specials and time; attack power up to one-hit kills), combat info, play timer | done |
-| One-click builder and release zip | done |
+* **Widescreen** (16:9 and other shapes), with the play area widened to match: the players walk
+  to the new edges and enemies walk in from beyond them
+* **High frame rate**: drawn at your screen's refresh rate (120, 144 Hz or more), the scrolling
+  and every sprite gliding between the game's 60 updates
+* **Internal resolution** up to 6x with dither-aware scalers (Edge, Smooth/xBR, Sharp),
+  sharpening, integer scaling and CRT, scanline and LCD filters
+* **Neon glow** (the scenery's signs and lamps light up) and an **HDR look**
+* **AI partner** for player 2, or a second controller (in Streets of Rage 2, pick 2 PLAYERS)
+* **Cheats**: infinite health and lives, attack power up to one-hit kills; the timer and the
+  specials where the game has them
+* **Combat info** (damage numbers, enemy health bars), rumble, a play timer and stats
+* **Fighters' colours**: every playable fighter's clothes, hair and skin in any of the
+  Genesis' 512 colours, still or animated, with a live preview
+* Save states, rewind, fast-forward, a slowdown fix and a sprite flicker fix
+* A launcher and pause menu in each game's own colours, with its own music and sounds
 
 ## Testing
 
-The native build must behave exactly like the interpreter:
+The native build of each game must behave exactly like the interpreter:
 
 ```
-StreetsOfRage.exe --headless 3400 --hash-log a.log <rom>
-StreetsOfRage.exe --headless 3400 --hash-log b.log --interpret <rom>
+StreetsOfRage2.exe --headless 4000 --press <script> --hash-log a.log
+StreetsOfRage2.exe --headless 4000 --press <script> --hash-log b.log --interpret
                                                       # a.log and b.log must be identical
 ```
 
-Add `--press` with a script (`frame:buttons:frames,...`, e.g. `1300:S:4,2500:R:300`) to play
-past the title. Verified: intro, title, character select and the first street's fight,
-3,400 frames identical; save states and rewind replay identically.
+`--press` takes a script (`frame:buttons:frames,...`, e.g. `300:S,500:S,1700:R:400`) to play
+past the title. Widescreen and the cheats change the game on purpose (their patches only run
+natively); with them off every game matches the interpreter frame for frame.
 
 New code is found by playing: the runtime records every instruction it runs in
-`coverage.bin`, and the next `node tools/disasm.mjs` / build recompiles it.
+`coverage.bin`, and `node tools/save-coverage.mjs --game <name>` adds it to the game's
+`coverage.txt`, so every build recompiles it.
 
-## Usage
+## Building by hand
 
-The builder above does all of this. By hand, you need:
+Setup does all of this. By hand, you need:
 
 * Windows 10 or 11 (the menus draw their text with Windows' fonts)
 * [Git](https://git-scm.com/), [Node.js](https://nodejs.org/) 18 or newer,
   [CMake](https://cmake.org/) 3.20 or newer, [Ninja](https://ninja-build.org/) and
-  [Clang](https://releases.llvm.org/)
-* Your own Streets of Rage (World) cartridge dump (SHA-1 above). It is not included and
-  never will be.
+  Clang ([LLVM-MinGW](https://github.com/mstorsjo/llvm-mingw))
+* Your own ROMs (above)
 
-Clone with the submodules (the third-party code below), or the build cannot find them:
+Clone with the submodules (the third-party code below):
 
 ```
 git clone --recursive <this repository's URL>
 ```
 
-(Already cloned without them? Run `git submodule update --init --recursive`.)
-
-Then, in the repository's folder:
+Then, for each game (`sor1`, `sor2`, `sor3`), in the repository's folder:
 
 ```
-node tools/setup.mjs "<path to Streets of Rage (World) ROM>"
-node tools/disasm.mjs
-cmake -S . -B build/cmake -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-cmake --build build/cmake
-build/cmake/StreetsOfRage.exe "<path to ROM>"
+node tools/setup.mjs --game sor2 "<path to its ROM>"
+GAME=sor2 node tools/disasm.mjs
+cmake -S . -B build/sor2 -G Ninja -DGAME=sor2 -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+cmake --build build/sor2
 ```
 
-`setup.mjs` checks the ROM and remembers where it is (`local.json`, never committed); the
-build recompiles it into `generated/` (also never committed). The ROM path is also kept in
-`settings.ini` next to the executable, so later starts need no argument.
+Each game's folder in [games/](games) holds its ROM's details and features (`game.json`), the
+patches at its own addresses (`patches.json`), extra code entry points (`entries.json`) and
+the code seen running in play (`coverage.txt`). `build/sor1` also builds the collection's
+front end (`Streets of Rage Collection.exe`) and the installer (`Setup.exe`);
+[tools/install.ps1](tools/install.ps1) is what Setup runs.
 
 Default controls (all remappable in the pause menu's Controls page):
 
 | Action | Keyboard | Controller (Xbox layout) |
 |---|---|---|
 | Move | Arrows | D-pad (the left stick always works too) |
-| A / B / C (special / attack / jump) | Z / X / C | X / A / B |
+| A / B / C | Z / X / C | X / A / B |
 | Start | Enter | Start |
 | Rewind (hold) | Backspace | LB |
 | Fast-forward (hold) | Tab | RB |
@@ -142,10 +138,10 @@ F11 fullscreen.
 
 ## License and legal
 
-The code in this repository (the runtime and tools) is under the MIT License: see
-[LICENSE](LICENSE). The third-party code above keeps its own licenses.
+The code in this repository (the runtime, tools and installer) is under the MIT License:
+see [LICENSE](LICENSE). The third-party code above keeps its own licenses.
 
-This is an unofficial fan project, not affiliated with or endorsed by Sega. Streets of
-Rage, Bare Knuckle and Sega are trademarks of Sega Corporation. No part of the game (code,
-graphics, music or text) is included: you need your own copy, and everything made from it
-stays on your computer.
+This is an unofficial fan project, not affiliated with or endorsed by Sega. Streets of Rage,
+Bare Knuckle and Sega are trademarks of Sega Corporation. No part of the games (code,
+graphics, music or text) is included: you need your own copies, and everything made from
+them stays on your computer.

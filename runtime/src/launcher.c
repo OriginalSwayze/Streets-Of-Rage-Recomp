@@ -736,7 +736,7 @@ static const Row tab_rows[TABS][9] = {
                                                                                         : "Your Streets of Rage cartridge file." },
       { ROW_OPTION, "Player 2", OPT_PLAYER2, GAME_SOR == 2 ? "In a 2 PLAYERS game: a friend on a second controller, or the AI partner beside you."
                                                             : "A friend on a second controller, or the AI partner fighting beside you." },
-      { ROW_OPTION, "Smooth motion", OPT_SMOOTH, "Scrolls smoothly on fast screens, between the game's own updates." },
+      { ROW_OPTION, "High frame rate", OPT_SMOOTH, "Draws at your screen's refresh rate (120, 144 Hz...): movement glides between the game's 60 updates." },
       { ROW_OPTION, "Sprite flicker fix", OPT_FLICKER, "Lifts the hardware's sprites-per-line limit, so nothing flickers." },
       { ROW_OPTION, "Slowdown fix", OPT_OVERCLOCK, "A faster 68000, so crowded fights no longer slow down." },
       { ROW_OPTION, "Rewind", OPT_REWIND_ALL, "Hold the rewind key to step back in time." },

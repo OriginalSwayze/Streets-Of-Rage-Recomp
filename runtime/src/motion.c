@@ -162,10 +162,51 @@ bool motion_entry_owner(int i, uint32_t *object, uint16_t *kind) {
     return true;
 }
 
+/* Games whose sprite routines are not followed (the Streets of Rage games, updating every
+ * frame): each sprite is matched to itself in the previous frame, a sprite with the same
+ * tile and size, the nearest if there are several (enemies of one kind share their tiles),
+ * and moves as far as it went. A piece that has no match (its animation frame changed
+ * shape) moves with the nearest piece that has one, so a fighter's pieces stay together. */
+static unsigned frame_moves(const HdFrame *f, int dx[80], int dy[80], int *owned) {
+    static struct { bool drawn; int x, y, w, h; uint16_t tile; } prev[80];
+    static unsigned serial;
+    bool matched[80] = { false };
+    for (int i = 0; i < 80; i++) {
+        const HdSprite *c = &f->sprites[i];
+        if (!c->drawn) continue;
+        int best = MAX_JUMP * 2 + 1;
+        for (int j = 0; j < 80; j++) {
+            if (!prev[j].drawn || prev[j].tile != (c->attr & 0x7FF) || prev[j].w != c->w || prev[j].h != c->h) continue;
+            int mx = c->x - prev[j].x, my = c->y - prev[j].y, d = abs(mx) + abs(my);
+            if (abs(mx) <= MAX_JUMP && abs(my) <= MAX_JUMP && d < best) { best = d; dx[i] = mx; dy[i] = my; matched[i] = true; }
+        }
+        if (matched[i] && owned) ++*owned;
+    }
+    for (int i = 0; i < 80; i++) {
+        const HdSprite *c = &f->sprites[i];
+        if (!c->drawn || matched[i]) continue;
+        int best = 48 * 48, cx = c->x + c->w / 2, cy = c->y + c->h / 2;
+        for (int k = 0; k < 80; k++) {
+            if (!matched[k]) continue;
+            const HdSprite *m = &f->sprites[k];
+            int ex = m->x + m->w / 2 - cx, ey = m->y + m->h / 2 - cy, d = ex * ex + ey * ey;
+            if (d < best) { best = d; dx[i] = dx[k]; dy[i] = dy[k]; }
+        }
+    }
+    for (int i = 0; i < 80; i++) {
+        const HdSprite *c = &f->sprites[i];
+        prev[i].drawn = c->drawn;
+        prev[i].x = c->x; prev[i].y = c->y; prev[i].w = c->w; prev[i].h = c->h;
+        prev[i].tile = c->attr & 0x7FF;
+    }
+    return ++serial;
+}
+
 unsigned motion_sprite_moves(const HdFrame *f, int dx[80], int dy[80], int *owned) {
     memset(dx, 0, 80 * sizeof *dx);
     memset(dy, 0, 80 * sizeof *dy);
     if (owned) *owned = 0;
+    if (!GAME_KNOWS_RAM) return frame_moves(f, dx, dy, owned);
     const Tick *now = shown_tick(f);
     if (!now) return 0;
     const Tick *was = tick_numbered(now->serial - 1);
