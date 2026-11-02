@@ -38,7 +38,7 @@
     "hiPc": "00B104"
   },
   "sorWide": {
-    "comment": "Streets of Rage edges, widened by the widescreen width: the players' clamp (screen 32-288), where enemies walk in (328, -8), the wake test of an enemy waiting off screen (screen X + $80 in $70-$1D0, i.e. -16 to 336), and the game's check of its enemies (sub_000810, which resets the game on a bad one) accepting one still being set up (+$E = 0). Waves from the level table stay where the level puts them: the table also places scenery (the shutters) and enemies waiting in doorways. (Widening the other in-view and on-screen tests as well left waves that never ended.)",
+    "comment": "Streets of Rage edges, widened by the widescreen width: the players' clamp (screen 32-288), where enemies walk in (328, -8), the wake test of an enemy waiting off screen (screen X + $80 in $70-$1D0, i.e. -16 to 336), and the game's check of its enemies (sub_000810, which resets the game on a bad one) accepting one still being set up (+$E = 0). Waves from the level table stay where the level puts them (the table also places scenery, the shutters, and enemies waiting in doorways), except an enemy put just past an original edge to walk in, which goes as far past the new one (tableSpawn, sor_table_x). (Widening the other in-view and on-screen tests as well left waves that never ended.)",
     "clampLeft": "0043F4",
     "clampWidth": "0043F6",
     "checkFresh": "000862",
@@ -47,7 +47,8 @@
       "0097F0": "+$1D0"
     },
     "spawnRight": "000CAE",
-    "spawnLeft": "000CB8"
+    "spawnLeft": "000CB8",
+    "tableSpawn": "000D06"
   },
   "playerSpeed": {
     "pcs": {}

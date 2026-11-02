@@ -206,7 +206,7 @@ static bool have_before, have_latest;
 static long frame_no;                   /* frames run */
 static Timeline planes = { 0, 2 }, sprites = { 0, 2 };
 static unsigned shown_tick;             /* the game tick whose sprites hd_frame shows */
-static int move_x[80], move_y[80];      /* how far each sprite's object moved in that tick */
+static int move_x[SPRITES_MAX], move_y[SPRITES_MAX];      /* how far each sprite's object moved in that tick */
 
 static unsigned scaled_gen, sprites_gen;
 static int scaled_scale, sprites_scale;
@@ -215,7 +215,7 @@ static uint32_t *sprite_layer;          /* sprites drawn at their in-between pos
 /* Each sprite of hd_frame scaled once per frame, with a transparent border of one pixel
  * so the scaler can round its outer edges. */
 #define SPR_PAD_MAX ((32 + 2) * HD_MAX_SCALE)
-static uint32_t sprite_scaled[80][SPR_PAD_MAX * SPR_PAD_MAX];
+static uint32_t sprite_scaled[SPRITES_MAX][SPR_PAD_MAX * SPR_PAD_MAX];
 
 /* ---- Texture packs --------------------------------------------------------------------- *
  * With a pack loaded, the replacement colour of every picture pixel (texpack_texel: 0 none,
@@ -227,14 +227,14 @@ static uint32_t sprite_scaled[80][SPR_PAD_MAX * SPR_PAD_MAX];
 bool hd_texpack;
 static uint32_t *tex_layer[3];          /* plane A, plane B, sprites (whole layer) */
 static uint32_t *sprite_tex_layer;      /* sprites at their in-between positions */
-static uint32_t (*sprite_tex)[SPR_PAD_MAX * SPR_PAD_MAX];   /* [80], with sprite_scaled */
+static uint32_t (*sprite_tex)[SPR_PAD_MAX * SPR_PAD_MAX];   /* [SPRITES_MAX], with sprite_scaled */
 static size_t tex_cap;
 
 static bool ensure_tex(size_t need) {
     if (need <= tex_cap) return true;
     for (int k = 0; k < 3; k++) { free(tex_layer[k]); tex_layer[k] = malloc(need * 4); }
     free(sprite_tex_layer); sprite_tex_layer = malloc(need * 4);
-    if (!sprite_tex) sprite_tex = malloc(sizeof *sprite_tex * 80);
+    if (!sprite_tex) sprite_tex = malloc(sizeof *sprite_tex * SPRITES_MAX);
     bool ok = tex_layer[0] && tex_layer[1] && tex_layer[2] && sprite_tex_layer && sprite_tex;
     tex_cap = ok ? need : 0;
     return ok;
@@ -655,7 +655,7 @@ static int compose_band(void *arg) {
     int scale = j->scale;
     const uint32_t *sprites = j->sprites;
     const int *ox_a = j->ox_a, *oy_a = j->oy_a, *ox_b = j->ox_b, *oy_b = j->oy_b;
-    int mask = hd_frame.mask_sides ? hd_frame.extra * scale : 0;
+    int mask = hd_frame.mask_sides ? hd_frame.extra * scale : 0, mask_left = hd_frame.mask_left * scale;
     for (int y = j->y0; y < j->y1; y++) {
         int line = y / scale;
         uint16_t backdrop = hd_frame.backdrop[line];
@@ -718,6 +718,8 @@ static int compose_band(void *arg) {
         if (mask) {
             memset(out, 0, (size_t)mask * 4);
             memset(out + hd_w - mask, 0, (size_t)mask * 4);
+        } else if (mask_left) {
+            memset(out, 0, (size_t)mask_left * 4);
         }
     }
     return 0;
@@ -1038,7 +1040,7 @@ static void scale_sprites(int scale) {
     made_with = hd_scaler;
     made_tex = hd_texpack;
     static uint32_t padded[34 * 34];
-    for (int i = 0; i < 80; i++) {
+    for (int i = 0; i < SPRITES_MAX; i++) {
         const HdSprite *c = &hd_frame.sprites[i];
         if (!c->drawn) continue;
         int pw = c->w + 2, ph = c->h + 2;
@@ -1062,8 +1064,8 @@ static void draw_sprite_layer(int scale, float t) {
     memset(sprite_layer, 0, (size_t)hd_w * hd_h * 4);
     bool tex = hd_texpack && sprite_tex && sprite_tex_layer;
     if (tex) memset(sprite_tex_layer, 0, (size_t)hd_w * hd_h * 4);
-    int order[80], n = 0;
-    for (int i = 0; i < 80; i++) if (hd_frame.sprites[i].drawn) order[n++] = i;
+    int order[SPRITES_MAX], n = 0;
+    for (int i = 0; i < SPRITES_MAX; i++) if (hd_frame.sprites[i].drawn) order[n++] = i;
     for (int a = 1; a < n; a++) {       /* by rank, highest (backmost) first */
         int v = order[a], b = a;
         while (b > 0 && hd_frame.sprites[order[b - 1]].rank < hd_frame.sprites[v].rank) { order[b] = order[b - 1]; b--; }

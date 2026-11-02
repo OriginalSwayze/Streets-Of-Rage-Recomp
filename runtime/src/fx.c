@@ -119,20 +119,20 @@ static Track *track_of(uint32_t obj) {
 
 /* Marks the dropped items among the sprites (they give no spirit particles). */
 static void find_items(HdFrame *f, float cam_x, float cam_y) {
-    uint32_t objs[80];
-    int pieces[80];
+    uint32_t objs[SPRITES_MAX];
+    int pieces[SPRITES_MAX];
     for (int k = 0; k < 24; k++) tracks[k].seen = false;
-    for (int i = 0; i < 80; i++) {
+    for (int i = 0; i < SPRITES_MAX; i++) {
         objs[i] = 0;
         uint16_t kind;
         if (f->sprites[i].drawn) motion_entry_owner(i, &objs[i], &kind);
     }
-    for (int i = 0; i < 80; i++) {
+    for (int i = 0; i < SPRITES_MAX; i++) {
         pieces[i] = 0;
         if (!objs[i]) continue;
-        for (int k = 0; k < 80; k++) pieces[i] += objs[k] == objs[i];
+        for (int k = 0; k < SPRITES_MAX; k++) pieces[i] += objs[k] == objs[i];
     }
-    for (int i = 0; i < 80; i++) {
+    for (int i = 0; i < SPRITES_MAX; i++) {
         HdSprite *s = &f->sprites[i];
         uint32_t obj = objs[i];
         if (!obj || s->player || obj < MAIN_LIST || obj >= MAIN_END || obj == MAIN_LIST) continue;
@@ -189,7 +189,7 @@ void fx_game_frame(HdFrame *f, bool world, float cam_x, float cam_y) {
     if (settings.footsteps && world) footsteps(f, cam_x, cam_y);
     if (settings.elements && world) find_items(f, cam_x, cam_y);
     if (!settings.elements || !world) return;
-    for (int i = 0; i < 80; i++) {
+    for (int i = 0; i < SPRITES_MAX; i++) {
         const HdSprite *s = &f->sprites[i];
         if (!elemental(f, i)) continue;
         /* Count each kind's pixels, keeping one at random of each to spawn from. */

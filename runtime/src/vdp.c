@@ -78,6 +78,11 @@ static void dma_68k(void) {
     uint32_t len = dma_length();
     uint32_t src = (uint32_t)(vdp.reg[23] & 0x7F) << 17 | vdp.reg[22] << 9 | vdp.reg[21] << 1;
     trace_vram("dma", vdp.addr, len, src);
+#if GAME_SOR == 3
+    /* The list sent to the sprite table: its entries past 80 go with it (genesis.h). */
+    if ((vdp.code & 0x0F) == 0x1 && vdp.addr == ((vdp.reg[5] & 0x7E) << 9))
+        memcpy(vdp.sat_extra, bus.sprites_extra, sizeof vdp.sat_extra);
+#endif
     for (uint32_t i = 0; i < len; i++) {
         write_target(bus_read16(src));
         /* The source address wraps inside a 128 KB window. */
@@ -305,7 +310,7 @@ uint16_t vdp_player_cram[64];
 int      vdp_player_w, vdp_player_h, vdp_player_x, vdp_player_y;
 static uint8_t player_now[PLAYER_IMG * PLAYER_IMG];     /* the frame being drawn */
 static uint16_t player_cram[64];
-static bool player_entry[80];
+static bool player_entry[SPRITES_MAX];
 static int player_x0, player_y0;
 
 uint16_t vdp_outfit_shade(uint16_t pick, uint16_t now, int ref) {
@@ -417,10 +422,18 @@ static inline uint32_t sprite_px(uint8_t v) {
     return layer_px((uint8_t)(v & 0x7F));
 }
 
+/* Sprite entry k: in the sprite table, or past its 80 the extra entries (genesis.h). */
+static inline const uint8_t *sat_entry(uint32_t sat, int k) {
+#if GAME_SOR == 3
+    if (k >= 80) return vdp.sat_extra + (k - 80) * 8;
+#endif
+    return vdp.vram + ((sat + (uint32_t)k * 8) & 0xFFFE);
+}
+
 static void draw_sprites(uint8_t *out, int w, int extra, int line) {
     bool h40 = vdp_screen_width() == 320;
     uint32_t sat = (vdp.reg[5] & (h40 ? 0x7E : 0x7F)) << 9;
-    int max_total = h40 ? 80 : 64;
+    int max_total = !h40 ? 64 : vdp_opts.long_sprite_list ? SPRITES_MAX : 80;
     int max_line = vdp_opts.no_sprite_limit ? max_total : (h40 ? 20 : 16);
     int max_px = vdp_opts.no_sprite_limit ? 0x7FFFFFFF : (h40 ? 320 : 256);
     int on_line = 0, px_used = 0, link = 0;
@@ -428,14 +441,14 @@ static void draw_sprites(uint8_t *out, int w, int extra, int line) {
 
     for (int n = 0; n < max_total; n++) {
         int link_now = link;
-        uint32_t s = sat + link * 8;
-        int y = (vram16(s) & 0x3FF) - 128;
-        int size = vram16(s + 2);
+        const uint8_t *e = sat_entry(sat, link);
+        int y = ((e[0] << 8 | e[1]) & 0x3FF) - 128;
+        int size = e[2] << 8 | e[3];
         int hcells = ((size >> 10) & 3) + 1, vcells = ((size >> 8) & 3) + 1;
         link = size & 0x7F;
         if (line >= y && line < y + vcells * 8) {
-            uint16_t attr = vram16(s + 4);
-            int x = (vram16(s + 6) & 0x1FF) - 128;
+            uint16_t attr = (uint16_t)(e[4] << 8 | e[5]);
+            int x = ((e[6] << 8 | e[7]) & 0x1FF) - 128;
             if (++on_line > max_line) { vdp.status |= 0x40; break; }
             /* A sprite at X=0 hides every lower-priority sprite on this line. */
             if (x == -128 && any_nonzero_x) { if (vdp_opts.hd_capture) hd_frame.sprite_mask = true; break; }
@@ -553,6 +566,7 @@ void vdp_render_line(int line, uint32_t *dst) {
     if (capture) {
         if (line == 0) {
             hd_frame.w = w; hd_frame.extra = extra; hd_frame.mask_sides = vdp_opts.mask_sides;
+            hd_frame.mask_left = vdp_opts.mask_sides ? extra : vdp_opts.mask_left < extra ? vdp_opts.mask_left : extra;
             hd_serial++;
             for (int k = 0; k < 80; k++) hd_frame.sprites[k].drawn = false;
             hd_frame.sprite_count = 0;
@@ -602,5 +616,7 @@ void vdp_render_line(int line, uint32_t *dst) {
     if (vdp_opts.mask_sides && extra) {
         memset(dst, 0, (size_t)extra * sizeof *dst);
         memset(dst + w - extra, 0, (size_t)extra * sizeof *dst);
+    } else if (vdp_opts.mask_left > 0 && extra) {
+        memset(dst, 0, (size_t)(vdp_opts.mask_left < extra ? vdp_opts.mask_left : extra) * sizeof *dst);
     }
 }

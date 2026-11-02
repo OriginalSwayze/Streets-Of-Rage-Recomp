@@ -38,6 +38,7 @@ typedef struct {
     int w, h;                           /* line width (with widescreen) and line count */
     int extra;                          /* widescreen columns on each side */
     bool mask_sides;
+    int mask_left;                      /* left columns drawn black (vdp_opts.mask_left) */
     uint32_t a[HD_MAX_H][HD_MAX_W];     /* plane A with the window */
     uint32_t b[HD_MAX_H][HD_MAX_W];
     uint32_t s[HD_MAX_H][HD_MAX_W];
@@ -48,7 +49,7 @@ typedef struct {
     uint8_t  flags[HD_MAX_H];           /* HD_LINE_* */
     int16_t  hscroll[2][HD_MAX_H];      /* plane A / B horizontal scroll per line */
     int16_t  vscroll[2][HD_MAX_H];
-    HdSprite sprites[80];
+    HdSprite sprites[SPRITES_MAX];
     int      sprite_count;              /* sprites drawn this frame */
     bool     sprite_mask;               /* a masking sprite (x = 0) was used: draw sprites as captured */
 } HdFrame;

@@ -144,6 +144,9 @@ static void apply_settings(void) {
     vdp_opts.extra_width = settings_extra_width();
     widescreen_patches(vdp_opts.extra_width);
     vdp_opts.no_sprite_limit = settings.no_sprite_limit;
+    /* Streets of Rage 3's sprite list past 80 entries, for the crowds a wider screen shows. */
+    vdp_opts.long_sprite_list = GAME_SOR == 3 && (vdp_opts.extra_width || settings.no_sprite_limit);
+    patch_sprite_cap = vdp_opts.long_sprite_list ? SPRITES_MAX - 1 : 0x50;
     vdp_opts.hd_capture = true;         /* the layers are also what the menu's previews draw from */
     machine_opts.overclock = settings.overclock;
     outfit_apply();
@@ -802,7 +805,7 @@ int main(int argc, char **argv) {
         if (list_objects) {
             /* Each drawn sprite: position, size, attributes, and the object that drew it (its
              * list and slot, its type word, and its first 16 words). */
-            for (int k = 0; k < 80; k++) {
+            for (int k = 0; k < SPRITES_MAX; k++) {
                 const HdSprite *sp = &hd_frame.sprites[k];
                 if (!sp->drawn) continue;
                 uint32_t obj = 0;

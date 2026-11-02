@@ -46,6 +46,9 @@ static void cpu_state(StateIO *s) {
 static void bus_state(StateIO *s) {
     IO(s, bus.ram); IO(s, bus.zram); IO(s, bus.sram);
     IO(s, bus.sram_mapped); IO(s, bus.z80_busreq); IO(s, bus.z80_reset);
+#if GAME_SOR == 3
+    IO(s, bus.sprites_extra);
+#endif
 }
 
 static bool state_io_all(StateIO *s) {

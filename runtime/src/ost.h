@@ -31,10 +31,12 @@
 #elif GAME_SMPS
 /* Streets of Rage: Sega's SMPS 68k driver (songs $81-$91, effects $A0-$DF). */
 #define OST_SONGS 16
-#define SFX_CURSOR  0x02A1              /* short and soft (the game's own tick) */
-#define SFX_CONFIRM 0x02BD              /* the game's pause sound */
+/* The option screens' own two ($A1 a move, $A5 a choice). Not $BD, the pause sound: it
+ * silences the music, which the launcher's player then takes for the song's end. */
+#define SFX_CURSOR  0x02A1
+#define SFX_CONFIRM 0x02A5
 #define SFX_CANCEL  0x02A6
-#define SFX_ERROR   0x02A5
+#define SFX_ERROR   0x02A8
 #else
 /* Beyond Oasis: song numbers $00-$21. */
 #define OST_SONGS 0x22

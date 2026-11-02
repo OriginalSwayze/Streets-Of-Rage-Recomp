@@ -23,6 +23,8 @@
     }
   },
   "sorCullList": {
+    "001B6E": "d1 60 lo",
+    "001B74": "d1 1C0 hii",
     "001BF4": "d1 60 lo",
     "001BFA": "d1 1C0 hi",
     "002066": "d0 60 lo",
@@ -43,5 +45,17 @@
     "0318DC": "col FF8898",
     "03171A": "row",
     "031978": "row"
-  }
+  },
+  "sor3SpriteList": {
+    "001B48": "cap",
+    "001BBE": "cap",
+    "00203C": "cap1",
+    "0020F6": "capd0",
+    "001AD4": "adda d0",
+    "002088": "adda d4",
+    "002100": "adda d0",
+    "001A86": "end 0",
+    "001A8E": "end 4"
+  },
+  "sor3VoiceQueue": "1A8106"
 }

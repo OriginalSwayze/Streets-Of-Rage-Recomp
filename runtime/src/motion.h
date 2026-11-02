@@ -19,11 +19,11 @@ void motion_reset(void);
  * previous tick, in dx/dy (0 for sprites without an object, new objects and jumps).
  * Returns the tick whose sprite list f shows (0 if none matches). owned (optional)
  * gets the number of drawn sprites that belong to an object. */
-unsigned motion_sprite_moves(const HdFrame *f, int dx[80], int dy[80], int *owned);
+unsigned motion_sprite_moves(const HdFrame *f, int dx[SPRITES_MAX], int dy[SPRITES_MAX], int *owned);
 
 /* Marks the entries of the VDP's sprite table (`sat`, `count` entries of 8 bytes) that
  * the player character's object drew in the latest tick that sent them. */
-void motion_player_entries(const uint8_t *sat, int count, bool out[80]);
+void motion_player_entries(const uint8_t *sat, int count, bool out[SPRITES_MAX]);
 
 /* The object that drew entry `i` of the sprite list in the latest tick: its address and
  * its first word (the object's type); false for entries without an object (the HUD). */

@@ -46,6 +46,9 @@ its own, so they are listed in `config/entries.json`.
 
 | Address | Size | What |
 |---|---|---|
+| `$FFFF01` | byte | game mode: `$28`/`$2A` the round's title ("ROUND n START"), `$16` playing |
+| `$FFFF02` | word | round, from 0 (7 is round 8) |
+| `$FFFFCA` | word | difficulty, 0-3 (Normal = 1): a game starts with 2 × this + 1 lives (`$0017A2`) |
 | `$FFFB01` | byte | round timer (BCD) |
 | `$FFFB1E` | word | enemies active |
 | `$FFE002` | word | camera X |

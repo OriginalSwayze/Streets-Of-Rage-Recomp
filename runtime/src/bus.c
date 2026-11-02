@@ -63,12 +63,19 @@ const char *bus_load_rom(const char *path) {
 }
 
 /* ---- Reads ------------------------------------------------------------------ */
+#if GAME_SOR == 3
+static bool in_extra(uint32_t a) { return a >= SPRITES_EXTRA_ADDR && a < SPRITES_EXTRA_ADDR + SPRITES_EXTRA * 8; }
+#endif
+
 static bool in_sram(uint32_t a) { return bus.sram_mapped && a >= 0x200000 && a < 0x200000 + SRAM_SIZE * 2; }
 
 uint8_t bus_read8(uint32_t a) {
     a &= 0xFFFFFF;
     if (a < 0x400000) {
         if (in_sram(a)) return (a & 1) ? bus.sram[(a - 0x200000) >> 1] : 0xFF;
+#if GAME_SOR == 3
+        if (in_extra(a)) return bus.sprites_extra[a - SPRITES_EXTRA_ADDR];
+#endif
         return a < ROM_SIZE ? bus.rom[a] : 0xFF;
     }
     if (a >= 0xE00000) return bus.ram[a & 0xFFFF];
@@ -103,6 +110,9 @@ uint16_t bus_read16(uint32_t a) {
 void bus_write8(uint32_t a, uint8_t v) {
     a &= 0xFFFFFF;
     if (a >= 0xE00000) { bus.ram[a & 0xFFFF] = v; return; }
+#if GAME_SOR == 3
+    if (in_extra(a)) { bus.sprites_extra[a - SPRITES_EXTRA_ADDR] = v; return; }
+#endif
     if (in_sram(a)) {
         if (a & 1) { bus.sram[(a - 0x200000) >> 1] = v; bus.sram_dirty = true; }
         return;

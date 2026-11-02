@@ -11,6 +11,13 @@
 #define ROM_SIZE        GAME_ROM_SIZE
 #define SRAM_SIZE       0x4000          /* bytes on the odd addresses $200001-$203FFF */
 #define LINES_NTSC      262
+/* The sprite list: the VDP's 80 entries, and in Streets of Rage 3 up to 48 more that the
+ * game (patched, sor3SpriteList) writes past its own cap of 80 into a window at
+ * SPRITES_EXTRA_ADDR, where no cartridge has anything. The VDP keeps a copy of them taken
+ * when the game sends its list to the sprite table, and draws them after the 80. */
+#define SPRITES_MAX     128
+#define SPRITES_EXTRA   (SPRITES_MAX - 80)
+#define SPRITES_EXTRA_ADDR 0x3FF000u
 #define CYCLES_PER_LINE 488             /* 68000 clocks per scanline (53.693175 MHz / 7 / 15.7 kHz) */
 #define MAX_EXTRA_WIDTH 80              /* widescreen pixels per side, at most: the game streams 41 of the
                                            plane's 64 columns, leaving room for 11 more on each side */
@@ -24,6 +31,9 @@ typedef struct {
     bool sram_dirty;
     uint8_t zram[0x2000];               /* Z80 RAM, visible to the 68000 at $A00000 */
     bool z80_busreq, z80_reset;
+#if GAME_SOR == 3
+    uint8_t sprites_extra[SPRITES_EXTRA * 8];   /* at SPRITES_EXTRA_ADDR */
+#endif
 } Bus;
 
 extern Bus bus;
@@ -50,13 +60,18 @@ typedef struct {
     int      hint_counter;
     bool     vint_pending, hint_pending;
     int      line_cycle_start;          /* CPU cycle count at the start of the line, for HV/HBlank */
+#if GAME_SOR == 3
+    uint8_t  sat_extra[SPRITES_EXTRA * 8];      /* entries 80-127, as the last list sent */
+#endif
 } Vdp;
 
 /* Display / enhancement options the renderer reads every line. */
 typedef struct {
     int  extra_width;                   /* widescreen pixels on each side (0 = original 320) */
     bool no_sprite_limit;               /* draw past the 20-per-line hardware limit (no flicker) */
+    bool long_sprite_list;              /* the sprite list goes past 80 entries (SPRITES_MAX) */
     bool mask_sides;                    /* draw the widescreen columns black (screens made for 320) */
+    int  mask_left;                     /* and this many of the left ones (the world left of a level's start) */
     bool window_narrow;                 /* the window plane stops at the original 320 columns (the planes show beside it) */
     int  hide_layers;                   /* debugging: bit 0 plane A, 1 plane B, 2 sprites, 3 window */
     bool hd_capture;                    /* keep each line's layers for hd_compose() (hd.h) */

@@ -27,7 +27,8 @@
 static int pad;                         /* extra columns kept valid on each side */
 uint32_t patch_cull_left, patch_cull_widen;
 uint32_t patch_sor_x_lo = 0x60, patch_sor_x_hi = 0x1E0;
-int patch_sor_wide;
+int patch_sor_wide, patch_sor_reach;
+int patch_sprite_cap = 0x50;
 int patch_cam_margin;
 
 static int16_t L16(uint32_t layer, int off) { return (int16_t)rd16(layer + off); }
@@ -203,11 +204,27 @@ static uint32_t redraw_rect(uint32_t pc) {
  * in-engine scenes). Logos, the title, menus and story scenes are drawn for 320 pixels,
  * so their sides are masked to black. */
 void widescreen_frame(void) {
+    vdp_opts.mask_left = 0;
+    if (GAME_SOR == 3) {
+        /* Streets of Rage 3: a round's camera ($FFF710) starts at the level's left end, X 0;
+         * left of it the planes hold nothing of the level, so that part of the left side is
+         * black until the camera has moved past the widescreen columns. */
+        uint16_t s = rd16(0xFFDF00);
+        bool round = s && s != 0x5C && s != 0x5E && s != 0x5A && !rd8(0xFFFB13);
+        int cam = (int16_t)rd16(0xFFF710);
+        if (round && cam < vdp_opts.extra_width) vdp_opts.mask_left = vdp_opts.extra_width - (cam > 0 ? cam : 0);
+    }
     if (GAME_SOR != 1 && !GAME_WIDESCREEN) { vdp_opts.mask_sides = false; return; }
     if (!GAME_WIDESCREEN) {
-        /* Streets of Rage: the sides show the street only during a game, not the demo. */
+        /* Streets of Rage: the sides show the street only during a game, not the demo, and
+         * not on the round's title (mode $28/$2A: its words slide in from past the original
+         * edges), the elevator of round 7 or round 8 (rooms drawn for 320 pixels, with the
+         * city or the next room beside them). The round is $FFFF02, from 0. */
+        uint8_t mode = rd8(0xFFFF01);
         bool game = (rd8(0xFFFF18) & 3) && !rd8(0xFFFF2A);
-        vdp_opts.mask_sides = !game;
+        vdp_opts.mask_sides = !game || mode == 0x28 || mode == 0x2A || rd16(0xFFFF02) >= 6;
+        /* Behind black sides the players keep to the original 320 pixels. */
+        patch_sor_reach = vdp_opts.mask_sides ? 0 : patch_sor_wide;
         /* The HUD is the window plane, 320 pixels wide: the street goes on beside it. */
         vdp_opts.window_narrow = true;
         /* No streaming of our own: the game keeps the 512-pixel planes filled from 96
@@ -227,7 +244,7 @@ void widescreen_patches(int extra_width) {
         patch_sor_x_hi = (uint32_t)(hi > 0x200 ? 0x200 : hi);
         /* The players walk to the new edges, enemies walk in from beyond them and count as
          * on screen across the whole width. */
-        patch_sor_wide = extra_width;
+        patch_sor_wide = patch_sor_reach = extra_width;
         return;
     }
     pad = (extra_width + 7) / 8;
@@ -244,4 +261,16 @@ void widescreen_patches(int extra_width) {
     machine_override(0x00D7C0, on ? init_layer : NULL);
     machine_override(0x00D950, on ? clear_plane_at : NULL);
     machine_override(0x00DC26, on ? redraw_rect : NULL);
+}
+
+/* Streets of Rage: the level table places an object (sorWide.tableSpawn), type byte and world
+ * X. Most stand where the level puts them (scenery, enemies waiting in doorways), but an enemy
+ * (types below $40) put just past an edge of the original 320 pixels, to walk in, would show
+ * in the widescreen sides: it goes as far past the new edge. */
+uint32_t sor_table_x(uint32_t type, uint32_t x) {
+    int w = patch_sor_wide, sx = (int16_t)x - (int16_t)rd16(0xFFE002);
+    if (!w || type >= 0x40) return x;
+    if (sx > 320 && sx <= 320 + w + 64) return (x + (uint32_t)w) & 0xFFFF;
+    if (sx < 0 && sx >= -w - 64) return (x - (uint32_t)w) & 0xFFFF;
+    return x;
 }

@@ -34,9 +34,9 @@ typedef struct {
 typedef struct {
     unsigned serial;                    /* 0 = empty */
     int      count;
-    uint8_t  raw[80][8];                /* the entries as sent to the VDP */
-    int8_t   anchor[80];                /* anchor of each entry, or -1 */
-    Anchor   anchors[80];
+    uint8_t  raw[SPRITES_MAX][8];                /* the entries as sent to the VDP */
+    int8_t   anchor[SPRITES_MAX];                /* anchor of each entry, or -1 */
+    Anchor   anchors[SPRITES_MAX];
     int      anchor_count;
 } Tick;
 
@@ -44,8 +44,8 @@ static Tick ring[4];
 static unsigned serial;
 
 /* The list being built. */
-static int8_t  build_anchor[80];
-static Anchor  build_anchors[80];
+static int8_t  build_anchor[SPRITES_MAX];
+static Anchor  build_anchors[SPRITES_MAX];
 static int     build_anchor_count;
 static int     seen_count;
 static bool    built;                   /* entries added since the last copy */
@@ -54,7 +54,7 @@ static int     pending = -1;            /* anchor for the sprites about to be ad
 static int ram16(uint32_t a) { return bus.ram[a] << 8 | bus.ram[a + 1]; }
 
 static void anchor_at(int16_t x, int16_t y) {
-    if (build_anchor_count >= 80) { pending = -1; return; }
+    if (build_anchor_count >= SPRITES_MAX) { pending = -1; return; }
     uint32_t object = A(6) & 0xFFFFFF;
     int nth = 0;
     for (int k = 0; k < build_anchor_count; k++) nth += build_anchors[k].object == object;
@@ -65,7 +65,7 @@ static void anchor_at(int16_t x, int16_t y) {
 
 static void take_tick(void) {
     Tick *t = &ring[serial % 4];
-    int n = seen_count > 80 ? 80 : seen_count;
+    int n = seen_count > SPRITES_MAX ? SPRITES_MAX : seen_count;
     t->serial = ++serial;
     t->count = n;
     memcpy(t->raw, bus.ram + LIST, (size_t)n * 8);
@@ -86,10 +86,10 @@ void motion_block(uint32_t pc) {
     if (count != seen_count) {
         if (count < seen_count) {       /* a new list */
             build_anchor_count = 0;
-            for (int k = 0; k < 80; k++) build_anchor[k] = -1;
+            for (int k = 0; k < SPRITES_MAX; k++) build_anchor[k] = -1;
             seen_count = 0;
         }
-        for (int k = seen_count; k < count && k < 80; k++) build_anchor[k] = (int8_t)pending;
+        for (int k = seen_count; k < count && k < SPRITES_MAX; k++) build_anchor[k] = (int8_t)pending;
         if (count > seen_count) built = true;
         seen_count = count;
     }
@@ -107,7 +107,7 @@ void motion_block(uint32_t pc) {
 
 void motion_reset(void) {
     memset(ring, 0, sizeof ring);
-    for (int k = 0; k < 80; k++) build_anchor[k] = -1;
+    for (int k = 0; k < SPRITES_MAX; k++) build_anchor[k] = -1;
     build_anchor_count = 0;
     seen_count = ram16(COUNT);
     built = false;
@@ -126,7 +126,7 @@ static const Tick *shown_tick(const HdFrame *f) {
         const Tick *t = &ring[r];
         if (!t->serial || (best && t->serial < best->serial)) continue;
         bool all = true;
-        for (int i = 0; i < 80 && all; i++)
+        for (int i = 0; i < SPRITES_MAX && all; i++)
             if (f->sprites[i].drawn) all = i < t->count && same_entry(t->raw[i], &f->sprites[i]);
         if (all) best = t;
     }
@@ -140,8 +140,8 @@ static const Tick *tick_numbered(unsigned s) {
 
 #define PLAYER 0xFF19E8                 /* the player character's object */
 
-void motion_player_entries(const uint8_t *sat, int count, bool out[80]) {
-    memset(out, 0, 80 * sizeof *out);
+void motion_player_entries(const uint8_t *sat, int count, bool out[SPRITES_MAX]) {
+    memset(out, 0, SPRITES_MAX * sizeof *out);
     const Tick *t = NULL;
     for (int r = 0; r < 4; r++) if (ring[r].serial && (!t || ring[r].serial > t->serial)) t = &ring[r];
     if (!t) return;
@@ -175,35 +175,35 @@ static uint32_t picture_of(const HdSprite *c) {
     return h;
 }
 
-static unsigned frame_moves(const HdFrame *f, int dx[80], int dy[80], int *owned) {
-    static struct { bool drawn; int x, y, w, h; uint32_t picture; } prev[80];
-    uint32_t pic[80];
-    for (int i = 0; i < 80; i++) pic[i] = f->sprites[i].drawn ? picture_of(&f->sprites[i]) : 0;
+static unsigned frame_moves(const HdFrame *f, int dx[SPRITES_MAX], int dy[SPRITES_MAX], int *owned) {
+    static struct { bool drawn; int x, y, w, h; uint32_t picture; } prev[SPRITES_MAX];
+    uint32_t pic[SPRITES_MAX];
+    for (int i = 0; i < SPRITES_MAX; i++) pic[i] = f->sprites[i].drawn ? picture_of(&f->sprites[i]) : 0;
     static unsigned serial;
-    bool matched[80] = { false };
-    for (int i = 0; i < 80; i++) {
+    bool matched[SPRITES_MAX] = { false };
+    for (int i = 0; i < SPRITES_MAX; i++) {
         const HdSprite *c = &f->sprites[i];
         if (!c->drawn) continue;
         int best = MAX_JUMP * 2 + 1;
-        for (int j = 0; j < 80; j++) {
+        for (int j = 0; j < SPRITES_MAX; j++) {
             if (!prev[j].drawn || prev[j].picture != pic[i] || prev[j].w != c->w || prev[j].h != c->h) continue;
             int mx = c->x - prev[j].x, my = c->y - prev[j].y, d = abs(mx) + abs(my);
             if (abs(mx) <= MAX_JUMP && abs(my) <= MAX_JUMP && d < best) { best = d; dx[i] = mx; dy[i] = my; matched[i] = true; }
         }
         if (matched[i] && owned) ++*owned;
     }
-    for (int i = 0; i < 80; i++) {
+    for (int i = 0; i < SPRITES_MAX; i++) {
         const HdSprite *c = &f->sprites[i];
         if (!c->drawn || matched[i]) continue;
         int best = 48 * 48, cx = c->x + c->w / 2, cy = c->y + c->h / 2;
-        for (int k = 0; k < 80; k++) {
+        for (int k = 0; k < SPRITES_MAX; k++) {
             if (!matched[k]) continue;
             const HdSprite *m = &f->sprites[k];
             int ex = m->x + m->w / 2 - cx, ey = m->y + m->h / 2 - cy, d = ex * ex + ey * ey;
             if (d < best) { best = d; dx[i] = dx[k]; dy[i] = dy[k]; }
         }
     }
-    for (int i = 0; i < 80; i++) {
+    for (int i = 0; i < SPRITES_MAX; i++) {
         const HdSprite *c = &f->sprites[i];
         prev[i].drawn = c->drawn;
         prev[i].x = c->x; prev[i].y = c->y; prev[i].w = c->w; prev[i].h = c->h;
@@ -212,15 +212,15 @@ static unsigned frame_moves(const HdFrame *f, int dx[80], int dy[80], int *owned
     return ++serial;
 }
 
-unsigned motion_sprite_moves(const HdFrame *f, int dx[80], int dy[80], int *owned) {
-    memset(dx, 0, 80 * sizeof *dx);
-    memset(dy, 0, 80 * sizeof *dy);
+unsigned motion_sprite_moves(const HdFrame *f, int dx[SPRITES_MAX], int dy[SPRITES_MAX], int *owned) {
+    memset(dx, 0, SPRITES_MAX * sizeof *dx);
+    memset(dy, 0, SPRITES_MAX * sizeof *dy);
     if (owned) *owned = 0;
     if (!GAME_KNOWS_RAM) return frame_moves(f, dx, dy, owned);
     const Tick *now = shown_tick(f);
     if (!now) return 0;
     const Tick *was = tick_numbered(now->serial - 1);
-    for (int i = 0; i < 80; i++) {
+    for (int i = 0; i < SPRITES_MAX; i++) {
         if (!f->sprites[i].drawn || now->anchor[i] < 0) continue;
         if (owned) ++*owned;
         if (!was) continue;
