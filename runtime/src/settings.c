@@ -97,6 +97,7 @@ void settings_load(const char *path) {
         else if (!strcmp(k, "texture_pack")) snprintf(settings.texture_pack, sizeof settings.texture_pack, "%s", v);
         else if (!strcmp(k, "dump_tiles")) settings.dump_tiles = parse_bool(v);
         else if (!strcmp(k, "audio")) settings.audio = atoi(v);
+        else if (!strcmp(k, "bass")) settings.bass = atoi(v);
         else if (!strcmp(k, "ost_track")) settings.ost_track = atoi(v);
         else if (input_ini_load(k, v)) {}
         else if (outfit_ini_load(k, v)) {}
@@ -125,6 +126,7 @@ void settings_load(const char *path) {
     if (settings.lighting < 0 || settings.lighting > 3) settings.lighting = 0;
     if (settings.hdr < 0 || settings.hdr > 2) settings.hdr = 0;
     if (settings.audio < 0 || settings.audio > 2) settings.audio = 0;
+    if (settings.bass < -12 || settings.bass > 12 || settings.bass % 2) settings.bass = 0;
     if (settings.cheat_attack < 0 || settings.cheat_attack > 3) settings.cheat_attack = 0;
     if (settings.cheat_speed < 0 || settings.cheat_speed > 2) settings.cheat_speed = 0;
     if (settings.randomizer < 0 || settings.randomizer > 2) settings.randomizer = 0;
@@ -203,6 +205,7 @@ void settings_save(const char *path) {
     fprintf(f, "texture_pack=%s\n", settings.texture_pack);
     fprintf(f, "dump_tiles=%d\n", settings.dump_tiles);
     fprintf(f, "audio=%d\n", settings.audio);
+    fprintf(f, "bass=%d\n", settings.bass);
     fprintf(f, "ost_track=%d\n", settings.ost_track);
     fprintf(f, "cheat_health=%d\n", settings.cheat_health);
     fprintf(f, "cheat_spirit=%d\n", settings.cheat_spirit);
@@ -281,6 +284,7 @@ void settings_option_text(int id, char *out, size_t n) {
     case OPT_TEXPACK:    snprintf(out, n, "%s", settings.texture_pack[0] ? settings.texture_pack : "None"); break;
     case OPT_DUMP:       snprintf(out, n, "%s", settings.dump_tiles ? "On" : "Off"); break;
     case OPT_AUDIO:      snprintf(out, n, "%s", settings.audio == 2 ? "Rich" : settings.audio ? "Clean" : "Original"); break;
+    case OPT_BASS:       snprintf(out, n, settings.bass ? "%+d dB" : "As made", settings.bass); break;
     case OPT_OVERCLOCK:
         if (settings.overclock <= 100) snprintf(out, n, "Off");
         else snprintf(out, n, "%d%% CPU", settings.overclock);
@@ -416,6 +420,7 @@ void settings_option_change(int id, int dir) {
         break;
     }
     case OPT_AUDIO:    settings.audio = settings_cycle(settings.audio, 3, dir); break;
+    case OPT_BASS:     settings.bass = (settings_cycle(settings.bass / 2 + 6, 13, dir) - 6) * 2; break;
     case OPT_CHEAT_HEALTH:  settings.cheat_health = !settings.cheat_health; break;
     case OPT_CHEAT_SPIRIT:  settings.cheat_spirit = !settings.cheat_spirit; break;
     case OPT_CHEAT_LIVES:   settings.cheat_lives = !settings.cheat_lives; break;

@@ -167,7 +167,11 @@ bool motion_entry_owner(int i, uint32_t *object, uint16_t *kind) {
  * showing the same picture, the nearest if there are several (enemies of one kind look
  * alike), and moves as far as it went. By picture, not tile number: the fighters' tiles are
  * loaded again every frame, so one tile number holds a different piece from frame to frame. A piece that has no match (its animation frame changed
- * shape) moves with the nearest piece that has one, so a fighter's pieces stay together. */
+ * shape) moves with the nearest piece that has one, so a fighter's pieces stay together.
+ * When the whole fighter changed (a walk changes every piece every few frames) none of its
+ * own has: then a piece of the frame before, nearer than any match, keeps it going as that
+ * piece went, rather than it standing still for a frame and jumping, or taking the move of
+ * something else nearby (the jitter a walk showed). */
 static uint32_t picture_of(const HdSprite *c) {
     uint32_t h = 2166136261u;
     for (int y = 0; y < c->h; y++)
@@ -176,7 +180,7 @@ static uint32_t picture_of(const HdSprite *c) {
 }
 
 static unsigned frame_moves(const HdFrame *f, int dx[SPRITES_MAX], int dy[SPRITES_MAX], int *owned) {
-    static struct { bool drawn; int x, y, w, h; uint32_t picture; } prev[SPRITES_MAX];
+    static struct { bool drawn; int x, y, w, h, dx, dy; uint32_t picture; } prev[SPRITES_MAX];
     uint32_t pic[SPRITES_MAX];
     for (int i = 0; i < SPRITES_MAX; i++) pic[i] = f->sprites[i].drawn ? picture_of(&f->sprites[i]) : 0;
     static unsigned serial;
@@ -202,11 +206,20 @@ static unsigned frame_moves(const HdFrame *f, int dx[SPRITES_MAX], int dy[SPRITE
             int ex = m->x + m->w / 2 - cx, ey = m->y + m->h / 2 - cy, d = ex * ex + ey * ey;
             if (d < best) { best = d; dx[i] = dx[k]; dy[i] = dy[k]; }
         }
+        /* None close by (one close is of its own fighter): a piece of the frame before. */
+        if (best <= 24 * 24) continue;
+        best = 24 * 24;
+        for (int j = 0; j < SPRITES_MAX; j++) {
+            if (!prev[j].drawn) continue;
+            int ex = prev[j].x + prev[j].w / 2 - cx, ey = prev[j].y + prev[j].h / 2 - cy, d = ex * ex + ey * ey;
+            if (d < best) { best = d; dx[i] = prev[j].dx; dy[i] = prev[j].dy; }
+        }
     }
     for (int i = 0; i < SPRITES_MAX; i++) {
         const HdSprite *c = &f->sprites[i];
         prev[i].drawn = c->drawn;
         prev[i].x = c->x; prev[i].y = c->y; prev[i].w = c->w; prev[i].h = c->h;
+        prev[i].dx = c->drawn ? dx[i] : 0; prev[i].dy = c->drawn ? dy[i] : 0;
         prev[i].picture = pic[i];
     }
     return ++serial;

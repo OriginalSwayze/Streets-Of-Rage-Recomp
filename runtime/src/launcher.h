@@ -8,6 +8,9 @@
 int launcher_run(const char *ini_path);
 /* Started from the Streets of Rage Collection (--collection): Quit is "Back", to it. */
 extern bool launcher_in_collection;
+/* The window was closed (its X, Alt+F4): the collection closes too, not only this game. */
+extern bool launcher_window_closed;
+#define EXIT_WINDOW_CLOSED 3            /* the exit code that tells the collection so */
 /* Renders one launcher frame, `width` pixels wide, with tab `tab` (0-3) open at time
  * t, to a PNG (for checking the look without a window). */
 int launcher_screenshot(const char *png, int width, int tab, float t);

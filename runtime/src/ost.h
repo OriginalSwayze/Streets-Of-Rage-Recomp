@@ -47,7 +47,7 @@
 #endif
 
 /* menu_sounds.cache: this tag and the four effects' numbers, then each one's sound. */
-#define MENU_SOUNDS_MAGIC 0x444E534Du   /* "MSND" */
+#define MENU_SOUNDS_MAGIC 0x324E534Du   /* "MSN2" (2: the quieter FM mix) */
 
 /* The song's name in the player, or NULL to number it. */
 const char *ost_song_name(int song);

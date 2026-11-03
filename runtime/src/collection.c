@@ -156,21 +156,26 @@ static void render(int w, int h, float t) {
 }
 
 /* ---- Playing ------------------------------------------------------------------------ */
-static void play(SDL_Window *win, int g) {
-    if (!games[g].installed) { say("That game is not installed: run Setup again and pick its ROM."); return; }
+/* Returns false when the game's window was closed (its X): then the collection closes too. */
+static bool play(SDL_Window *win, int g) {
+    if (!games[g].installed) { say("That game is not installed: run Setup again and pick its ROM."); return true; }
     char exe[1200], dir[1200], cmd[1400];
     snprintf(dir, sizeof dir, "%sgames\\%s", base, games[g].dir);
     snprintf(exe, sizeof exe, "%s\\%s", dir, games[g].exe);
     snprintf(cmd, sizeof cmd, "\"%s\" --collection", exe);
     STARTUPINFOA si = { .cb = sizeof si };
     PROCESS_INFORMATION pi;
-    if (!CreateProcessA(exe, cmd, NULL, NULL, FALSE, 0, NULL, dir, &si, &pi)) { say("Could not start the game."); return; }
+    if (!CreateProcessA(exe, cmd, NULL, NULL, FALSE, 0, NULL, dir, &si, &pi)) { say("Could not start the game."); return true; }
     SDL_HideWindow(win);
     WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 0;
+    GetExitCodeProcess(pi.hProcess, &code);
     CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+    if (code == 3) return false;        /* EXIT_WINDOW_CLOSED (launcher.h) */
     find_games();                       /* it may have made its card */
     SDL_ShowWindow(win);
     SDL_RaiseWindow(win);
+    return true;
 }
 
 int main(int argc, char **argv) {
@@ -230,7 +235,7 @@ int main(int argc, char **argv) {
             }
             }
             if (move) selected = (selected + move + GAMES) % GAMES;
-            if (go) play(win, selected);
+            if (go && !play(win, selected)) running = false;
         }
         Uint64 now = SDL_GetPerformanceCounter();
         float dt = (float)(now - last) / SDL_GetPerformanceFrequency(), t = (float)(now - t0) / SDL_GetPerformanceFrequency();

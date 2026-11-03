@@ -20,7 +20,8 @@ static const Layout L = { 0xEF00, 0xF000, 0xF100, 0xFA00, 0x100, 0x02, 0x06, 0x8
 static const Layout L = { 0xB800, 0xB880, 0xB900, 0xC800, 0x80, 0x10, 0x14, 0x32 };
 #endif
 #define P1 L.p1
-#define P2 L.p2
+#define P2 me                         /* the one it plays: player 2, or player 1 for tests */
+static uint16_t me;
 
 /* How it fights: where it stands next to its target, and how close counts as in reach. */
 #define REACH_X     28                  /* stand this far from the target's centre */
@@ -65,18 +66,20 @@ static bool alive(uint32_t o) {
 #endif
 }
 
-/* Something to fight: in use, alive, an enemy, and on screen. */
-static bool enemy(uint32_t o) {
+/* Something to fight: in use, alive, an enemy, and on screen (or anywhere). */
+static bool enemy(uint32_t o, bool anywhere) {
     if (!alive(o)) return false;
 #if GAME_SOR == 2
     /* Enemies carry the name the HUD shows ("GALSIA", "Y.SIGNAL"); items and props do not. */
     uint8_t c0 = peek8(o + 0x78), c1 = peek8(o + 0x79);
     if (c0 < 'A' || c0 > 'Z' || ((c1 < 'A' || c1 > 'Z') && c1 != '.')) return false;
+#elif GAME_SOR == 3
+    if (peek8(o + 0x6D) == 0) return false;    /* has a full health (items and props none) */
 #else
     if (peek8(o + 0x34) == 0) return false;    /* hits back (attack power) */
 #endif
     int sx = screen_x(o);
-    return sx > -8 && sx < 328;
+    return anywhere || (sx > -8 && sx < 328);
 }
 
 void ai_reset(void) { frame = stuck = last_x = last_z = special_wait = join_wait = 0; }
@@ -133,25 +136,51 @@ static bool special_now(int crowd) {
 #endif
 }
 
+static uint16_t fight(uint16_t pad, bool pilot);
+static uint32_t chased, given_up;       /* piloting: the target, and one it gave up on */
+static int chased_hp, chased_since, given_up_until;
+
 uint16_t ai_pad(void) {
     if (GAME_SOR < 1 || GAME_SOR > 3) return 0;
+    me = L.p2;
     frame++;
     if (special_wait) special_wait--;
 
     uint16_t pad;
     if (!joined(&pad)) return pad;
+    return fight(pad, false);
+}
 
+uint16_t ai_pilot_pad(void) {
+    if (GAME_SOR < 1 || GAME_SOR > 3) return 0;
+    me = L.p1;
+    frame++;
+    if (special_wait) special_wait--;
+    if (!alive(P1)) return frame % 90 < 10 ? PAD_START : 0;  /* the title, the menus, a continue */
+    return fight(0, true);
+}
+
+/* Fights the nearest enemy; with none, follows player 1 (or, piloting, walks on). */
+static uint16_t fight(uint16_t pad, bool pilot) {
     int mx = x_of(P2), mz = z_of(P2);
 
     /* The nearest enemy, rows counting double (walking up and down is slow). */
     uint32_t target = 0;
     int best = 1 << 30, crowd = 0;
     for (uint32_t o = L.first_other; o < L.end_other; o += L.slot) {
-        if (!enemy(o)) continue;
+        if (!enemy(o, pilot) || (pilot && o == given_up && frame < given_up_until)) continue;
         int dx = x_of(o) - mx, dz = z_of(o) - mz;
         int d = (dx < 0 ? -dx : dx) + 2 * (dz < 0 ? -dz : dz);
         if (d < 64) crowd++;
         if (d < best) { best = d; target = o; }
+    }
+
+    /* Piloting, a target it has not hurt in 5 s is out of reach for now (in a doorway,
+     * behind something): it looks past it for 10 s. */
+    if (pilot) {
+        int hp = target ? hp_of(target) : 0;
+        if (target != chased || hp != chased_hp) { chased = target; chased_hp = hp; chased_since = frame; }
+        else if (target && frame - chased_since > 300) { given_up = target; given_up_until = frame + 600; chased = 0; }
     }
 
     int want_x, want_z;
@@ -175,6 +204,9 @@ uint16_t ai_pad(void) {
             last_x = mx; last_z = mz;
             return pad;
         }
+    } else if (pilot) {
+        want_x = mx + 80;               /* on along the street */
+        want_z = z_of(P1);
     } else {
         /* Nothing to fight: keep up with player 1, behind and on another row, out of the
          * way of his punches (in two-player games they hit each other). */

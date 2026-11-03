@@ -238,7 +238,19 @@ void widescreen_frame(void) {
             }
         }
     }
-    if (GAME_SOR != 1 && !GAME_WIDESCREEN) { vdp_opts.mask_sides = false; return; }
+    if (GAME_SOR != 1 && !GAME_WIDESCREEN) {
+        /* Streets of Rage 2 and 3: the sides show only with a player in the game. The intro
+         * and the other story scenes are drawn for 320 pixels, with what comes next waiting
+         * beside them (Mr. X's hands in 2's). A player slot is in use from its first state
+         * up to the ones for "not in" ($30 and up in 2; $5A-$5E in 3). */
+        bool playing = false;
+        for (int k = 0; k < 2; k++) {
+            uint16_t s = rd16(GAME_SOR == 3 ? 0xFFDF00 + k * 0x100 : 0xFFEF00 + k * 0x100);
+            playing |= GAME_SOR == 3 ? s && s != 0x5A && s != 0x5C && s != 0x5E : s && s < 0x30;
+        }
+        vdp_opts.mask_sides = GAME_SOR >= 2 && !playing;
+        return;
+    }
     if (!GAME_WIDESCREEN) {
         /* Streets of Rage: the sides show the street only during a game, not the demo, and
          * not on the round's title (mode $28/$2A: its words slide in from past the original

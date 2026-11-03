@@ -18,7 +18,7 @@ items and effects from `$FFB900`. A slot is free when its first word is 0.
 | `+$28` | word | screen X + `$80` (sprite coordinates) |
 | `+$2C` | word | screen Y + `$80` |
 | `+$30` | word | state (`$300` = knocked down and dying) |
-| `+$32` | word | health. Players start at `$48` of a maximum `$50` (the bar shows health / 8); below 0 is dead |
+| `+$32` | word | health. Players start at `$48` of a maximum `$50` (the bar shows health / 8); below 0 is dead. Ordinary enemies have up to 7, round 1's boss `$18` |
 | `+$34` | byte | attack power: what this object's hits subtract from the target's health |
 | `+$37` | byte | bit 1: killed |
 | `+$7E` | word | the enemy this player last targeted (low word of its slot address) |

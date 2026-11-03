@@ -16,6 +16,10 @@ constexpr uint32_t YM_CLOCK = 7670453;      // NTSC 68000 clock
 constexpr uint32_t YM_DIVIDER = 144;        // clocks per output sample
 constexpr double   YM_RATE = double(YM_CLOCK) / YM_DIVIDER;
 constexpr double   PSG_CLOCK = 3579545.0 / 16.0;
+// ymfm averages the six FM channels into full scale; twice that gives each channel a third
+// of it, as loud as the console gets without clipping. (It was 6: loud music then clipped,
+// or was squeezed by the limiter, and the bass, the loudest part, drowned out the rest.)
+constexpr int32_t  FM_GAIN = 2;
 
 class Ym : public ymfm::ymfm_interface {
 public:
@@ -50,7 +54,7 @@ struct Psg {
     int16_t  volume[16];
 
     Psg() {
-        double v = 4000.0;                  // per channel; four channels stay below FM peaks
+        double v = 1333.0;                  // per channel, against FM_GAIN: the console's balance
         for (int i = 0; i < 15; i++) { volume[i] = int16_t(v); v *= 0.794328; } // -2 dB steps
         volume[15] = 0;
     }
@@ -196,6 +200,29 @@ struct Room {
 } room;
 float dc_in[2], dc_out[2];
 
+// The bass setting: a low shelf (RBJ's cookbook, slope 1) below about 150 Hz.
+struct Shelf {
+    float b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0;
+    float x1[2], x2[2], y1[2], y2[2];
+    int db = 0, rate = 0;
+    void make(int gain_db, int r) {
+        double A = std::pow(10.0, gain_db / 40.0), w = 2 * M_PI * 150.0 / r;
+        double c = std::cos(w), al = std::sin(w) / 2 * std::sqrt(2.0), sa = 2 * std::sqrt(A) * al;
+        double a0 = (A + 1) + (A - 1) * c + sa;
+        b0 = float(A * ((A + 1) - (A - 1) * c + sa) / a0);
+        b1 = float(2 * A * ((A - 1) - (A + 1) * c) / a0);
+        b2 = float(A * ((A + 1) - (A - 1) * c - sa) / a0);
+        a1 = float(-2 * ((A - 1) + (A + 1) * c) / a0);
+        a2 = float(((A + 1) + (A - 1) * c - sa) / a0);
+        db = gain_db; rate = r;
+    }
+    float run(int ch, float x) {
+        float y = b0 * x + b1 * x1[ch] + b2 * x2[ch] - a1 * y1[ch] - a2 * y2[ch];
+        x2[ch] = x1[ch]; x1[ch] = x; y2[ch] = y1[ch]; y1[ch] = y;
+        return y;
+    }
+} shelf;
+
 } // namespace
 
 extern "C" {
@@ -204,6 +231,7 @@ int16_t sound_out[SOUND_OUT_MAX * 2];
 int     sound_out_count;
 int     sound_out_rate = 48000;
 int     sound_quality;
+int     sound_bass_db;
 bool    sound_fm_enabled = true, sound_psg_enabled = true;
 
 void sound_reset(void) {
@@ -228,8 +256,8 @@ void sound_advance(int m68k_cycles) {
         ym.chip.generate(&o);
         ym.tick_timers(YM_DIVIDER);
         int32_t p = sound_quality ? psg.step_average(PSG_CLOCK / YM_RATE) : psg.step(PSG_CLOCK / YM_RATE);
-        int32_t l = (sound_fm_enabled ? o.data[0] * 6 : 0) + (sound_psg_enabled ? p : 0);
-        int32_t r = (sound_fm_enabled ? o.data[1] * 6 : 0) + (sound_psg_enabled ? p : 0);
+        int32_t l = (sound_fm_enabled ? o.data[0] * FM_GAIN : 0) + (sound_psg_enabled ? p : 0);
+        int32_t r = (sound_fm_enabled ? o.data[1] * FM_GAIN : 0) + (sound_psg_enabled ? p : 0);
         if (sound_quality) {
             if (kernel_rate != sound_out_rate) make_kernel();
             hist_l[hist_at] = hist_l[hist_at + TAPS] = float(l);
@@ -271,7 +299,17 @@ void sound_advance(int m68k_cycles) {
 }
 
 void sound_end_frame(void) {
-    if (!sound_quality) return;
+    bool bass = sound_bass_db != 0;
+    if (bass && (shelf.db != sound_bass_db || shelf.rate != sound_out_rate)) shelf.make(sound_bass_db, sound_out_rate);
+    if (!sound_quality) {
+        // Original: only the bass setting, then clipped as the mix is.
+        if (bass)
+            for (int i = 0; i < sound_out_count * 2; i++) {
+                float y = shelf.run(i & 1, sound_out[i]);
+                sound_out[i] = int16_t(y < -32768 ? -32768 : y > 32767 ? 32767 : y);
+            }
+        return;
+    }
     if (sound_quality >= 2 && room.rate != sound_out_rate) room.make(sound_out_rate);
     for (int i = 0; i < sound_out_count; i++) {
         float v[2];
@@ -279,7 +317,7 @@ void sound_end_frame(void) {
             float x = sound_out[i * 2 + c];
             dc_out[c] = x - dc_in[c] + 0.9985f * dc_out[c];      // DC blocker, corner about 11 Hz
             dc_in[c] = x;
-            v[c] = dc_out[c];
+            v[c] = bass ? shelf.run(c, dc_out[c]) : dc_out[c];
         }
         if (sound_quality >= 2) {
             float mid = (v[0] + v[1]) * 0.5f, side = (v[0] - v[1]) * 0.5f * 1.3f;

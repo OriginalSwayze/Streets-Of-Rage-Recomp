@@ -35,6 +35,7 @@ typedef struct {
     char texture_pack[64];              /* folder in texture_packs/, empty for none (texpack.h) */
     bool dump_tiles;                    /* write every tile shown to texture_packs/dump/ */
     int  audio;                         /* sound output: 0 original, 1 clean, 2 rich (sound_quality) */
+    int  bass;                          /* the low end, -12 to +12 dB in steps of 2 (sound_bass_db) */
     int  overclock;                     /* 68000 speed in percent (100 = original): removes slowdown */
     int  window_scale;
     bool rewind;                        /* keep a rewind buffer (hold the rewind key to step back) */
@@ -75,7 +76,7 @@ enum { OPT_WIDESCREEN, OPT_ASPECT, OPT_FULLSCREEN, OPT_INTEGER, OPT_WINDOW, OPT_
        OPT_FILTER, OPT_WINDOW_ALL,      /* fullscreen or a window size, in one option */
        OPT_OVERCLOCK, OPT_VOLUME,
        OPT_MUSIC, OPT_OST_MODE,          /* launcher music on/off, soundtrack player mode */
-       OPT_SHARPEN, OPT_SCALER, OPT_LIGHTING, OPT_AUDIO, OPT_ELEMENTS, OPT_FOOTSTEPS, OPT_WATER,
+       OPT_SHARPEN, OPT_SCALER, OPT_LIGHTING, OPT_AUDIO, OPT_BASS, OPT_ELEMENTS, OPT_FOOTSTEPS, OPT_WATER,
        OPT_TEXPACK, OPT_DUMP,
        OPT_COMBAT, OPT_RUMBLE, OPT_FAST, OPT_TIMER, OPT_RANDOMIZER,
        OPT_PLAYER2, OPT_CHEAT_LIVES, OPT_CHEAT_SPECIALS, OPT_CHEAT_TIME, OPT_HDR,

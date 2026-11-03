@@ -58,7 +58,7 @@ static const Item tab_items[TABS][MAX_ROWS] = {
       { ITEM_OPTION, GAME_SOR == 2 ? "Free specials" : "Infinite specials", OPT_CHEAT_SPECIALS }, { ITEM_OPTION, "Infinite time", OPT_CHEAT_TIME },
       { ITEM_OPTION, "Attack power", OPT_CHEAT_ATTACK } },
 #endif
-    { { ITEM_OPTION, "Volume", OPT_VOLUME }, { ITEM_OPTION, "Audio", OPT_AUDIO },
+    { { ITEM_OPTION, "Volume", OPT_VOLUME }, { ITEM_OPTION, "Audio", OPT_AUDIO }, { ITEM_OPTION, "Bass", OPT_BASS },
       { ITEM_ACTION, "Controls", ACT_CONTROLS }, { ITEM_OPTION, "Rumble", OPT_RUMBLE },
       { ITEM_OPTION, "Texture pack", OPT_TEXPACK }, { ITEM_OPTION, "Dump tiles", OPT_DUMP },
 #if GAME_EDITION_COUNT > 1
@@ -66,7 +66,7 @@ static const Item tab_items[TABS][MAX_ROWS] = {
 #endif
     },
 };
-static const int tab_count[TABS] = { 9, 10, 4, FIGHTERS, GAME_SOR == 3 ? 3 : 5, 6 + (GAME_EDITION_COUNT > 1) };
+static const int tab_count[TABS] = { 9, 10, 4, FIGHTERS, GAME_SOR == 3 ? 3 : 5, 7 + (GAME_EDITION_COUNT > 1) };
 
 /* ---- Look: the game's HUD, a yellow frame on charcoal, red bars (as the launcher) ------- */
 #include "theme.h"
@@ -138,13 +138,14 @@ static const char *about(const Item *it) {
         return "Who plays player 2. Second controller: a friend on another controller joins with Start. AI partner: the computer joins as player 2, fights beside you and keeps up with you.";
     case OPT_RANDOMIZER: return "Chests, pots, enemies and the items lying about give other restoratives (and, with weapons, other weapons) than they used to. Each spot keeps its prize for the seed; turning it on picks a new seed. Keys, upgrades, spirit stones and the Bomb never change, so the game can always be finished.";
     case OPT_FAST: return "How fast the game runs while the fast-forward key is held (Tab, or RB on a controller; change it in Controls).";
-    case OPT_COMBAT: return "The damage of every hit rises from the enemy as a number, gold for a one-hit kill; with health bars, a bar over an enemy shows what it has left for a few seconds after each hit.";
+    case OPT_COMBAT: return "The damage of every hit rises from the enemy as a number, gold for a one-hit kill; with health bars, a bar over an enemy shows what it has left for a few seconds after each hit (not over bosses: the game shows theirs).";
     case OPT_RUMBLE: return "The controller rumbles when you land a hit, harder for a knockout and when you are hit, and long and low when the police car is called.";
     case OPT_TIMER: return "This session's play time in the top corner of the picture, for speedruns and keeping track. The total is under Stats.";
     case OPT_VOLUME: return "The game's volume.";
     case OPT_EDITION: return settings_edition_count() > 1
         ? "The edition of the game played: each cartridge has its own code. Changing it starts that edition from power on, with its own saves; unsaved progress here is lost."
         : "The edition of the game played: each cartridge has its own code. Add another edition's ROM in the launcher (Game, ROM) to choose it here.";
+    case OPT_BASS: return "The low end of the music and sound, from -12 dB (lighter) to +12 dB (heavier). As made is the console's own balance.";
     case OPT_AUDIO: return "Original is the console's sound as emulated. Clean removes aliasing, the hum and clipping; Rich adds wider stereo and a light room.";
     }
     return NULL;

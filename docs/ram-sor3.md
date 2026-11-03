@@ -18,7 +18,7 @@ enemies and items from `$FFE100`. `$FFDE00` lists the slots in drawing order.
 | `+$36` | word | during a hit: the damage (low 6 or 7 bits) |
 | `+$60` | word | during a hit: the attacker's object (low word) |
 | `+$6C` | byte | health: `$34` full for the players, 0 is dead |
-| `+$6D` | byte | the most health it can have |
+| `+$6D` | byte | the most health it can have: up to `$20` for ordinary enemies, `$30` for round 1's boss |
 | `+$6E` | byte | the health the HUD bar shows (it follows `+$6C` a step a frame) |
 | `+$8B` | byte | players: lives left after this one |
 | `+$C8` | word | during a throw or slam: the damage |

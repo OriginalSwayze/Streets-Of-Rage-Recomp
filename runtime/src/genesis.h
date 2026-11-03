@@ -158,6 +158,8 @@ extern bool    sound_fm_enabled, sound_psg_enabled;
  * anti-aliased PSG, no DC offset; 2 rich: clean with wider stereo and a light room reverb.
  * Only the sound that comes out changes, never the machine's state. */
 extern int     sound_quality;
+/* The low end, raised or lowered by this many dB (a shelf below about 150 Hz); 0 leaves it. */
+extern int     sound_bass_db;
 void    sound_end_frame(void);          /* machine.c, after each frame: the output effects */
 void    sound_reset(void);
 void    sound_advance(int m68k_cycles);

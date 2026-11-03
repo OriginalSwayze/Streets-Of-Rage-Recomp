@@ -71,10 +71,12 @@ In all three games:
 * **AI partner** for player 2, or a second controller (in Streets of Rage 2, pick 2 PLAYERS)
 * **Cheats**: infinite health and lives, attack power up to one-hit kills; the timer and the
   specials where the game has them
-* **Combat info** (damage numbers, enemy health bars), rumble, a play timer and stats
+* **Combat info** (damage numbers, health bars over ordinary enemies), rumble, a play timer and stats
 * **Fighters' colours**: every playable fighter's clothes, hair and skin in any of the
   Genesis' 512 colours, still or animated, with a live preview
 * Save states, rewind, fast-forward, a slowdown fix and a sprite flicker fix
+* Sound at the console's own balance, as emulated or cleaned up (no aliasing, hum or
+  clipping), with a bass setting
 * A launcher and pause menu in each game's own colours, with its own music and sounds
 
 In Streets of Rage 3:
@@ -94,7 +96,9 @@ StreetsOfRage2.exe --headless 4000 --press <script> --hash-log b.log --interpret
 
 `--press` takes a script (`frame:buttons:frames,...`, e.g. `300:S,500:S,1700:R:400`) to play
 past the title. Widescreen and the cheats change the game on purpose (their patches only run
-natively); with them off every game matches the interpreter frame for frame.
+natively); with them off every game matches the interpreter frame for frame. To get further,
+`--autoplay N` has player 1 play itself from frame N (the AI partner's fighting, walking on
+when the street is clear); with `--cheat health` it gets through the first round.
 
 New code is found by playing: the runtime records every instruction it runs in
 `coverage.bin`, and `node tools/save-coverage.mjs --game <name>` adds it to the game's

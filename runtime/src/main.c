@@ -184,6 +184,7 @@ static void apply_settings(void) {
     machine_opts.overclock = settings.overclock;
     outfit_apply();
     sound_quality = settings.audio;
+    sound_bass_db = settings.bass;
     hd_scaler = settings.scaler;
     hd_water = settings.water;
     /* Texture packs: load a pack when it changes (it can be many images), dump on request. */
@@ -356,7 +357,7 @@ int main(int argc, char **argv) {
     int shot_every = 0;
     const char *dump = NULL;
     uint32_t watch[16];
-    int watch_count = 0;
+    int watch_count = 0, autoplay = 0;
     int check_from = -1, check_to = -1;     /* --state-check A B */
     uint32_t *check_pads = NULL;            /* the pads of frames A to B */
     int rewind_check = 0;                   /* --rewind-check K */
@@ -422,6 +423,7 @@ int main(int argc, char **argv) {
                 fclose(pf);
             }
         }
+        else if (!strcmp(argv[i], "--autoplay") && i + 1 < argc) autoplay = atoi(argv[++i]);   /* player 1 plays itself from frame N */
         else if (!strcmp(argv[i], "--player2") && i + 1 < argc) { settings.player2 = !strcmp(argv[++i], "ai"); test_overrides = true; }
         else if (!strcmp(argv[i], "--shots") && i + 2 < argc) { shot_every = atoi(argv[++i]); shot_dir = argv[++i]; }
         else if (!strcmp(argv[i], "--widescreen") && i + 1 < argc) { settings.widescreen = atoi(argv[++i]) != 0; test_overrides = true; }
@@ -608,7 +610,7 @@ int main(int argc, char **argv) {
     if (!headless_frames) pads_init();
     if (!headless_frames && settings.show_launcher && !no_launcher && GAME_LAUNCHER) {
         apply_settings();
-        if (!launcher_run(ini)) { SDL_Quit(); return 0; }
+        if (!launcher_run(ini)) { SDL_Quit(); return launcher_window_closed ? EXIT_WINDOW_CLOSED : 0; }
     }
     const char *err = settings.rom_path[0] ? bus_load_rom(settings.rom_path) : "no ROM selected";
     if (err) {
@@ -657,7 +659,7 @@ int main(int argc, char **argv) {
         FILE *hf = hash_log ? fopen(hash_log, "w") : NULL;
         for (int f = 0; f < headless_frames; f++) {
             if (profile_frames && f == headless_frames - profile_frames) pc_profile = calloc(ROM_SIZE / 2, 4);
-            pad_state[0] = scripted_pad(f, 0);
+            pad_state[0] = autoplay && f >= autoplay ? ai_pilot_pad() : scripted_pad(f, 0);
             pad_state[1] = settings.player2 ? ai_pad() : scripted_pad(f, 1);
             if (f == check_from) len_a = state_save(snap_a, sizeof snap_a);
             if (f == check_to) len_b = state_save(snap_b, sizeof snap_b);
@@ -971,7 +973,7 @@ int main(int argc, char **argv) {
             bool open_menu = input_event_is(IN_MENU, &e) ||
                              (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE && !e.key.repeat) ||
                              (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE);
-            if (e.type == SDL_QUIT) running = false;
+            if (e.type == SDL_QUIT) { running = false; launcher_window_closed = true; }
             else if (menu_is_open()) {
                 bool was_rewind = settings.rewind;
                 switch (menu_event(&e)) {
@@ -1175,5 +1177,5 @@ int main(int argc, char **argv) {
     preview_save(base_dir);
     if (!test_overrides) settings_save(ini);
     SDL_Quit();
-    return 0;
+    return launcher_window_closed ? EXIT_WINDOW_CLOSED : 0;
 }

@@ -59,6 +59,16 @@ static bool fights(uint32_t a) {
     return bus.ram[(a + 0x34) & 0xFFFF] != 0;                        /* it hits back (attack power) */
 }
 
+/* A boss: the game's own HUD shows its health, and its sprite is too big for our bar over
+ * it. Streets of Rage 2's bosses have more lives than one (+$83, as the players'); 3's
+ * have about a player's health ($34) where the others have up to $20; 1's have $18 where
+ * the others have up to 7 (round 1's, from playing it through). */
+static bool boss(uint32_t a, uint16_t max) {
+    if (GAME_SOR == 2) return bus.ram[(a + 0x83) & 0xFFFF] != 0;
+    if (GAME_SOR == 3) return max >= 0x30;
+    return max >= 0x10;
+}
+
 /* Its feet, in world coordinates. */
 static void feet(uint32_t a, const HdFrame *f, float cam_x, float cam_y, float *x, float *y) {
     if (GAME_SOR >= 2) {
@@ -75,6 +85,7 @@ typedef struct {
     uint16_t type, hp, max;
     float x0, y0, x1, y1;               /* its sprites' box, world coordinates */
     bool boxed, dead, enemy;
+    bool boss;                          /* the game's HUD shows its health: no bar of ours */
     int bar_age;                        /* frames since it was last hurt; <0: no bar */
     float shown;                        /* the bar's pale part, catching up with the health */
 } Slot;
@@ -137,9 +148,11 @@ void combat_frame(const HdFrame *f, bool world, float cam_x, float cam_y, bool l
             s->enemy = enemy;
             /* A new object in this slot (or none): its health now is its full health. */
             s->type = type; s->hp = s->max = hp; s->dead = dead_at(raw); s->bar_age = -1; s->shown = 1;
+            s->boss = enemy && boss(a, hp);
             continue;
         }
         if (hp > s->max) s->max = hp;
+        s->boss |= boss(a, s->max);     /* on its last life too */
         bool kill = dead_at(raw) && !s->dead;
         if (hp < s->hp || kill) {
             int d = s->hp - hp + (kill && GAME_SOR < 2 ? 1 : 0);
@@ -226,7 +239,7 @@ void combat_draw(uint32_t *px, int w, int h, const HdPost *p) {
     if (settings.combat_info == 2)
         for (int i = FIRST_ENEMY; i < SLOTS; i++) {
             const Slot *e = &slots[i];
-            if (e->bar_age < 0 || !e->boxed || !e->max) continue;
+            if (e->bar_age < 0 || !e->boxed || !e->max || e->boss) continue;
             int a = e->bar_age > 120 ? (150 - e->bar_age) * 256 / 30 : 256;
             float bw = fminf(fmaxf(e->x1 - e->x0, 16), 28);
             float x = ((e->x0 + e->x1) / 2 - bw / 2 - p->cam_x) * s, y = (e->y0 - 5 - p->cam_y) * s;

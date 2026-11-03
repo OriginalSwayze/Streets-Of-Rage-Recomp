@@ -9,6 +9,9 @@
 /* Player 2's buttons for the coming frame (PAD_* bits). Only looks at RAM and its own
  * counters, so it plays the same way every time from the same state. */
 uint16_t ai_pad(void);
+/* Player 1's buttons for tests (--autoplay): the same fighting, walking on along the street
+ * when it is clear. Not with the AI partner: they share the counters. */
+uint16_t ai_pilot_pad(void);
 /* Forgets the counters (after loading a state or rewinding). */
 void ai_reset(void);
 

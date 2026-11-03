@@ -42,7 +42,7 @@
  * backdrop). Both come from running the game: through the intro, then Start into round 1
  * and walking right while the camera follows. */
 static Art cover, pano;
-bool launcher_in_collection;
+bool launcher_in_collection, launcher_window_closed;
 
 #define ART_MAGIC    0x32524F53u       /* cache file tag (bump when the capture changes) */
 #define PANO_TOP     32                 /* the street starts under the HUD */
@@ -784,7 +784,8 @@ static const Row tab_rows[TABS][9] = {
       { ROW_OPTION, "Show launcher at startup", OPT_LAUNCHER, "Off starts the game directly (show_launcher=1 in settings.ini brings it back)." } },
     { { ROW_OPTION, "Launcher music", OPT_MUSIC, NULL }, { ROW_TRACK, "Track", 0, NULL },
       { ROW_OPTION, "Player", OPT_OST_MODE, NULL }, { ROW_OPTION, "Volume", OPT_VOLUME, NULL },
-      { ROW_OPTION, "Audio", OPT_AUDIO, NULL } },
+      { ROW_OPTION, "Audio", OPT_AUDIO, NULL },
+      { ROW_OPTION, "Bass", OPT_BASS, "The low end, lighter or heavier. As made is the console's own balance." } },
 #if GAME_SOR == 3
     { { ROW_FIGHTER, "Axel", 0, "His top, hair, trousers, gloves and skin in any colour, still or animated." },
       { ROW_FIGHTER, "Blaze", 1, "Her outfit, hair and skin in any colour, still or animated." },
@@ -794,7 +795,7 @@ static const Row tab_rows[TABS][9] = {
       { ROW_OPTION, "Infinite lives", OPT_CHEAT_LIVES, "Both players always have at least two lives left." },
       { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
 };
-static const int tab_count[TABS] = { 9, 4, 8 + (GAME_EDITION_COUNT > 1), 5, 4, 3 };
+static const int tab_count[TABS] = { 9, 4, 8 + (GAME_EDITION_COUNT > 1), 6, 4, 3 };
 #elif GAME_SOR == 2
     { { ROW_FIGHTER, "Max", 0, "His trousers, boots, belt and skin in any colour, still or animated." },
       { ROW_FIGHTER, "Axel", 1, "His hair, shirt, jeans, gloves and skin in any colour, still or animated." },
@@ -806,7 +807,7 @@ static const int tab_count[TABS] = { 9, 4, 8 + (GAME_EDITION_COUNT > 1), 5, 4, 3
       { ROW_OPTION, "Infinite time", OPT_CHEAT_TIME, "The round timer never runs down." },
       { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
 };
-static const int tab_count[TABS] = { 9, 4, 8, 5, 4, 5 };
+static const int tab_count[TABS] = { 9, 4, 8, 6, 4, 5 };
 #else
     { { ROW_FIGHTER, "Axel", 0, "His hair, top, jeans and skin in any colour, still or animated." },
       { ROW_FIGHTER, "Adam", 1, "His vest, trousers, skin and shoes in any colour, still or animated." },
@@ -817,7 +818,7 @@ static const int tab_count[TABS] = { 9, 4, 8, 5, 4, 5 };
       { ROW_OPTION, "Infinite time", OPT_CHEAT_TIME, "The round timer never runs down." },
       { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
 };
-static const int tab_count[TABS] = { 9, 4, 8, 5, 3, 5 };
+static const int tab_count[TABS] = { 9, 4, 8, 6, 3, 5 };
 #endif
 
 /* ---- Look: the game's HUD, a yellow frame on charcoal, red bars ---------------------- */
@@ -1425,7 +1426,7 @@ int launcher_run(const char *ini_path) {
                 continue;
             }
             switch (e.type) {
-            case SDL_QUIT: result = 0; break;
+            case SDL_QUIT: result = 0; launcher_window_closed = true; break;
             case SDL_MOUSEMOTION: {
                 /* Mouse positions are in window points, which match the 1280x720 layout. */
                 int h = hit_test(e.motion.x, e.motion.y);

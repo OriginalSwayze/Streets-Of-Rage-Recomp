@@ -17,7 +17,7 @@ enemies and items from `$FFF100` to `$FFF900`.
 | `+$20` | word | X again (`+$24` depth), the copy the sprite code reads |
 | `+$78` | 8 bytes | the character's name in ASCII ("AXEL", "BLAZE", "GALSIA", "Y.SIGNAL", ...); items and props have none |
 | `+$80` | word | health: `$68` full for the players, `$18` for a Galsia; 0 or below is dead |
-| `+$83` | byte | players: lives left after this one (the HUD shows one more) |
+| `+$83` | byte | lives left after this one: the players' (the HUD shows one more), and a boss's (Barbon has 1; ordinary enemies 0) |
 | `+$8A` | long | during a hit: the attacker's object |
 | `+$8E` | word | during a hit: the damage |
 | `+$A8` | word | the health the HUD bar shows (it follows `+$80`) |
