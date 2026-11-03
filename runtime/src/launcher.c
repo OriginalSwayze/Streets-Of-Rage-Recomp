@@ -1059,7 +1059,7 @@ static void draw_row(int r, const Row *row, float dx, float alpha, const PlayerV
     float y = row_y(r);
     bool focus = ui.selected == r;
     Rgb lc = focus ? rgb(1, 1, 1) : C_TEXT;
-    ui_draw_text(row->label, "Segoe UI", 17.5f, 400, 0, PANEL_X + 4 + dx, y + 10, lc, lc, alpha);
+    ui_draw_text(row->kind == ROW_FIGHTER ? fighter_name(row->id) : row->label, "Segoe UI", 17.5f, 400, 0, PANEL_X + 4 + dx, y + 10, lc, lc, alpha);
     char value[96];
     Rgb vc = focus ? C_YELLOW : C_VALUE;
     const char *hint = NULL;

@@ -196,6 +196,11 @@ static float mouse_x, mouse_y, mouse_t = -1;   /* for the light on the steel (la
 bool menu_is_open(void) { return open_; }
 
 static float row_y(int i) { return LIST_Y + i * ROW_H; }
+/* An item's name: a fighter's as this edition calls them. */
+static const char *item_label(const Item *it) {
+    return it->kind == ITEM_ACTION && it->id >= ACT_FIGHTER0 && it->id <= ACT_FIGHTER3 ? fighter_name(it->id - ACT_FIGHTER0) : it->label;
+}
+
 static const Item *item_at(int i) { return i >= 0 && i < tab_count[tab] ? &tab_items[tab][i] : NULL; }
 
 /* Box blur in place, three passes per axis (close to a Gaussian). */
@@ -564,7 +569,7 @@ static void draw_card(float t, float alpha) {
     if (it->kind == ITEM_SLOT) snprintf(head, sizeof head, "SLOT %d", settings.state_slot);
     else {
         size_t k = 0;
-        for (const char *p = it->label; *p && k < sizeof head - 1; p++) head[k++] = (char)((*p >= 'a' && *p <= 'z') ? *p - 32 : *p);
+        for (const char *p = item_label(it); *p && k < sizeof head - 1; p++) head[k++] = (char)((*p >= 'a' && *p <= 'z') ? *p - 32 : *p);
         head[k] = 0;
     }
     shadow_text(head, HEAD, 24, 400, 2, x, y - 4, C_YELLOW, rgb(0, 0, 0), alpha);
@@ -661,7 +666,7 @@ void menu_render(double time_s) {
         bool focus = selected == i;
         bool danger = it->kind == ITEM_ACTION && (it->id == ACT_RESET || it->id == ACT_QUIT);
         Rgb lc = focus ? (danger && confirm_pending ? rgb_hex(0xF2A08F) : rgb(1, 1, 1)) : C_TEXT;
-        ui_draw_text(it->label, "Segoe UI", 17.5f, 400, 0, LIST_X + dx, y + 9, lc, lc, alpha);
+        ui_draw_text(item_label(it), "Segoe UI", 17.5f, 400, 0, LIST_X + dx, y + 9, lc, lc, alpha);
         char value[48] = "";
         if (it->kind == ITEM_OPTION) settings_option_text(it->id, value, sizeof value);
         else if (it->kind == ITEM_SLOT) snprintf(value, sizeof value, "Slot %d", settings.state_slot);

@@ -37,6 +37,7 @@ typedef struct { const char *name, *about; int n; uint8_t idx[3]; uint16_t top; 
 #if GAME_SOR == 3
 enum { AXEL, BLAZE, SKATE, ZAN };
 const char *const fighter_names[FIGHTERS] = { "Axel", "Blaze", "Skate", "Zan" };
+const char *fighter_name(int f) { return f == SKATE && game && game->region == REGION_JP ? "Sammy" : fighter_names[f]; }
 static const char *const ini_names[FIGHTERS] = { "axel", "blaze", "skate", "zan" };
 static const Part parts[FIGHTERS][FIGHTER_PARTS] = {
     [AXEL] = {
@@ -66,6 +67,7 @@ static const int part_count[FIGHTERS] = { 4, 2, 4, 4 };
 #elif GAME_SOR == 2
 enum { MAX, AXEL, BLAZE, SKATE };
 const char *const fighter_names[FIGHTERS] = { "Max", "Axel", "Blaze", "Skate" };
+const char *fighter_name(int f) { return fighter_names[f]; }
 static const char *const ini_names[FIGHTERS] = { "max", "axel", "blaze", "skate" };
 static const Part parts[FIGHTERS][FIGHTER_PARTS] = {
     [MAX] = {
@@ -97,6 +99,7 @@ static const int part_count[FIGHTERS] = { 4, 5, 3, 4 };
 #else
 enum { AXEL, ADAM, BLAZE };
 const char *const fighter_names[FIGHTERS] = { "Axel", "Adam", "Blaze" };
+const char *fighter_name(int f) { return fighter_names[f]; }
 static const char *const ini_names[FIGHTERS] = { "axel", "adam", "blaze" };
 static const Part parts[FIGHTERS][FIGHTER_PARTS] = {
     [AXEL] = {
@@ -699,7 +702,7 @@ void fighters_render(double time_s) {
         if (on) ui_fill_rect(x, TAB_Y + 36, TAB_W, 4, C_RED, 1);
         else frame_rect(x, TAB_Y, TAB_W, 40, 1, rgb_hex(0x4A4A52), 1);
         char up[16];
-        snprintf(up, sizeof up, "%s", fighter_names[k]);
+        snprintf(up, sizeof up, "%s", fighter_name(k));
         for (char *p = up; *p; p++) if (*p >= 'a' && *p <= 'z') *p -= 32;
         float tw = ui_text_width(up, HEAD, 20, 400, 2);
         ui_draw_text(up, HEAD, 20, 400, 2, x + TAB_W / 2 - tw / 2, TAB_Y + 8, on ? C_INK : C_DIM, on ? C_INK : C_DIM, 1);

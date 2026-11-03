@@ -35,6 +35,8 @@
 #define FIGHTER_PARTS 5                 /* parts per fighter, at most */
 
 extern const char *const fighter_names[FIGHTERS];   /* "Axel", "Adam", "Blaze", ... */
+/* The name shown for fighter f in this edition: Bare Knuckle III's Skate is Sammy. */
+const char *fighter_name(int f);
 
 /* settings.ini: fighter_axel=a,b,c,d (CRAM colours in hex, - = their own) and
  * fighter_axel_anims=0,2,... (OUTFIT_ANIM_*); likewise adam and blaze. */

@@ -286,8 +286,13 @@ void widescreen_frame(void) {
             uint32_t next_stage = stage < 14 ? ptr + 2 + (uint32_t)(int16_t)rd16(ptr + 2) : 0;
             uint32_t at = table + (uint32_t)section * 4, next = at + 8;
             int limit = -(int16_t)rd16(at);
+            /* Round 8's rooms are one screen each, the camera held at 96 section after section:
+             * the limit repeats, and the room ends there too. */
             bool end = (next_stage && next >= next_stage) || -(int16_t)rd16(next) <= limit;
             if (end) after = cam + extra - limit;
+            /* A room whose camera never left its limit (round 8's) starts there too: its
+             * map is the one screen. */
+            if (end && limit < 320 && cam == limit && section > 0 && -(int16_t)rd16(at - 8) == limit) before = extra - (cam - limit);
         }
         slide_view(before, after);
     }
