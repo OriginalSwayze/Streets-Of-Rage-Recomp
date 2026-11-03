@@ -79,7 +79,9 @@ static bool enemy(uint32_t o, bool anywhere) {
     if (peek8(o + 0x34) == 0) return false;    /* hits back (attack power) */
 #endif
     int sx = screen_x(o);
-    return anywhere || (sx > -8 && sx < 328);
+    /* Piloting: also ahead, off the screen, but not behind its left edge, which the camera
+     * does not go back to (enemies waiting there to walk in cannot be reached). */
+    return anywhere ? sx > -8 : sx > -8 && sx < 328;
 }
 
 void ai_reset(void) { frame = stuck = last_x = last_z = special_wait = join_wait = 0; }

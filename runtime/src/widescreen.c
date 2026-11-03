@@ -265,7 +265,12 @@ void widescreen_frame(void) {
             for (int k = 15; k >= blocks; k--)
                 if (rd16(0xFF8C00 + (uint32_t)(row * 32 + k * 2))) { blocks = k + 1; break; }
         vdp_opts.hud_b_lines = 40;
-        if (round) slide_view(extra - cam, cam + 320 + extra - (blocks ? blocks : 1) * 256);
+        /* The section's camera limit ($FF8864): when it lies in the map's last block, the
+         * map ends where the camera stops (limit + 320), short of a whole block when the
+         * room is (round 3's bar: two blocks, the camera held at 96, the art ending at 416). */
+        int end = (blocks ? blocks : 1) * 256, limit = (int16_t)rd16(0xFF8864);
+        if (limit >= 0 && limit + 320 > end - 256 && limit + 320 < end) end = limit + 320;
+        if (round) slide_view(extra - cam, cam + 320 + extra - end);
         else slide_view(-extra, -extra);
     }
     if (GAME_SOR == 2) {

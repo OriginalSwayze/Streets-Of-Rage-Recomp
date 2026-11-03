@@ -596,7 +596,14 @@ void vdp_render_line(int line, uint32_t *dst) {
     static uint8_t a[320 + MAX_EXTRA_WIDTH * 2], b[320 + MAX_EXTRA_WIDTH * 2], s[320 + MAX_EXTRA_WIDTH * 2];
     memset(s, 0, (size_t)w);
     if (vdp_opts.tile_refs) memset(ref_s, 0, (size_t)w * sizeof *ref_s);
-    draw_plane(b, w, line < vdp_opts.hud_b_lines ? wide : extra, line, (vdp.reg[4] & 7) << 13, 1);
+    bool hud_line = line < vdp_opts.hud_b_lines;
+    draw_plane(b, w, hud_line ? wide : extra, line, (vdp.reg[4] & 7) << 13, 1);
+    /* The HUD's lines of plane B hold nothing of the street beside the HUD: while the view
+     * slides, the slid street (plane A) shows there instead. */
+    if (hud_line && extra != wide) {
+        memset(b, 0, (size_t)wide);
+        memset(b + wide + vdp_screen_width(), 0, (size_t)(w - wide - vdp_screen_width()));
+    }
     draw_plane(a, w, extra, line, (vdp.reg[2] & 0x38) << 10, 0);
     draw_window(a, w, wide, line);
     draw_sprites(s, w, extra, line);

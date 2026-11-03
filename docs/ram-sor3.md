@@ -61,7 +61,9 @@ zero past the map's end (round 1's first area is 8 blocks, 2048 pixels; its came
 `$6C0`). At either end the wide view slides back inside the map (`vdp_opts.view_slide`,
 widescreen.c), as in Streets of Rage 2, and the players' right limit moves out only as far as
 the map goes (`patch_sor_reach_right`). `$FF8864` is the camera's limit for the current
-section (set by each round's script), not the map's end.
+section (set by each round's script), not the map's end, except in an area's last block: there
+the map ends where the camera stops, limit + 320 (round 3's bar is two blocks with the camera
+held at 96: its art ends at 416).
 
 The HUD is plane B's top 40 lines (5 strips of the 8-line scroll, scrolled 0; no window
 plane), which stay put as the view slides (`vdp_opts.hud_b_lines`).
