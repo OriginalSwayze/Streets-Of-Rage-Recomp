@@ -58,3 +58,7 @@ one followed by a new area with a smaller limit: round 2's bridge, the truck's c
 truck) the map ends at that limit + 320, where the original screen's right edge stops. The
 widescreen columns past it hold whatever was drawn there earlier, so `widescreen_frame` draws
 them black (`vdp_opts.mask_right`) and the players stop at the map's end.
+
+Each area's map starts at camera X 0 (the camera, `$FFFC22` negated, goes back to 0 for round 1's
+bar and for the alley after it): left of it is black (`vdp_opts.mask_left`) until the camera
+has moved past the widescreen columns.

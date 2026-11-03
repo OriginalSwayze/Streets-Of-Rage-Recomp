@@ -83,13 +83,13 @@ export function usePatches(patches) {
     // Streets of Rage 3's screen limits for the players (sorWideLimit): "dN K - CAM" is
     // move.l #K<<16,dN, a left limit in pixels from the camera (the word at $FFCAM), moved left
     // by patch_sor_wide but never left of world X K (where each level starts); "dN K +" a right
-    // limit, moved right.
+    // limit, moved right by patch_sor_reach_right (less where the map ends, widescreen.c).
     ...Object.entries(PATCHES.sorWideLimit ?? {}).map(([pc, spec]) => {
       const [reg, k, side, cam] = spec.split(' ');
       const n = reg[1], K = `0x${k}`;
       return [parseInt(pc, 16), [`move.l	#$${k}0000,${reg}`, [side === '-'
         ? `{ int32_t lim = ${K} - patch_sor_wide, least = ${K} - (int16_t)rd16(0xFF${cam}u); if (lim < least) lim = least; D(${n}) = (uint32_t)lim << 16; logicl(D(${n})); }`
-        : `{ D(${n}) = (uint32_t)(${K} + patch_sor_wide) << 16; logicl(D(${n})); }`]]];
+        : `{ D(${n}) = (uint32_t)(${K} + patch_sor_reach_right) << 16; logicl(D(${n})); }`]]];
     }),
     // Streets of Rage 2's row drawer draws 44 cells (352 pixels, the screen and a margin) from
     // its start: (32 - c) from the first map block, then c + 12, or 32 and c - 20 when c > 20.

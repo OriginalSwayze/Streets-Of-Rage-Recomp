@@ -55,8 +55,14 @@ games/sor3/patches.json moves the screen edges out by the extra width (`patch_so
 The enemies' own on-screen tests (camera + 1 to + `$130` at `$01AC22`, and others like it)
 are left alone: widening Streets of Rage 1's made waves wait for enemies that never came.
 
-At the start of a round the camera is at the level's left end (X 0); the part of the left side
-past it is black (`vdp_opts.mask_left`, set in widescreen.c) until the camera has moved on.
+Each area's camera starts at its map's left end (X 0); the part of the left side past it is
+black (`vdp_opts.mask_left`, set in widescreen.c) until the camera has moved on. The map is
+a table of 256-pixel blocks, 16 a row: plane A's at `$FF8C00` (B's at `$FF8A00`), RAM offsets
+of each block (32 × 32 cells), zero past the map's end. Past the last block (round 1's first
+area is 8, 2048 pixels; its camera stops at `$6C0`) the right side is black too
+(`vdp_opts.mask_right`), and the players' right limit moves out only as far
+(`patch_sor_reach_right`). `$FF8864` is the camera's limit for the current section (set by
+each round's script), not the map's end.
 
 ## Sound
 

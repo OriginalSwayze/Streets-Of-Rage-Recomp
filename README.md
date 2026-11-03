@@ -62,7 +62,8 @@ Setup again; Uninstall can keep your saves).
 In all three games:
 
 * **Widescreen** (16:9 and other shapes), with the play area widened to match: the players walk
-  to the new edges and enemies walk in from beyond them
+  to the new edges and enemies walk in from beyond them; past either end of a map the sides
+  are black
 * **High frame rate**: drawn at your screen's refresh rate (120, 144 Hz or more), the scrolling
   and every sprite gliding between the game's 60 updates
 * **Internal resolution** up to 6x with dither-aware scalers (Edge, Smooth/xBR, Sharp),
