@@ -31,6 +31,25 @@ export const BUILD_DIR = join(ROOT, 'build', GAME);
 if (!existsSync(join(GAME_DIR, 'game.json'))) throw new Error(`No games/${GAME}/game.json: run tools/new-game.mjs with its ROM first`);
 export const GAME_INFO = JSON.parse(readFileSync(join(GAME_DIR, 'game.json'), 'utf8'));
 
+// The cartridges the game builds from: its own (game.json's rom, the main edition, which the
+// addresses in patches.json and entries.json are written for) and any other edition of it
+// (game.json's editions, e.g. another country's, with its own code). Each one:
+//   { id, name, edition (the player's name for it), region (us, eu, jp), sha1, size, main }
+export const EDITIONS = [
+  { id: GAME_INFO.rom.id || 'main', name: GAME_INFO.rom.name, edition: GAME_INFO.rom.edition || GAME_INFO.title,
+    region: GAME_INFO.rom.region || 'us', sha1: GAME_INFO.rom.sha1, size: GAME_INFO.rom.size, main: true },
+  ...(GAME_INFO.editions || []).map((e) => ({ region: 'us', size: GAME_INFO.rom.size, ...e, main: false })),
+];
+export const MAIN_EDITION = EDITIONS[0];
+
+// An edition's own file: `name` for the main one, else with "-<id>" before its extension
+// ("coverage.bin" -> "coverage-jp.bin"), as runtime/src/bus.c's game_file_name.
+export function editionFileName(edition, name) {
+  if (edition.main) return name;
+  const dot = name.lastIndexOf('.');
+  return dot < 0 ? `${name}-${edition.id}` : `${name.slice(0, dot)}-${edition.id}${name.slice(dot)}`;
+}
+
 // The game's own config file, or `fallback` when it has none.
 export function gameFile(name, fallback) {
   const path = join(GAME_DIR, name);

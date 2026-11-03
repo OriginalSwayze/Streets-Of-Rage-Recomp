@@ -20,7 +20,8 @@ static uint8_t pad_pins(int port) {
 
 uint8_t io_read8(uint32_t a) {
     switch (a & 0x1F) {
-    case 0x01: return 0xA0;               /* overseas, NTSC, no expansion unit, no TMSS */
+    case 0x01:                            /* NTSC, no expansion unit, no TMSS; the cartridge's region */
+        return game && game->region == REGION_JP ? 0x20 : 0xA0;
     case 0x03: case 0x05: {
         int port = ((a & 0x1F) - 3) >> 1;
         uint8_t in = pad_pins(port);

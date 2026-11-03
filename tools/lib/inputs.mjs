@@ -4,7 +4,7 @@
 // (build/<name>/coverage.bin).
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { GAME_DIR, BUILD_DIR } from './game.mjs';
+import { GAME_DIR, BUILD_DIR, MAIN_EDITION, editionFileName } from './game.mjs';
 
 // coverage.txt: one hex address, or a "start-end" range of even addresses, per line.
 export function loadCoverageList() {
@@ -17,11 +17,14 @@ export function loadCoverageList() {
   return out;
 }
 
-export function loadExtraEntries() {
-  const entries = [], covered = loadCoverageList();
+// The main edition's, or with `config` (tools/lib/editions.mjs configFor) another edition's:
+// its mapped entries and coverage, and its own coverage-<id>.bin.
+export function loadExtraEntries(edition = MAIN_EDITION, config = null) {
+  const entries = [], covered = config ? [...config.coverage] : loadCoverageList();
+  if (config) for (const s of config.entries) entries.push(parseInt(s, 16));
   const entriesFile = join(GAME_DIR, 'entries.json');
-  if (existsSync(entriesFile)) for (const s of JSON.parse(readFileSync(entriesFile, 'utf8'))) entries.push(parseInt(s, 16));
-  const cov = join(BUILD_DIR, 'coverage.bin');
+  if (!config && existsSync(entriesFile)) for (const s of JSON.parse(readFileSync(entriesFile, 'utf8'))) entries.push(parseInt(s, 16));
+  const cov = join(BUILD_DIR, editionFileName(edition, 'coverage.bin'));
   if (existsSync(cov)) {
     // One bit per even address: byte k bit b covers address k*16 + b*2.
     const bits = readFileSync(cov);

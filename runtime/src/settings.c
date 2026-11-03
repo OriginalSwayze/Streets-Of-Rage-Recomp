@@ -39,6 +39,13 @@ void settings_set_base(const char *dir) { snprintf(base_dir, sizeof base_dir, "%
 
 static bool parse_bool(const char *v) { return !strcmp(v, "1") || !strcmp(v, "true") || !strcmp(v, "on"); }
 
+/* game.json's editions, for the ones this build does not have too. */
+static const char *const edition_ids[GAME_EDITION_COUNT] = GAME_EDITION_IDS;
+static int edition_index(const char *id) {
+    for (int i = 0; i < GAME_EDITION_COUNT; i++) if (!strcmp(id, edition_ids[i])) return i;
+    return -1;
+}
+
 void settings_load(const char *path) {
     input_defaults();
     outfit_defaults();
@@ -53,6 +60,9 @@ void settings_load(const char *path) {
         *eq = 0;
         const char *k = line, *v = eq + 1;
         if (!strcmp(k, "rom_path")) snprintf(settings.rom_path, sizeof settings.rom_path, "%s", v);
+        else if (!strcmp(k, "edition")) snprintf(settings.edition, sizeof settings.edition, "%s", v);
+        else if (!strncmp(k, "rom_", 4) && edition_index(k + 4) >= 0)
+            snprintf(settings.rom_paths[edition_index(k + 4)], sizeof settings.rom_paths[0], "%s", v);
         else if (!strcmp(k, "widescreen")) settings.widescreen = parse_bool(v);
         else if (!strcmp(k, "aspect")) sscanf(v, "%d:%d", &settings.aspect_w, &settings.aspect_h);
         else if (!strcmp(k, "fullscreen")) settings.fullscreen = parse_bool(v);
@@ -124,6 +134,31 @@ void settings_load(const char *path) {
     if (settings.ost_track < -1 || settings.ost_track > 0xFF) settings.ost_track = -1;
     if (settings.rewind_mb < 8 || settings.rewind_mb > 2048) settings.rewind_mb = 64;
     if (settings.state_slot < 1 || settings.state_slot > 9) settings.state_slot = 1;
+    /* The edition picks the ROM played (an older settings.ini has only rom_path). */
+    int e = edition_index(settings.edition);
+    if (e >= 0 && settings.rom_paths[e][0]) snprintf(settings.rom_path, sizeof settings.rom_path, "%s", settings.rom_paths[e]);
+}
+
+bool settings_use_rom(const char *path) {
+    const GameEdition *g = bus_rom_edition(path);
+    if (!g) return false;
+    int i = edition_index(g->id);
+    snprintf(settings.rom_paths[i], sizeof settings.rom_paths[0], "%s", path);
+    snprintf(settings.rom_path, sizeof settings.rom_path, "%s", path);
+    snprintf(settings.edition, sizeof settings.edition, "%s", g->id);
+    return true;
+}
+
+/* The editions to choose from (built, with a ROM), in game.json order. */
+static int editions(int *out) {
+    int n = 0;
+    for (int i = 0; i < GAME_EDITION_COUNT; i++) if (game_editions[i] && settings.rom_paths[i][0]) out[n++] = i;
+    return n;
+}
+
+int settings_edition_count(void) {
+    int list[GAME_EDITION_COUNT];
+    return editions(list);
 }
 
 void settings_save(const char *path) {
@@ -131,6 +166,11 @@ void settings_save(const char *path) {
     if (!f) return;
     fprintf(f, "# " GAME_TITLE " Recomp settings\n");
     fprintf(f, "rom_path=%s\n", settings.rom_path);
+    if (GAME_EDITION_COUNT > 1) {
+        if (settings.edition[0]) fprintf(f, "edition=%s\n", settings.edition);
+        for (int i = 0; i < GAME_EDITION_COUNT; i++)
+            if (settings.rom_paths[i][0]) fprintf(f, "rom_%s=%s\n", edition_ids[i], settings.rom_paths[i]);
+    }
     fprintf(f, "widescreen=%d\n", settings.widescreen);
     fprintf(f, "aspect=%d:%d\n", settings.aspect_w, settings.aspect_h);
     fprintf(f, "fullscreen=%d\n", settings.fullscreen);
@@ -216,7 +256,12 @@ void settings_option_text(int id, char *out, size_t n) {
     case OPT_FILTER:     snprintf(out, n, "%s", filter_names[settings.filter]); break;
     case OPT_VOLUME:     snprintf(out, n, "%d%%", settings.volume); break;
     case OPT_MUSIC:      snprintf(out, n, "%s", settings.launcher_music ? "On" : "Off"); break;
-    case OPT_OST_MODE:   snprintf(out, n, "%s", ost_modes[settings.ost_mode]); break;
+    case OPT_EDITION: {
+        int i = edition_index(settings.edition);
+        snprintf(out, n, "%s", i >= 0 && game_editions[i] ? game_editions[i]->edition : game ? game->edition : "-");
+        break;
+    }
+    case OPT_OST_MODE:  snprintf(out, n, "%s", ost_modes[settings.ost_mode]); break;
     case OPT_SHARPEN:    snprintf(out, n, "%s", sharpen_names[settings.sharpen]); break;
     case OPT_SCALER:     snprintf(out, n, "%s", settings.scaler == 2 ? "Sharp" : settings.scaler ? "Smooth (xBR)" : "Edge"); break;
     case OPT_LIGHTING:   snprintf(out, n, "%s", settings.lighting == 3 ? "Neon" : settings.lighting == 2 ? "Bright" : settings.lighting ? "Soft" : "Off"); break;
@@ -333,6 +378,15 @@ void settings_option_change(int id, int dir) {
     }
     case OPT_LAUNCHER: settings.show_launcher = !settings.show_launcher; break;
     case OPT_MUSIC:    settings.launcher_music = !settings.launcher_music; break;
+    case OPT_EDITION: {                 /* the next edition with a ROM (switching it restarts the game) */
+        int list[GAME_EDITION_COUNT], n = editions(list), at = 0;
+        if (n < 2) break;
+        for (int k = 0; k < n; k++) if (list[k] == edition_index(settings.edition)) at = k;
+        int i = list[settings_cycle(at, n, dir)];
+        snprintf(settings.edition, sizeof settings.edition, "%s", edition_ids[i]);
+        snprintf(settings.rom_path, sizeof settings.rom_path, "%s", settings.rom_paths[i]);
+        break;
+    }
     case OPT_OST_MODE: settings.ost_mode = settings_cycle(settings.ost_mode, OST_MODE_COUNT, dir); break;
     case OPT_SHARPEN:  settings.sharpen = settings_cycle(settings.sharpen, 4, dir); break;
     case OPT_SCALER:   settings.scaler = settings_cycle(settings.scaler, 3, dir); break;

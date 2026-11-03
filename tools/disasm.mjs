@@ -9,7 +9,10 @@ import { format } from './lib/m68k.mjs';
 import { trace } from './lib/trace.mjs';
 import { loadExtraEntries } from './lib/inputs.mjs';
 
-const rom = loadRom();
+// The listing is of the game's own cartridge, which its addresses are written for; set up with
+// another edition only, there is nothing to list.
+let rom;
+try { rom = loadRom(); } catch (e) { console.log(`no listing: ${e.message}`); process.exit(0); }
 const extra = loadExtraEntries();
 
 const t = trace(rom, extra);

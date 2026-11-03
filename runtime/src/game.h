@@ -18,4 +18,31 @@
 
 #include "game_config.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
+/* The cartridges this build has: the game's own (the main edition) and its other editions
+ * in game.json (another country's, with its own code), each recompiled from its ROM
+ * (tools/recomp.mjs). The one running is `game`, set when its ROM loads. */
+enum { REGION_US, REGION_EU, REGION_JP };      /* the console a cartridge expects */
+
+struct RecompEntry;
+typedef struct GameEdition {
+    const char *id, *name, *sha1;
+    const char *edition;                        /* the player's name for it */
+    const char *title;                          /* its title as sold, for the launcher's cover; NULL: the game's */
+    int region;
+    int is_main;                                /* the game's own, which keeps the plain file names */
+    const struct RecompEntry *const *tables;    /* its recompiled code, NULL-terminated */
+} GameEdition;
+
+extern const GameEdition *const game_editions[GAME_EDITION_COUNT];   /* game.json order; NULL: not built */
+extern const GameEdition *game;                                       /* the one loaded */
+
+const GameEdition *game_edition_by_id(const char *id);
+/* A file that belongs to one edition (its saves, save states, caches): `name` for the main
+ * one, else the name with "-<id>" before its extension ("save.srm" -> "save-jp.srm",
+ * "states" -> "states-jp"), so editions never read each other's. */
+void game_file_name(char *out, size_t n, const char *name);
+
 #endif

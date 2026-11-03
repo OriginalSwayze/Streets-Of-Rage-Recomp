@@ -42,24 +42,61 @@ static void sha1_hex(const uint8_t *data, size_t len, char out[41]) {
     for (int i = 0; i < 5; i++) sprintf(out + i * 8, "%08x", h[i]);
 }
 
-const char *bus_load_rom(const char *path) {
+const GameEdition *game;
+
+const GameEdition *game_edition_by_id(const char *id) {
+    for (int i = 0; i < GAME_EDITION_COUNT; i++)
+        if (game_editions[i] && !strcmp(game_editions[i]->id, id)) return game_editions[i];
+    return NULL;
+}
+
+void game_file_name(char *out, size_t n, const char *name) {
+    if (!game || game->is_main) { snprintf(out, n, "%s", name); return; }
+    const char *dot = strrchr(name, '.');
+    int stem = dot ? (int)(dot - name) : (int)strlen(name);
+    snprintf(out, n, "%.*s-%s%s", stem, name, game->id, dot ? dot : "");
+}
+
+/* Reads a ROM file into buf and finds which of this build's editions it is; NULL with *why
+ * set if it is none of them. */
+static const GameEdition *read_rom(const char *path, uint8_t *buf, const char **why) {
     static char msg[256];
     FILE *f = fopen(path, "rb");
     if (!f) {
         snprintf(msg, sizeof msg, "cannot open %s", path);
-        return msg;
+        *why = msg;
+        return NULL;
     }
-    size_t n = fread(bus.rom, 1, ROM_SIZE, f);
+    size_t n = fread(buf, 1, ROM_SIZE, f);
     int extra = fgetc(f);
     fclose(f);
-    if (n != ROM_SIZE || extra != EOF) return "wrong file size: this is not " GAME_ROM_NAME;
+    if (n != ROM_SIZE || extra != EOF) { *why = "wrong file size: this is not " GAME_ROM_NAME; return NULL; }
     char hex[41];
-    sha1_hex(bus.rom, ROM_SIZE, hex);
-    if (strcmp(hex, ROM_SHA1) != 0) {
-        snprintf(msg, sizeof msg, "SHA-1 %s does not match " GAME_ROM_NAME, hex);
-        return msg;
-    }
+    sha1_hex(buf, ROM_SIZE, hex);
+    for (int i = 0; i < GAME_EDITION_COUNT; i++)
+        if (game_editions[i] && !strcmp(hex, game_editions[i]->sha1)) return game_editions[i];
+    if (strcmp(hex, ROM_SHA1) && GAME_EDITION_COUNT > 1) snprintf(msg, sizeof msg, "SHA-1 %s is not an edition of " GAME_TITLE " this build has", hex);
+    else snprintf(msg, sizeof msg, "SHA-1 %s does not match " GAME_ROM_NAME, hex);
+    *why = msg;
     return NULL;
+}
+
+static uint8_t rom_buf[ROM_SIZE];
+
+/* Loads the ROM of one of this build's editions and makes it `game`. A file that is not one
+ * leaves the loaded ROM and `game` as they were. */
+const char *bus_load_rom(const char *path) {
+    const char *why = NULL;
+    const GameEdition *e = read_rom(path, rom_buf, &why);
+    if (!e) return why;
+    memcpy(bus.rom, rom_buf, ROM_SIZE);
+    game = e;
+    return NULL;
+}
+
+const GameEdition *bus_rom_edition(const char *path) {
+    const char *why;
+    return read_rom(path, rom_buf, &why);
 }
 
 /* ---- Reads ------------------------------------------------------------------ */

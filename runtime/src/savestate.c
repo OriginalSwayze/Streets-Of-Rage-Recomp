@@ -1,5 +1,6 @@
 /* Save state slots: states/slotN.state (the snapshot) and states/slotN.thumb (a half-size
- * picture of the screen when it was saved, for the in-game menu). */
+ * picture of the screen when it was saved, for the in-game menu). Each edition of the game
+ * has its own folder (states-jp, ...: game_file_name). */
 #include "savestate.h"
 #include "genesis.h"
 #include <stdio.h>
@@ -22,8 +23,10 @@ void savestate_init(const char *base_dir) {
 }
 
 static void slot_path(char *out, size_t n, int slot, const char *ext) {
-    make_dir(dir);
-    snprintf(out, n, "%s/slot%d.%s", dir, slot, ext);
+    char own[1200];
+    game_file_name(own, sizeof own, dir);
+    make_dir(own);
+    snprintf(out, n, "%s/slot%d.%s", own, slot, ext);
 }
 
 bool savestate_save(int slot, const uint32_t *fb, int w, int h, int pitch) {

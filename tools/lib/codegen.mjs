@@ -8,169 +8,174 @@ import { gameFile } from './game.mjs';
 
 // Instruction-level patches (games/<name>/patches.json): compares whose operands come from
 // runtime variables. A game lists only the ones it has; the rest are left out.
-const PATCHES = gameFile('patches.json', {});
-const CULL_PCS = new Set((PATCHES.spriteCull?.pcs ?? []).map((p) => parseInt(p, 16)));
-const CAM = PATCHES.cameraClamp ?? {};
-// Whole-instruction replacements: pc -> [expected text, C lines].
-const REPLACED = new Map([
-  [parseInt(CAM.minTest, 16), ['tst.w	d1', ['cmpw(cam_margin(), D(1) & 0xFFFFu);']]],               // bpl: d1 >= margin
-  [parseInt(CAM.minSet, 16), ['clr.w	d1', ['setw(&D(1), cam_margin()); logicw(D(1) & 0xFFFFu);']]],
-  [parseInt(CAM.maxLoad, 16), ['move.w	($FF177A).l,d0',
-    ['setw(&D(0), rd16(0xFF177A) - cam_margin()); logicw(D(0) & 0xFFFFu);']]],
-  [parseInt(PATCHES.playerDamage?.pc, 16), ['sub.w	d0,d1',
-    ['setw(&D(1), subw(patch_no_damage ? 0u : (D(0) & 0xFFFFu), D(1) & 0xFFFFu));']]],
-  ...Object.entries(PATCHES.hitDamage?.pcs ?? {}).map(([pc, src]) => [parseInt(pc, 16), [`move.w	${src},$86(a0)`,
-    [`{ uint32_t v = ${src[0] === 'd' ? `D(${src[1]}) & 0xFFFFu` : `rd16(A(6) + 0x${src.slice(1, 3)})`};`,
-     '  wr16(A(0) + 0x86, hit_damage(A(0), v)); logicw(v); }']]]),
-  [parseInt(PATCHES.randomDrop?.dropPc, 16), ['move.w	$8C(a0),d0',
-    ['{ uint32_t v = random_drop(rd16(A(0) + 0x8C), rd16(A(0) + 0x8) << 16 | rd16(A(0) + 0xC)); setw(&D(0), v); logicw(v); }']]],
-  [parseInt(PATCHES.randomDrop?.placePc, 16), ['move.w	(a0)+,d1',
-    ['{ uint32_t v = random_drop(rd16(A(0)), A(0)); A(0) += 2; setw(&D(1), v); logicw(v); }']]],
-  // Streets of Rage: every hit's damage goes through sor_hit (attack power, no damage).
-  ...Object.entries(PATCHES.sorHit?.pcs ?? {}).map(([pc, src]) => [parseInt(pc, 16), [
-    src === '#2' ? 'subq.w	#2,$32(a0)' : `sub.w	${src},$32(a0)`,
-    [`{ uint32_t d = sor_hit(A(0), A(1), ${src === '#2' ? '2u' : `D(${src[1]}) & 0xFFFFu`}); wr16(A(0) + 0x32, subw(d, rd16(A(0) + 0x32))); }`]]]),
-  // and the health change most hits go through (d7 < 0), its attacker in the target's +$7E.
-  [parseInt(PATCHES.sorHit?.changePc, 16), ['add.w	d7,$32(a0)',
-    ['{ uint32_t d = sor_change(A(0), D(7) & 0xFFFFu); wr16(A(0) + 0x32, addw(d, rd16(A(0) + 0x32))); }']]],
-  // Streets of Rage 2 (sor2Hit): the hit handlers take $8E(a2) off the target a2's health,
-  // from the attacker whose object is at $8A(a2); a special move that lands costs its
-  // player 8.
-  ...(PATCHES.sor2Hit?.pcs ?? []).map((pc) => [parseInt(pc, 16), ['sub.w	d0,$80(a2)',
-    ['{ uint32_t d = sor_hit(A(2), rd32(A(2) + 0x8A), D(0) & 0xFFFFu); wr16(A(2) + 0x80, subw(d, rd16(A(2) + 0x80))); }']]]),
-  ...(PATCHES.sor2Hit?.costPcs ?? []).map((pc) => [parseInt(pc, 16), ['subq.w	#8,$80(a2)',
-    ['{ uint32_t d = sor_player(A(2)) && (patch_no_damage || patch_free_specials) ? 0u : 8u; wr16(A(2) + 0x80, subw(d, rd16(A(2) + 0x80))); }']]]),
-  // Streets of Rage 3 (sor3Hit): a hit takes its damage off the target's health byte at
-  // $6C: "dN" (sub.b dN,$6C(a0)) or "#N" (subq.b #N,$6C(a0)), the attacker's object (low
-  // word) at $60(a0); "dN a1" is sub.b dN,$6C(a1), the attacker being a0.
-  ...Object.entries(PATCHES.sor3Hit?.pcs ?? {}).map(([pc, spec]) => {
-    const [src, target = 'a0'] = spec.split(' ');
-    const t = `A(${target[1]})`;
-    const attacker = target === 'a0' ? '0xFF0000u | rd16(A(0) + 0x60)' : 'A(0)';
-    const damage = src[0] === '#' ? `${src.slice(1)}u` : `D(${src[1]}) & 0xFFu`;
-    const text = src[0] === '#' ? `subq.b	${src},$6C(${target})` : `sub.b	${src},$6C(${target})`;
-    return [parseInt(pc, 16), [text,
-      [`{ uint32_t d = sor_hit(${t}, ${attacker}, ${damage}); wr8(${t} + 0x6C, subb(d, rd8(${t} + 0x6C))); }`]]];
-  }),
-  // Screen edges in Streets of Rage 2 and 3 (sorWideAdd): "dN K -" is addi.w #K,dN for a left
-  // edge, moved left by patch_sor_wide but not below K itself (where each level starts);
-  // "dN K +" a right edge, moved right; "dN K +r" the players' right limit, moved by
-  // patch_sor_reach_right (less than patch_sor_wide where the map ends, widescreen.c).
-  ...Object.entries(PATCHES.sorWideAdd ?? {}).map(([pc, spec]) => {
-    const [reg, k, side] = spec.split(' ');
-    const n = reg[1], K = `0x${k}u`;
-    return [parseInt(pc, 16), [`addi.w	#$${k},${reg}`, [side === '-'
-      ? `{ uint32_t v = addw((${K} - (uint32_t)patch_sor_wide) & 0xFFFFu, D(${n}) & 0xFFFFu); if ((int16_t)v < (int16_t)${K}) v = ${K}; setw(&D(${n}), v); }`
-      : `setw(&D(${n}), addw((${K} + (uint32_t)${side === '+r' ? 'patch_sor_reach_right' : 'patch_sor_wide'}) & 0xFFFFu, D(${n}) & 0xFFFFu));`]]];
-  }),
-  // Sprite culling in Streets of Rage 2 and 3 (sorCullList): "dN K lo" is cmpi.w #K,dN against
-  // a piece's left edge, "dN K hi" against its right; both moved out by patch_sor_wide. "slo"
-  // and "shi" are signed screen positions (the spawner's window), moved without limits. "hii"
-  // is a right edge tested with bgt (the edge itself passes): at most $1FF, as $200 would
-  // wrap to X 0, the VDP's masking sprite.
-  ...Object.entries(PATCHES.sorCullList ?? {}).map(([pc, spec]) => {
-    const [reg, k, side] = spec.split(' ');
-    const K = `0x${k}u`, w = '(uint32_t)patch_sor_wide';
-    const edge = side === 'lo' ? `(${K} > ${w} ? ${K} - ${w} : 0u)`
-      : side === 'hi' ? `(${K} + ${w} < 0x200u ? ${K} + ${w} : 0x200u)`
-      : side === 'hii' ? `(${K} + ${w} < 0x1FFu ? ${K} + ${w} : 0x1FFu)`
-      : side === 'slo' ? `((${K} - ${w}) & 0xFFFFu)` : `((${K} + ${w}) & 0xFFFFu)`;
-    return [parseInt(pc, 16), [`cmpi.w	#$${k},${reg}`, [`cmpw(${edge}, D(${reg[1]}) & 0xFFFFu);`]]];
-  }),
-  // Streets of Rage 3's screen limits for the players (sorWideLimit): "dN K - CAM" is
-  // move.l #K<<16,dN, a left limit in pixels from the camera (the word at $FFCAM), moved left
-  // by patch_sor_wide but never left of world X K (where each level starts); "dN K +" a right
-  // limit, moved right.
-  ...Object.entries(PATCHES.sorWideLimit ?? {}).map(([pc, spec]) => {
-    const [reg, k, side, cam] = spec.split(' ');
-    const n = reg[1], K = `0x${k}`;
-    return [parseInt(pc, 16), [`move.l	#$${k}0000,${reg}`, [side === '-'
-      ? `{ int32_t lim = ${K} - patch_sor_wide, least = ${K} - (int16_t)rd16(0xFF${cam}u); if (lim < least) lim = least; D(${n}) = (uint32_t)lim << 16; logicl(D(${n})); }`
-      : `{ D(${n}) = (uint32_t)(${K} + patch_sor_wide) << 16; logicl(D(${n})); }`]]];
-  }),
-  // Streets of Rage 2's row drawer draws 44 cells (352 pixels, the screen and a margin) from
-  // its start: (32 - c) from the first map block, then c + 12, or 32 and c - 20 when c > 20.
-  // In widescreen it starts patch_sor_wide further left (sorWideLoad) and must reach as far
-  // past the right edge, so its rows are E = 2 * patch_sor_wide / 8 cells longer (at most 20,
-  // the plane's 64): "cmp" is its cmpi.w #$14,d2, "add" its addi.w #$B,d2, "sub" its
-  // subi.w #$15,d2.
-  ...Object.entries(PATCHES.sorWideRowLen ?? {}).map(([pc, kind]) => {
-    const E = '((2u * (uint32_t)patch_sor_wide + 7u) / 8u > 20u ? 20u : (2u * (uint32_t)patch_sor_wide + 7u) / 8u)';
-    const [text, c] = kind === 'cmp' ? ['cmpi.w	#$14,d2', `cmpw((0x14u - ${E}) & 0xFFFFu, D(2) & 0xFFFFu);`]
-      : kind === 'add' ? ['addi.w	#$B,d2', `setw(&D(2), addw((0xBu + ${E}) & 0xFFFFu, D(2) & 0xFFFFu));`]
-      : ['subi.w	#$15,d2', `setw(&D(2), subw((0x15u - ${E}) & 0xFFFFu, D(2) & 0xFFFFu));`];
-    return [parseInt(pc, 16), [text, [c]]];
-  }),
-  // Streets of Rage 3's plane drawers (sorWideEdge3): `subq.w #8,d6` on a plane's camera X.
-  // "col FLAG" is a column drawer's: when the flag byte's bit 7 says the camera moves left,
-  // the column goes patch_sor_wide further left too. "row" is a row drawer's start, moved
-  // left by patch_sor_wide, but never before the level's start.
-  ...Object.entries(PATCHES.sorWideEdge3 ?? {}).map(([pc, spec]) => {
-    const [kind, flag] = spec.split(' ');
-    return [parseInt(pc, 16), ['subq.w	#8,d6', [kind === 'col'
-      ? `{ uint32_t d = 8u + ((rd8(0xFF${flag}u) & 0x80) ? (uint32_t)patch_sor_wide : 0u); setw(&D(6), subw(d, D(6) & 0xFFFFu)); }`
-      : `{ int32_t x = (int16_t)(D(6) & 0xFFFFu) - 8, w = patch_sor_wide < x ? patch_sor_wide : (x > 0 ? x : 0); setw(&D(6), subw((uint32_t)(8 + w), D(6) & 0xFFFFu)); }`]]];
-  }),
-  // A plane's horizontal scroll (minus the camera) read by a routine that draws from the
-  // screen's left edge (sorWideLoad): "dN ADDR" is move.w ($FFFF<ADDR>).w,dN, loaded as if
-  // the camera were patch_sor_wide further left (never left of the level's start), so the
-  // routine starts at the new edge. Streets of Rage 2's row drawer (sub_003CCA) fills the
-  // plane from there.
-  ...Object.entries(PATCHES.sorWideLoad ?? {}).map(([pc, spec]) => {
-    const [reg, addr] = spec.split(' ');
-    return [parseInt(pc, 16), [`move.w	($FFFF${addr}).w,${reg}`,
-      [`{ int32_t s = (int16_t)rd16(0xFF${addr}u), w = patch_sor_wide < -s ? patch_sor_wide : (-s > 0 ? -s : 0); uint32_t v = (uint32_t)(s + w) & 0xFFFFu; setw(&D(${reg[1]}), v); logicw(v); }`]]];
-  }),
-  // Streets of Rage 3's sprite list (sor3SpriteList): built at $FFF200 with its count at
-  // $FFF606, at most 80 entries, which a crowd in widescreen passes (a different object left
-  // out each frame: flicker). With patch_sprite_cap above 80 the list goes on past 80 at
-  // SPRITES_EXTRA_ADDR (genesis.h). "cap" is cmpi.w #$50,($FFFFF606).w before each piece,
-  // which also moves a3 there on reaching 80; "cap1" its cmpi.w #$4F; "capd0" cmpi.w #$50,d0;
-  // "adda dN" an adda.w dN,a3 giving the address of entry dN / 8; "end K" the
-  // move.l #$0,$K(a6,d0.w) that clears the entry after the last.
-  ...Object.entries(PATCHES.sor3SpriteList ?? {}).map(([pc, spec]) => {
-    const [kind, arg] = spec.split(' ');
-    const cap = '(uint32_t)patch_sprite_cap', on = 'patch_sprite_cap > 0x50';
-    const at = (base, o) => `(${on} && ${o} >= 0x280u ? SPRITES_EXTRA_ADDR + ${o} - 0x280u : ${base} + sx16(${o}))`;
-    const [text, c] = kind === 'cap' ? ['cmpi.w	#$50,($FFFFF606).w',
-        `{ uint32_t n = rd16(0xFFF606); if (n == 0x50u && ${on}) A(3) = SPRITES_EXTRA_ADDR; cmpw(${cap}, n); }`]
-      : kind === 'cap1' ? ['cmpi.w	#$4F,($FFFFF606).w', `cmpw(${cap} - 1u, rd16(0xFFF606));`]
-      : kind === 'capd0' ? ['cmpi.w	#$50,d0', `cmpw(${cap}, D(0) & 0xFFFFu);`]
-      : kind === 'adda' ? [`adda.w	${arg},a3`, `{ uint32_t o = D(${arg[1]}) & 0xFFFFu; A(3) = ${at('A(3)', 'o')}; }`]
-      : [`move.l	#$0,$${arg}(a6,d0.w)`, `{ uint32_t o = D(0) & 0xFFFFu; wr32(${at('A(6)', 'o')} + ${arg}u, 0u); logicl(0u); }`];
-    return [parseInt(pc, 16), [text, [c]]];
-  }),
-  // Streets of Rage 3's sound driver (sor3VoiceQueue): a voice requested while the Z80 was
-  // busy at the end of the last update waits, and plays only if its priority is at least the
-  // last voice's ($10(a5)), even when that one has finished. Overclocked, the update ends
-  // while the Z80 is still busy every frame, so every voice waits, and after one of the top
-  // priority no hit or voice plays again. Then, as when the request comes straight in, the
-  // last voice's priority counts only while it plays ($FFA457) or waits ($FF9F07).
-  [parseInt(PATCHES.sor3VoiceQueue, 16), ['cmp.b	$10(a5),d0',
-    ['cmpb(machine_opts.overclock > 100 && !rd8(0xFFA457) && !rd8(0xFF9F07) ? 0u : rd8(A(5) + 0x10), D(0) & 0xFFu);']]],
-  [parseInt(PATCHES.sorCull?.loPc, 16), ['cmpi.w	#$60,d0', ['cmpw(patch_sor_x_lo, D(0) & 0xFFFFu);']]],
-  [parseInt(PATCHES.sorCull?.hiPc, 16), ['cmpi.w	#$1E0,d0', ['cmpw(patch_sor_x_hi, D(0) & 0xFFFFu);']]],
-  // Streets of Rage edges (sorWide): the original constant, widened by patch_sor_wide (the
-  // players' limits by patch_sor_reach: 0 while the sides are masked).
-  ...(PATCHES.sorWide ? [
-    [parseInt(PATCHES.sorWide.clampLeft, 16), ['moveq	#$20,d2', ['D(2) = (uint32_t)(0x20 - patch_sor_reach); logicl(D(2));']]],
-    [parseInt(PATCHES.sorWide.clampWidth, 16), ['move.w	#$100,d3', ['{ uint32_t v = (0x100u + 2u * (uint32_t)patch_sor_reach) & 0xFFFFu; setw(&D(3), v); logicw(v); }']]],
-    [parseInt(PATCHES.sorWide.spawnRight, 16), ['addi.w	#$148,d0', ['setw(&D(0), addw(0x148u + (uint32_t)patch_sor_wide, D(0) & 0xFFFFu));']]],
-    [parseInt(PATCHES.sorWide.spawnLeft, 16), ['subq.w	#8,d0', ['setw(&D(0), subw(8u + (uint32_t)patch_sor_wide, D(0) & 0xFFFFu));']]],
-    // An object from the level table: its world X through sor_table_x (widescreen.c).
-    [parseInt(PATCHES.sorWide.tableSpawn, 16), ['move.w	d0,$10(a1)',
-      ['{ uint32_t v = sor_table_x(rd8(A(1)), D(0) & 0xFFFFu); wr16(A(1) + 0x10, v); logicw(v); }']]],
-    [parseInt(PATCHES.sorWide.onscreenLeft, 16), ['move.w	($FFFFE002).w,d0', ['{ uint32_t v = (rd16(0xFFE002) - (uint32_t)patch_sor_wide) & 0xFFFFu; setw(&D(0), v); logicw(v); }']]],
-    [parseInt(PATCHES.sorWide.onscreenRight, 16), ['addi.w	#$144,d0', ['setw(&D(0), addw(0x144u + (uint32_t)patch_sor_wide, D(0) & 0xFFFFu));']]],
-    [parseInt(PATCHES.sorWide.fleeRight, 16), ['addi.w	#$140,d0', ['setw(&D(0), addw(0x140u + (uint32_t)patch_sor_wide, D(0) & 0xFFFFu));']]],
-    [parseInt(PATCHES.sorWide.checkFresh, 16), ['cmpi.w	#$4000,d1', ['cmpw((D(1) & 0xFFFFu) ? 0x4000u : 0u, D(1) & 0xFFFFu);']]],
-    // The in-view tests: cmpi.w #edge,$28(a0), the low edge moved left and the high one right.
-    ...Object.entries(PATCHES.sorWide.inView ?? {}).map(([pc, edge]) => [parseInt(pc, 16), [`cmpi.w	#${edge.slice(1)},$28(a0)`,
-      [`cmpw((0x${edge.slice(2)}u ${edge[0]} (uint32_t)patch_sor_wide) & 0xFFFFu, rd16(A(0) + 0x28));`]]]),
-  ] : []),
-  ...Object.entries(PATCHES.playerSpeed?.pcs ?? {}).map(([pc, field]) => [parseInt(pc, 16), [`move.l	${field}(a6),d0`,
-    [`D(0) = player_move(A(6), rd32(A(6) + 0x${field.slice(1)}));`, 'logicl(D(0));']]]),
-].filter(([pc]) => !Number.isNaN(pc)));   // a game without that patch leaves it null
+// usePatches() sets them for the edition being recompiled (the main one's to start).
+let PATCHES, CULL_PCS, CAM, REPLACED;
+export function usePatches(patches) {
+  PATCHES = patches;
+  CULL_PCS = new Set((PATCHES.spriteCull?.pcs ?? []).map((p) => parseInt(p, 16)));
+  CAM = PATCHES.cameraClamp ?? {};
+  // Whole-instruction replacements: pc -> [expected text, C lines].
+  REPLACED = new Map([
+    [parseInt(CAM.minTest, 16), ['tst.w	d1', ['cmpw(cam_margin(), D(1) & 0xFFFFu);']]],               // bpl: d1 >= margin
+    [parseInt(CAM.minSet, 16), ['clr.w	d1', ['setw(&D(1), cam_margin()); logicw(D(1) & 0xFFFFu);']]],
+    [parseInt(CAM.maxLoad, 16), ['move.w	($FF177A).l,d0',
+      ['setw(&D(0), rd16(0xFF177A) - cam_margin()); logicw(D(0) & 0xFFFFu);']]],
+    [parseInt(PATCHES.playerDamage?.pc, 16), ['sub.w	d0,d1',
+      ['setw(&D(1), subw(patch_no_damage ? 0u : (D(0) & 0xFFFFu), D(1) & 0xFFFFu));']]],
+    ...Object.entries(PATCHES.hitDamage?.pcs ?? {}).map(([pc, src]) => [parseInt(pc, 16), [`move.w	${src},$86(a0)`,
+      [`{ uint32_t v = ${src[0] === 'd' ? `D(${src[1]}) & 0xFFFFu` : `rd16(A(6) + 0x${src.slice(1, 3)})`};`,
+       '  wr16(A(0) + 0x86, hit_damage(A(0), v)); logicw(v); }']]]),
+    [parseInt(PATCHES.randomDrop?.dropPc, 16), ['move.w	$8C(a0),d0',
+      ['{ uint32_t v = random_drop(rd16(A(0) + 0x8C), rd16(A(0) + 0x8) << 16 | rd16(A(0) + 0xC)); setw(&D(0), v); logicw(v); }']]],
+    [parseInt(PATCHES.randomDrop?.placePc, 16), ['move.w	(a0)+,d1',
+      ['{ uint32_t v = random_drop(rd16(A(0)), A(0)); A(0) += 2; setw(&D(1), v); logicw(v); }']]],
+    // Streets of Rage: every hit's damage goes through sor_hit (attack power, no damage).
+    ...Object.entries(PATCHES.sorHit?.pcs ?? {}).map(([pc, src]) => [parseInt(pc, 16), [
+      src === '#2' ? 'subq.w	#2,$32(a0)' : `sub.w	${src},$32(a0)`,
+      [`{ uint32_t d = sor_hit(A(0), A(1), ${src === '#2' ? '2u' : `D(${src[1]}) & 0xFFFFu`}); wr16(A(0) + 0x32, subw(d, rd16(A(0) + 0x32))); }`]]]),
+    // and the health change most hits go through (d7 < 0), its attacker in the target's +$7E.
+    [parseInt(PATCHES.sorHit?.changePc, 16), ['add.w	d7,$32(a0)',
+      ['{ uint32_t d = sor_change(A(0), D(7) & 0xFFFFu); wr16(A(0) + 0x32, addw(d, rd16(A(0) + 0x32))); }']]],
+    // Streets of Rage 2 (sor2Hit): the hit handlers take $8E(a2) off the target a2's health,
+    // from the attacker whose object is at $8A(a2); a special move that lands costs its
+    // player 8.
+    ...(PATCHES.sor2Hit?.pcs ?? []).map((pc) => [parseInt(pc, 16), ['sub.w	d0,$80(a2)',
+      ['{ uint32_t d = sor_hit(A(2), rd32(A(2) + 0x8A), D(0) & 0xFFFFu); wr16(A(2) + 0x80, subw(d, rd16(A(2) + 0x80))); }']]]),
+    ...(PATCHES.sor2Hit?.costPcs ?? []).map((pc) => [parseInt(pc, 16), ['subq.w	#8,$80(a2)',
+      ['{ uint32_t d = sor_player(A(2)) && (patch_no_damage || patch_free_specials) ? 0u : 8u; wr16(A(2) + 0x80, subw(d, rd16(A(2) + 0x80))); }']]]),
+    // Streets of Rage 3 (sor3Hit): a hit takes its damage off the target's health byte at
+    // $6C: "dN" (sub.b dN,$6C(a0)) or "#N" (subq.b #N,$6C(a0)), the attacker's object (low
+    // word) at $60(a0); "dN a1" is sub.b dN,$6C(a1), the attacker being a0.
+    ...Object.entries(PATCHES.sor3Hit?.pcs ?? {}).map(([pc, spec]) => {
+      const [src, target = 'a0'] = spec.split(' ');
+      const t = `A(${target[1]})`;
+      const attacker = target === 'a0' ? '0xFF0000u | rd16(A(0) + 0x60)' : 'A(0)';
+      const damage = src[0] === '#' ? `${src.slice(1)}u` : `D(${src[1]}) & 0xFFu`;
+      const text = src[0] === '#' ? `subq.b	${src},$6C(${target})` : `sub.b	${src},$6C(${target})`;
+      return [parseInt(pc, 16), [text,
+        [`{ uint32_t d = sor_hit(${t}, ${attacker}, ${damage}); wr8(${t} + 0x6C, subb(d, rd8(${t} + 0x6C))); }`]]];
+    }),
+    // Screen edges in Streets of Rage 2 and 3 (sorWideAdd): "dN K -" is addi.w #K,dN for a left
+    // edge, moved left by patch_sor_wide but not below K itself (where each level starts);
+    // "dN K +" a right edge, moved right; "dN K +r" the players' right limit, moved by
+    // patch_sor_reach_right (less than patch_sor_wide where the map ends, widescreen.c).
+    ...Object.entries(PATCHES.sorWideAdd ?? {}).map(([pc, spec]) => {
+      const [reg, k, side] = spec.split(' ');
+      const n = reg[1], K = `0x${k}u`;
+      return [parseInt(pc, 16), [`addi.w	#$${k},${reg}`, [side === '-'
+        ? `{ uint32_t v = addw((${K} - (uint32_t)patch_sor_wide) & 0xFFFFu, D(${n}) & 0xFFFFu); if ((int16_t)v < (int16_t)${K}) v = ${K}; setw(&D(${n}), v); }`
+        : `setw(&D(${n}), addw((${K} + (uint32_t)${side === '+r' ? 'patch_sor_reach_right' : 'patch_sor_wide'}) & 0xFFFFu, D(${n}) & 0xFFFFu));`]]];
+    }),
+    // Sprite culling in Streets of Rage 2 and 3 (sorCullList): "dN K lo" is cmpi.w #K,dN against
+    // a piece's left edge, "dN K hi" against its right; both moved out by patch_sor_wide. "slo"
+    // and "shi" are signed screen positions (the spawner's window), moved without limits. "hii"
+    // is a right edge tested with bgt (the edge itself passes): at most $1FF, as $200 would
+    // wrap to X 0, the VDP's masking sprite.
+    ...Object.entries(PATCHES.sorCullList ?? {}).map(([pc, spec]) => {
+      const [reg, k, side] = spec.split(' ');
+      const K = `0x${k}u`, w = '(uint32_t)patch_sor_wide';
+      const edge = side === 'lo' ? `(${K} > ${w} ? ${K} - ${w} : 0u)`
+        : side === 'hi' ? `(${K} + ${w} < 0x200u ? ${K} + ${w} : 0x200u)`
+        : side === 'hii' ? `(${K} + ${w} < 0x1FFu ? ${K} + ${w} : 0x1FFu)`
+        : side === 'slo' ? `((${K} - ${w}) & 0xFFFFu)` : `((${K} + ${w}) & 0xFFFFu)`;
+      return [parseInt(pc, 16), [`cmpi.w	#$${k},${reg}`, [`cmpw(${edge}, D(${reg[1]}) & 0xFFFFu);`]]];
+    }),
+    // Streets of Rage 3's screen limits for the players (sorWideLimit): "dN K - CAM" is
+    // move.l #K<<16,dN, a left limit in pixels from the camera (the word at $FFCAM), moved left
+    // by patch_sor_wide but never left of world X K (where each level starts); "dN K +" a right
+    // limit, moved right.
+    ...Object.entries(PATCHES.sorWideLimit ?? {}).map(([pc, spec]) => {
+      const [reg, k, side, cam] = spec.split(' ');
+      const n = reg[1], K = `0x${k}`;
+      return [parseInt(pc, 16), [`move.l	#$${k}0000,${reg}`, [side === '-'
+        ? `{ int32_t lim = ${K} - patch_sor_wide, least = ${K} - (int16_t)rd16(0xFF${cam}u); if (lim < least) lim = least; D(${n}) = (uint32_t)lim << 16; logicl(D(${n})); }`
+        : `{ D(${n}) = (uint32_t)(${K} + patch_sor_wide) << 16; logicl(D(${n})); }`]]];
+    }),
+    // Streets of Rage 2's row drawer draws 44 cells (352 pixels, the screen and a margin) from
+    // its start: (32 - c) from the first map block, then c + 12, or 32 and c - 20 when c > 20.
+    // In widescreen it starts patch_sor_wide further left (sorWideLoad) and must reach as far
+    // past the right edge, so its rows are E = 2 * patch_sor_wide / 8 cells longer (at most 20,
+    // the plane's 64): "cmp" is its cmpi.w #$14,d2, "add" its addi.w #$B,d2, "sub" its
+    // subi.w #$15,d2.
+    ...Object.entries(PATCHES.sorWideRowLen ?? {}).map(([pc, kind]) => {
+      const E = '((2u * (uint32_t)patch_sor_wide + 7u) / 8u > 20u ? 20u : (2u * (uint32_t)patch_sor_wide + 7u) / 8u)';
+      const [text, c] = kind === 'cmp' ? ['cmpi.w	#$14,d2', `cmpw((0x14u - ${E}) & 0xFFFFu, D(2) & 0xFFFFu);`]
+        : kind === 'add' ? ['addi.w	#$B,d2', `setw(&D(2), addw((0xBu + ${E}) & 0xFFFFu, D(2) & 0xFFFFu));`]
+        : ['subi.w	#$15,d2', `setw(&D(2), subw((0x15u - ${E}) & 0xFFFFu, D(2) & 0xFFFFu));`];
+      return [parseInt(pc, 16), [text, [c]]];
+    }),
+    // Streets of Rage 3's plane drawers (sorWideEdge3): `subq.w #8,d6` on a plane's camera X.
+    // "col FLAG" is a column drawer's: when the flag byte's bit 7 says the camera moves left,
+    // the column goes patch_sor_wide further left too. "row" is a row drawer's start, moved
+    // left by patch_sor_wide, but never before the level's start.
+    ...Object.entries(PATCHES.sorWideEdge3 ?? {}).map(([pc, spec]) => {
+      const [kind, flag] = spec.split(' ');
+      return [parseInt(pc, 16), ['subq.w	#8,d6', [kind === 'col'
+        ? `{ uint32_t d = 8u + ((rd8(0xFF${flag}u) & 0x80) ? (uint32_t)patch_sor_wide : 0u); setw(&D(6), subw(d, D(6) & 0xFFFFu)); }`
+        : `{ int32_t x = (int16_t)(D(6) & 0xFFFFu) - 8, w = patch_sor_wide < x ? patch_sor_wide : (x > 0 ? x : 0); setw(&D(6), subw((uint32_t)(8 + w), D(6) & 0xFFFFu)); }`]]];
+    }),
+    // A plane's horizontal scroll (minus the camera) read by a routine that draws from the
+    // screen's left edge (sorWideLoad): "dN ADDR" is move.w ($FFFF<ADDR>).w,dN, loaded as if
+    // the camera were patch_sor_wide further left (never left of the level's start), so the
+    // routine starts at the new edge. Streets of Rage 2's row drawer (sub_003CCA) fills the
+    // plane from there.
+    ...Object.entries(PATCHES.sorWideLoad ?? {}).map(([pc, spec]) => {
+      const [reg, addr] = spec.split(' ');
+      return [parseInt(pc, 16), [`move.w	($FFFF${addr}).w,${reg}`,
+        [`{ int32_t s = (int16_t)rd16(0xFF${addr}u), w = patch_sor_wide < -s ? patch_sor_wide : (-s > 0 ? -s : 0); uint32_t v = (uint32_t)(s + w) & 0xFFFFu; setw(&D(${reg[1]}), v); logicw(v); }`]]];
+    }),
+    // Streets of Rage 3's sprite list (sor3SpriteList): built at $FFF200 with its count at
+    // $FFF606, at most 80 entries, which a crowd in widescreen passes (a different object left
+    // out each frame: flicker). With patch_sprite_cap above 80 the list goes on past 80 at
+    // SPRITES_EXTRA_ADDR (genesis.h). "cap" is cmpi.w #$50,($FFFFF606).w before each piece,
+    // which also moves a3 there on reaching 80; "cap1" its cmpi.w #$4F; "capd0" cmpi.w #$50,d0;
+    // "adda dN" an adda.w dN,a3 giving the address of entry dN / 8; "end K" the
+    // move.l #$0,$K(a6,d0.w) that clears the entry after the last.
+    ...Object.entries(PATCHES.sor3SpriteList ?? {}).map(([pc, spec]) => {
+      const [kind, arg] = spec.split(' ');
+      const cap = '(uint32_t)patch_sprite_cap', on = 'patch_sprite_cap > 0x50';
+      const at = (base, o) => `(${on} && ${o} >= 0x280u ? SPRITES_EXTRA_ADDR + ${o} - 0x280u : ${base} + sx16(${o}))`;
+      const [text, c] = kind === 'cap' ? ['cmpi.w	#$50,($FFFFF606).w',
+          `{ uint32_t n = rd16(0xFFF606); if (n == 0x50u && ${on}) A(3) = SPRITES_EXTRA_ADDR; cmpw(${cap}, n); }`]
+        : kind === 'cap1' ? ['cmpi.w	#$4F,($FFFFF606).w', `cmpw(${cap} - 1u, rd16(0xFFF606));`]
+        : kind === 'capd0' ? ['cmpi.w	#$50,d0', `cmpw(${cap}, D(0) & 0xFFFFu);`]
+        : kind === 'adda' ? [`adda.w	${arg},a3`, `{ uint32_t o = D(${arg[1]}) & 0xFFFFu; A(3) = ${at('A(3)', 'o')}; }`]
+        : [`move.l	#$0,$${arg}(a6,d0.w)`, `{ uint32_t o = D(0) & 0xFFFFu; wr32(${at('A(6)', 'o')} + ${arg}u, 0u); logicl(0u); }`];
+      return [parseInt(pc, 16), [text, [c]]];
+    }),
+    // Streets of Rage 3's sound driver (sor3VoiceQueue): a voice requested while the Z80 was
+    // busy at the end of the last update waits, and plays only if its priority is at least the
+    // last voice's ($10(a5)), even when that one has finished. Overclocked, the update ends
+    // while the Z80 is still busy every frame, so every voice waits, and after one of the top
+    // priority no hit or voice plays again. Then, as when the request comes straight in, the
+    // last voice's priority counts only while it plays ($FFA457) or waits ($FF9F07).
+    [parseInt(PATCHES.sor3VoiceQueue, 16), ['cmp.b	$10(a5),d0',
+      ['cmpb(machine_opts.overclock > 100 && !rd8(0xFFA457) && !rd8(0xFF9F07) ? 0u : rd8(A(5) + 0x10), D(0) & 0xFFu);']]],
+    [parseInt(PATCHES.sorCull?.loPc, 16), ['cmpi.w	#$60,d0', ['cmpw(patch_sor_x_lo, D(0) & 0xFFFFu);']]],
+    [parseInt(PATCHES.sorCull?.hiPc, 16), ['cmpi.w	#$1E0,d0', ['cmpw(patch_sor_x_hi, D(0) & 0xFFFFu);']]],
+    // Streets of Rage edges (sorWide): the original constant, widened by patch_sor_wide (the
+    // players' limits by patch_sor_reach: 0 while the sides are masked).
+    ...(PATCHES.sorWide ? [
+      [parseInt(PATCHES.sorWide.clampLeft, 16), ['moveq	#$20,d2', ['D(2) = (uint32_t)(0x20 - patch_sor_reach); logicl(D(2));']]],
+      [parseInt(PATCHES.sorWide.clampWidth, 16), ['move.w	#$100,d3', ['{ uint32_t v = (0x100u + 2u * (uint32_t)patch_sor_reach) & 0xFFFFu; setw(&D(3), v); logicw(v); }']]],
+      [parseInt(PATCHES.sorWide.spawnRight, 16), ['addi.w	#$148,d0', ['setw(&D(0), addw(0x148u + (uint32_t)patch_sor_wide, D(0) & 0xFFFFu));']]],
+      [parseInt(PATCHES.sorWide.spawnLeft, 16), ['subq.w	#8,d0', ['setw(&D(0), subw(8u + (uint32_t)patch_sor_wide, D(0) & 0xFFFFu));']]],
+      // An object from the level table: its world X through sor_table_x (widescreen.c).
+      [parseInt(PATCHES.sorWide.tableSpawn, 16), ['move.w	d0,$10(a1)',
+        ['{ uint32_t v = sor_table_x(rd8(A(1)), D(0) & 0xFFFFu); wr16(A(1) + 0x10, v); logicw(v); }']]],
+      [parseInt(PATCHES.sorWide.onscreenLeft, 16), ['move.w	($FFFFE002).w,d0', ['{ uint32_t v = (rd16(0xFFE002) - (uint32_t)patch_sor_wide) & 0xFFFFu; setw(&D(0), v); logicw(v); }']]],
+      [parseInt(PATCHES.sorWide.onscreenRight, 16), ['addi.w	#$144,d0', ['setw(&D(0), addw(0x144u + (uint32_t)patch_sor_wide, D(0) & 0xFFFFu));']]],
+      [parseInt(PATCHES.sorWide.fleeRight, 16), ['addi.w	#$140,d0', ['setw(&D(0), addw(0x140u + (uint32_t)patch_sor_wide, D(0) & 0xFFFFu));']]],
+      [parseInt(PATCHES.sorWide.checkFresh, 16), ['cmpi.w	#$4000,d1', ['cmpw((D(1) & 0xFFFFu) ? 0x4000u : 0u, D(1) & 0xFFFFu);']]],
+      // The in-view tests: cmpi.w #edge,$28(a0), the low edge moved left and the high one right.
+      ...Object.entries(PATCHES.sorWide.inView ?? {}).map(([pc, edge]) => [parseInt(pc, 16), [`cmpi.w	#${edge.slice(1)},$28(a0)`,
+        [`cmpw((0x${edge.slice(2)}u ${edge[0]} (uint32_t)patch_sor_wide) & 0xFFFFu, rd16(A(0) + 0x28));`]]]),
+    ] : []),
+    ...Object.entries(PATCHES.playerSpeed?.pcs ?? {}).map(([pc, field]) => [parseInt(pc, 16), [`move.l	${field}(a6),d0`,
+      [`D(0) = player_move(A(6), rd32(A(6) + 0x${field.slice(1)}));`, 'logicl(D(0));']]]),
+  ].filter(([pc]) => !Number.isNaN(pc)));   // a game without that patch leaves it null
+}
+usePatches(gameFile('patches.json', {}));
 
 const hex = (v) => '0x' + (v >>> 0).toString(16).toUpperCase();
 const SFX = { 1: 'b', 2: 'w', 4: 'l' };

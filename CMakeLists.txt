@@ -59,21 +59,32 @@ add_library(ymfm STATIC third_party/ymfm/src/ymfm_opn.cpp third_party/ymfm/src/y
 target_include_directories(ymfm PUBLIC third_party/ymfm/src)
 target_compile_options(ymfm PRIVATE -w)
 
-# ---- Recompiled game code (generated from the user's ROM) -------------------------
-set(RECOMP_SOURCES ${GAME_GEN}/recomp_table.c)
-foreach(i RANGE 0 15)
-  if(i LESS 10)
-    set(id "0${i}")
-  else()
-    set(id "${i}")
-  endif()
-  list(APPEND RECOMP_SOURCES ${GAME_GEN}/recomp_${id}.c)
+# ---- Recompiled game code (generated from the user's ROMs) ------------------------
+# One folder per edition (GAME_EDITIONS, from game.json); an edition whose ROM is not set
+# up in local.json gets empty files, so the list of sources is always the same.
+set(RECOMP_SOURCES ${GAME_GEN}/editions.c)
+foreach(edition ${GAME_EDITIONS})
+  list(APPEND RECOMP_SOURCES ${GAME_GEN}/${edition}/edition.c)
+  foreach(i RANGE 0 15)
+    if(i LESS 10)
+      set(id "0${i}")
+    else()
+      set(id "${i}")
+    endif()
+    list(APPEND RECOMP_SOURCES ${GAME_GEN}/${edition}/recomp_${id}.c)
+  endforeach()
 endforeach()
 file(GLOB RECOMP_TOOLS ${CMAKE_SOURCE_DIR}/tools/*.mjs ${CMAKE_SOURCE_DIR}/tools/lib/*.mjs)
+set(RECOMP_DEPENDS ${RECOMP_TOOLS} ${GAME_DIR}/game.json ${GAME_DIR}/patches.json)
+foreach(f editions.json ../../local.json)
+  if(EXISTS ${GAME_DIR}/${f})
+    list(APPEND RECOMP_DEPENDS ${GAME_DIR}/${f})                # mapped addresses; a ROM added or moved
+  endif()
+endforeach()
 add_custom_command(
   OUTPUT ${RECOMP_SOURCES}
   COMMAND ${GAME_ENV} node ${CMAKE_SOURCE_DIR}/tools/recomp.mjs
-  DEPENDS ${RECOMP_TOOLS} ${GAME_DIR}/game.json ${GAME_DIR}/patches.json
+  DEPENDS ${RECOMP_DEPENDS}
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   COMMENT "Recompiling the ROM to C")
 add_library(recomp STATIC ${RECOMP_SOURCES})

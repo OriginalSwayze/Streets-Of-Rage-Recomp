@@ -33,7 +33,6 @@ int machine_cycles_in_line(void) {
 /* ---- Recompiled code dispatch ----------------------------------------------
  * recomp_fn[pc / 2] is the native function for a block starting at pc. Hand-written
  * C replacements (the decompilation) register here too and win over generated code. */
-extern const RecompEntry *const recomp_tables[];
 static RecompBlock recomp_fn[ROM_SIZE / 2];
 MachineOptions machine_opts = { .recomp = true, .overclock = 100 };
 uint64_t stat_wait_cycles, stat_total_cycles;
@@ -68,8 +67,9 @@ static void recomp_init(void);
 static uint8_t overridden[ROM_SIZE / 16];  /* one bit per even address replaced by machine_override() */
 
 static RecompBlock generated_fn(uint32_t pc) {
-    for (int t = 0; recomp_tables[t]; t++)
-        for (const RecompEntry *e = recomp_tables[t]; e->fn; e++) if (e->pc == pc) return e->fn;
+    if (!game) return NULL;
+    for (int t = 0; game->tables[t]; t++)
+        for (const RecompEntry *e = game->tables[t]; e->fn; e++) if (e->pc == pc) return e->fn;
     return NULL;
 }
 
@@ -82,12 +82,17 @@ void machine_override(uint32_t pc, RecompBlock fn) {
     else overridden[pc >> 4] &= (uint8_t)~bit;
 }
 
+/* The loaded edition's code; filled again when a ROM of another edition has loaded
+ * (machine_reset), which drops the overrides: they are installed after it, for the
+ * edition they were made for. */
 static void recomp_init(void) {
-    static bool done;
-    if (done) return;
-    done = true;
-    for (int t = 0; recomp_tables[t]; t++)
-        for (const RecompEntry *e = recomp_tables[t]; e->fn; e++) recomp_fn[e->pc >> 1] = e->fn;
+    static const GameEdition *done;
+    if (!game || done == game) return;
+    done = game;
+    memset(recomp_fn, 0, sizeof recomp_fn);
+    memset(overridden, 0, sizeof overridden);
+    for (int t = 0; game->tables[t]; t++)
+        for (const RecompEntry *e = game->tables[t]; e->fn; e++) recomp_fn[e->pc >> 1] = e->fn;
 }
 
 int gen_int_ack(int level) {

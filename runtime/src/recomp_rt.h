@@ -22,7 +22,7 @@ extern int recomp_charged;
 
 /* Runs native code starting at pc (a block start or any instruction inside it). */
 typedef uint32_t (*RecompBlock)(uint32_t pc);
-typedef struct { uint32_t pc; RecompBlock fn; } RecompEntry;
+typedef struct RecompEntry { uint32_t pc; RecompBlock fn; } RecompEntry;
 
 /* Patched instructions (config/patches.json); 0 keeps the original behavior. */
 extern uint32_t patch_cull_left, patch_cull_widen;

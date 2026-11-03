@@ -90,9 +90,16 @@ static char base_dir[1024];
 
 static void path_in_base(char *out, size_t n, const char *name) { snprintf(out, n, "%s%s", base_dir, name); }
 
+/* A file of the edition loaded (game_file_name), next to the executable. */
+static void game_path_in_base(char *out, size_t n, const char *name) {
+    char own[128];
+    game_file_name(own, sizeof own, name);
+    path_in_base(out, n, own);
+}
+
 static void save_coverage(void) {
     char p[1100];
-    path_in_base(p, sizeof p, "coverage.bin");
+    game_path_in_base(p, sizeof p, "coverage.bin");
     /* Merge with earlier runs so coverage accumulates across play sessions. */
     FILE *f = fopen(p, "rb");
     if (f) {
@@ -108,14 +115,14 @@ static void save_coverage(void) {
 static void save_sram(void) {
     if (!bus.sram_dirty) return;
     char p[1100];
-    path_in_base(p, sizeof p, "save.srm");
+    game_path_in_base(p, sizeof p, "save.srm");
     FILE *f = fopen(p, "wb");
     if (f) { fwrite(bus.sram, 1, SRAM_SIZE, f); fclose(f); bus.sram_dirty = false; }
 }
 
 static void load_sram(void) {
     char p[1100];
-    path_in_base(p, sizeof p, "save.srm");
+    game_path_in_base(p, sizeof p, "save.srm");
     memset(bus.sram, 0xFF, SRAM_SIZE);
     FILE *f = fopen(p, "rb");
     if (f) { if (fread(bus.sram, 1, SRAM_SIZE, f) != SRAM_SIZE) { /* keep what was read */ } fclose(f); }
@@ -130,6 +137,32 @@ static int save_bmp(const char *path) {
     int r = SDL_SaveBMP(s, path);
     SDL_FreeSurface(s);
     return r;
+}
+
+static void load_menu_sounds(void);
+
+/* The pause menu changed the edition: keep this edition's save RAM and coverage, load the
+ * other one's ROM, with its own. False if the edition did not change, or its ROM would not
+ * load (the edition goes back). */
+static bool switch_edition(void) {
+    if (!game || !strcmp(game->id, settings.edition)) return false;
+    const GameEdition *was = game;
+    save_sram();
+    const char *err = bus_load_rom(settings.rom_path);
+    if (err) {                          /* the ROM and `game` are as they were */
+        fprintf(stderr, "could not switch to %s: %s\n", settings.rom_path, err);
+        for (int i = 0; i < GAME_EDITION_COUNT; i++)
+            if (game_editions[i] == game) settings_use_rom(settings.rom_paths[i]);
+        return false;
+    }
+    const GameEdition *now = game;
+    game = was;                         /* the coverage seen so far is the old edition's */
+    save_coverage();
+    game = now;
+    memset(coverage, 0, sizeof coverage);
+    load_menu_sounds();                 /* this edition's (it runs the ROM to the title) */
+    load_sram();
+    return true;
 }
 
 static int save_png(const char *path) { return png_write(path, framebuffer, frame_width(), vdp_screen_height(), FB_W); }
@@ -223,7 +256,7 @@ static void read_menu_sounds(FILE *f);
 static void load_menu_sounds(void) {
     if (!GAME_LAUNCHER) return;         /* made by the launcher from the game's sound driver */
     char path[1100];
-    path_in_base(path, sizeof path, "menu_sounds.cache");
+    game_path_in_base(path, sizeof path, "menu_sounds.cache");
     static const uint16_t want[4] = { SFX_CURSOR, SFX_CONFIRM, SFX_CANCEL, SFX_ERROR };
     for (int attempt = 0; attempt < 2; attempt++) {
         FILE *f = fopen(path, "rb");
@@ -585,12 +618,15 @@ int main(int argc, char **argv) {
         else SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, GAME_TITLE " Recomp", msg, NULL);
         return 1;
     }
+    /* The ROM played is its edition's ROM and sets the edition (an older settings.ini names
+     * only rom_path). */
+    settings_use_rom(settings.rom_path);
     if (!headless_frames && rom_from_args) {
         /* Remember a ROM path given on the command line, but not the other options
          * given there (--filter, --widescreen, ...): those are for this run. */
         Settings run = settings;
         settings_load(ini);
-        snprintf(settings.rom_path, sizeof settings.rom_path, "%s", run.rom_path);
+        settings_use_rom(run.rom_path);
         settings_save(ini);
         settings = run;
     }
@@ -941,6 +977,13 @@ int main(int argc, char **argv) {
                 switch (menu_event(&e)) {
                 case MENU_CLOSE: case MENU_LOADED: menu_close(); break;
                 case MENU_SETTINGS:
+                    if (switch_edition()) {     /* another edition: it starts from power on */
+                        apply_settings();
+                        machine_reset();
+                        rewind_reset(settings.rewind ? (size_t)settings.rewind_mb << 20 : 0);
+                        menu_close();
+                        break;
+                    }
                     apply_settings();
                     SDL_SetWindowFullscreen(win, settings.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
                     if (settings.rewind != was_rewind) rewind_reset(settings.rewind ? (size_t)settings.rewind_mb << 20 : 0);

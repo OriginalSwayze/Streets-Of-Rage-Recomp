@@ -77,3 +77,22 @@ ended. Overclocked, the update ends while the Z80 is busy every frame, so every 
 and after one of priority `$FF` no hit or voice plays again. `sor3VoiceQueue` (`$1A8106`)
 compares with 0 there while overclocked and nothing plays or waits, as the request's direct
 path does.
+
+## Bare Knuckle III
+
+The Japanese original (games/sor3/game.json, editions `jp` and `en`, the latter with
+Twilight Translations' English patch, which leaves the code where it is) has the same RAM
+map and the same sound driver at `$1A8000`; its code moved. `tools/map-editions.mjs` finds
+the addresses above in it by the USA code around them (games/sor3/editions.json). What the
+search cannot find is in game.json:
+
+- `$023628` is at `$02439C`: Bare Knuckle III calls a routine before it, so the branch after
+  it is longer (`placed`).
+- `$026B00` (a hit that leaves the target at 10 health instead of knocking it out) is not in
+  Bare Knuckle III (`absent`).
+- It has two hits the USA cartridge does not, both `sub.b d0,$6C(a0)`: `$010EA2` (a quarter
+  of the damage when a player is the attacker) and `$0113EC` (`patches`).
+
+Found by scanning both ROMs for every `sub.b dN,$6C(aN)` and `subq.b #N,$6C(aN)`: the USA
+cartridge has 33, Bare Knuckle III 34. The console reports itself as Japanese (`$A10001` =
+`$20`) for these editions.

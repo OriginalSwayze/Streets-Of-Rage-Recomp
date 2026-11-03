@@ -3,6 +3,9 @@
 #
 #   install.ps1 -Install <folder> [-Sor1 <rom>] [-Sor2 <rom>] [-Sor3 <rom>] [-NoSystemTools]
 #
+# A game with other editions (Streets of Rage 3: Bare Knuckle III) takes several ROMs as
+# "<id>=<rom>|<id>=<rom>", the ids of games/<name>/game.json.
+#
 # For each game given a ROM: checks the ROM, recompiles it to C and builds that game, then
 # puts it in <Install>\games\<name>\ (its settings.ini remembers the ROM; settings, saves and
 # states there are kept on a reinstall). The collection's front end goes in <Install>\.
@@ -92,11 +95,29 @@ $Games = @(
     @{ Name = 'sor3'; Title = 'Streets of Rage 3'; Exe = 'StreetsOfRage3.exe'; Rom = $Sor3 }
 )
 
-function SetRomPath($ini, $rom) {
+# A game's ROMs: "<rom>", or several editions as "<id>=<rom>|<id>=<rom>" (the game's own first).
+function RomList($spec) {
+    @($spec -split '\|' | Where-Object { $_ } | ForEach-Object {
+        if ($_ -match '^([a-z]+)=(.+)$') { @{ Id = $Matches[1]; Path = $Matches[2] } } else { @{ Id = ''; Path = $_ } }
+    })
+}
+
+# settings.ini: rom_path is the first ROM (the game's own if picked), and with editions each
+# one's rom_<id>; the edition played stays if its ROM is still there.
+function SetRomPath($ini, $roms) {
+    $roms = @($roms)                    # (one ROM comes as itself, not a list)
     $utf8 = New-Object System.Text.UTF8Encoding $false
+    $ids = @($roms | Where-Object { $_.Id } | ForEach-Object { $_.Id })
     $lines = @()
-    if (Test-Path $ini) { $lines = @([IO.File]::ReadAllLines($ini, $utf8) | Where-Object { $_ -notmatch '^rom_path=' }) }
-    [IO.File]::WriteAllLines($ini, [string[]](@("rom_path=$rom") + $lines), $utf8)
+    if (Test-Path $ini) {
+        $lines = @([IO.File]::ReadAllLines($ini, $utf8) | Where-Object {
+            $_ -notmatch '^rom_path=' -and -not ($_ -match '^rom_([a-z]+)=' -and $ids -contains $Matches[1]) -and
+            -not ($_ -match '^edition=(.*)$' -and $ids.Count -and -not ($ids -contains $Matches[1]))
+        })
+    }
+    $head = @("rom_path=$($roms[0].Path)")
+    if ($roms.Count -gt 1 -or ($roms[0].Id -and $roms[0].Id -ne 'main')) { $head += @($roms | ForEach-Object { "rom_$($_.Id)=$($_.Path)" }) }
+    [IO.File]::WriteAllLines($ini, [string[]]($head + $lines), $utf8)
 }
 
 function Main {
@@ -129,7 +150,8 @@ function Main {
         $g = $chosen[$i]
         $at = 30 + [int]($span * $i)
         Progress $at "$($g.Title): checking your ROM"
-        Run "That file is not $($g.Title) (USA/World), unchanged." node tools/setup.mjs --game $g.Name $g.Rom
+        $roms = @(RomList $g.Rom)
+        foreach ($r in $roms) { Run "That file is not $($g.Title) (or an edition of it), unchanged." node tools/setup.mjs --game $g.Name $r.Path }
         Progress ($at + [int]($span * .1)) "$($g.Title): finding its code"
         $env:GAME = $g.Name
         Run "$($g.Title): the disassembler failed." node tools/disasm.mjs
@@ -144,7 +166,7 @@ function Main {
         $dest = Join-Path $Install "games\$($g.Name)"
         New-Item -ItemType Directory -Force $dest | Out-Null
         Copy-Item (Join-Path $Root "$build\$($g.Exe)") $dest -Force
-        SetRomPath (Join-Path $dest 'settings.ini') $g.Rom
+        SetRomPath (Join-Path $dest 'settings.ini') $roms
         if ($g.Name -eq 'sor1') { Copy-Item (Join-Path $Root "$build\Streets of Rage Collection.exe") $Install -Force }
     }
     # The front end comes with the first game's build; with SoR1 skipped, build it on its own.

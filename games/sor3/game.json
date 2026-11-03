@@ -3,12 +3,36 @@
   "exe": "StreetsOfRage3",
   "series": 3,
   "rom": {
+    "id": "us",
     "name": "Streets of Rage 3 (USA)",
+    "edition": "Streets of Rage 3",
     "serial": "GM MK-1539 -00",
     "size": 3145728,
     "sha1": "40a33dd6f9dab0aff26c7525c9b8f342482c7af6",
     "headerChecksum": "2D96"
   },
+  "editions": [
+    {
+      "id": "jp",
+      "name": "Bare Knuckle III (Japan)",
+      "edition": "Bare Knuckle III",
+      "title": "BARE KNUCKLE III",
+      "region": "jp",
+      "sha1": "b9b2b4a98a9d8f4c49aa1e5395e2279339517fdb",
+      "absent": ["026B00"],
+      "placed": { "023628": "02439C" },
+      "patches": { "sor3Hit": { "pcs": { "010EA2": "d0", "0113EC": "d0" } } }
+    },
+    {
+      "id": "en",
+      "name": "Bare Knuckle III (Japan) with Twilight Translations' English patch 1.00",
+      "edition": "Bare Knuckle III (English)",
+      "title": "BARE KNUCKLE III",
+      "region": "jp",
+      "sha1": "d1dc85abe0889ff8e880edcaf908a6b195b75952",
+      "sameCodeAs": "jp"
+    }
+  ],
   "features": {
     "ram": false,
     "widescreen": false,

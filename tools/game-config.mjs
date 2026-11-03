@@ -4,7 +4,7 @@
 // CMake runs this when it configures, and again whenever game.json changes.
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { GAME, GAME_INFO, BUILD_DIR } from './lib/game.mjs';
+import { GAME, GAME_INFO, BUILD_DIR, EDITIONS } from './lib/game.mjs';
 
 const dir = join(BUILD_DIR, 'config');
 mkdirSync(dir, { recursive: true });
@@ -28,7 +28,10 @@ writeIfChanged(join(dir, 'game_config.h'), [
   `#define GAME_SMPS       ${f.smps ? 1 : 0}   /* the sound driver is Sega's SMPS 68k (ost.c) */`,
   `#define GAME_FIGHTERS   ${f.fighters ? 1 : 0}   /* the fighters' colours (fighters.c) */`,
   `#define GAME_SRAM_ALWAYS ${GAME_INFO.sram?.always ? 1 : 0}   /* battery save mapped at $200001 from the start */`,
+  `#define GAME_EDITION_COUNT ${EDITIONS.length}   /* its cartridges: the main one, then game.json's editions */`,
+  `#define GAME_EDITION_IDS { ${EDITIONS.map((e) => str(e.id)).join(', ')} }`,
   '',
 ].join('\n'));
-writeIfChanged(join(dir, 'game.cmake'), `set(GAME_EXE ${GAME_INFO.exe})\n`);
+if (EDITIONS.some((e) => e.size !== GAME_INFO.rom.size)) throw new Error(`games/${GAME}/game.json: every edition's ROM must be ${GAME_INFO.rom.size} bytes, as the main one`);
+writeIfChanged(join(dir, 'game.cmake'), `set(GAME_EXE ${GAME_INFO.exe})\nset(GAME_EDITIONS ${EDITIONS.map((e) => e.id).join(' ')})\n`);
 console.log(`${GAME}: ${GAME_INFO.title} (${GAME_INFO.exe}.exe)`);

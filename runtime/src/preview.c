@@ -26,7 +26,11 @@ void preview_set_world(bool world, float cam_x, float cam_y, float focus_x, floa
 /* ---- The saved frame ------------------------------------------------------------------- */
 #define FRAME_MAGIC 0x32455250u          /* "PRE2" */
 
-static void frame_path(char *out, size_t n, const char *dir) { snprintf(out, n, "%spreview_frame.cache", dir ? dir : ""); }
+static void frame_path(char *out, size_t n, const char *dir) {
+    char own[64];
+    game_file_name(own, sizeof own, "preview_frame.cache");
+    snprintf(out, n, "%s%s", dir ? dir : "", own);
+}
 
 void preview_save(const char *dir) {
     if (hd_frame.h <= 0 || hd_frame.w <= 0) return;

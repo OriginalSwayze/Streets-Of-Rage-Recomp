@@ -4,9 +4,12 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include "game.h"
 
 typedef struct {
-    char rom_path[1024];
+    char rom_path[1024];                /* the ROM played: rom_paths[] of the edition chosen */
+    char rom_paths[GAME_EDITION_COUNT][1024];   /* each edition's ROM (game.h game_editions order), or "" */
+    char edition[16];                   /* the edition played (GameEdition id), "" for the one rom_path is */
     bool widescreen;
     int  aspect_w, aspect_h;            /* target aspect ratio when widescreen is on */
     bool fullscreen;
@@ -75,12 +78,18 @@ enum { OPT_WIDESCREEN, OPT_ASPECT, OPT_FULLSCREEN, OPT_INTEGER, OPT_WINDOW, OPT_
        OPT_SHARPEN, OPT_SCALER, OPT_LIGHTING, OPT_AUDIO, OPT_ELEMENTS, OPT_FOOTSTEPS, OPT_WATER,
        OPT_TEXPACK, OPT_DUMP,
        OPT_COMBAT, OPT_RUMBLE, OPT_FAST, OPT_TIMER, OPT_RANDOMIZER,
-       OPT_PLAYER2, OPT_CHEAT_LIVES, OPT_CHEAT_SPECIALS, OPT_CHEAT_TIME, OPT_HDR };
+       OPT_PLAYER2, OPT_CHEAT_LIVES, OPT_CHEAT_SPECIALS, OPT_CHEAT_TIME, OPT_HDR,
+       OPT_EDITION };                   /* which edition of the game is played (switching restarts it) */
 enum { OST_MODE_ALL, OST_MODE_REPEAT, OST_MODE_SHUFFLE, OST_MODE_COUNT };
 void settings_set_volume_fraction(float v);         /* sets volume from a slider (0-1), in steps of 5 */                    /* all three cheats as presets: Off, Health, Health + spirit, All */
 void settings_option_text(int id, char *out, size_t n);
 void settings_option_change(int id, int dir);
 int  settings_cycle(int v, int count, int dir);     /* (v + dir) wrapped into 0..count-1 */
+
+/* Makes a ROM of one of this build's editions the one played (rom_path, its rom_paths[] and
+ * edition); false if it is none of them. */
+bool settings_use_rom(const char *path);
+int  settings_edition_count(void);                  /* editions with a ROM to choose from */
 
 /* Widescreen pixels to add on each side for the current settings. */
 int  settings_extra_width(void);

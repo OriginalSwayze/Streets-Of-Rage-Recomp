@@ -9,6 +9,17 @@ included in this repository: every tool reads your ROM and checks its SHA-1.
 | Streets of Rage | Streets of Rage (World) (also sold as Bare Knuckle) | `3d74dbc81f3472a5bde45bf265e636a72a314667` |
 | Streets of Rage 2 | Streets of Rage 2 (USA) | `8b656eec9692d88bbbb84787142aa732b44ce0be` |
 | Streets of Rage 3 | Streets of Rage 3 (USA) | `40a33dd6f9dab0aff26c7525c9b8f342482c7af6` |
+| Streets of Rage 3: Bare Knuckle III edition | Bare Knuckle III (Japan) | `b9b2b4a98a9d8f4c49aa1e5395e2279339517fdb` |
+| Streets of Rage 3: Bare Knuckle III, in English | Bare Knuckle III (Japan) with Twilight Translations' English patch 1.00 (`bk3_100.ips`) applied | `d1dc85abe0889ff8e880edcaf908a6b195b75952` |
+
+**Bare Knuckle III** is the Japanese original of Streets of Rage 3, with its story, its own
+difficulty and the fighters' original colours. It plays as an edition of Streets of Rage 3:
+give Setup its ROM as well (Browse again on Streets of Rage 3), and pick it under Edition in
+the launcher's Game tab or the pause menu's More tab. Each edition has its own saves, save
+states and launcher art. For it in English, give Setup Twilight Translations' patch too
+(`bk3_100.zip` or `bk3_100.ips`, from its translators): Setup applies it to your Japanese ROM
+and keeps both editions. The Europe and Asia cartridges are not editions here (Europe's
+runs at 50 Hz).
 
 They are static recompilations, not decompilations: at build time each game's 68000 machine
 code is translated into C from your ROM, and anything not yet covered runs on an
@@ -111,7 +122,11 @@ cmake --build build/sor2
 
 Each game's folder in [games/](games) holds its ROM's details and features (`game.json`), the
 patches at its own addresses (`patches.json`), extra code entry points (`entries.json`) and
-the code seen running in play (`coverage.txt`). `build/sor1` also builds the collection's
+the code seen running in play (`coverage.txt`). A game's other editions (`editions` in
+`game.json`, e.g. Bare Knuckle III) are recompiled into the same game: run
+`node tools/setup.mjs` for each one's ROM too. Their code moved, so the addresses above are
+found in each by the bytes around them: `node tools/map-editions.mjs --game sor3` writes
+`editions.json` (addresses only) after an address is added or changed. `build/sor1` also builds the collection's
 front end (`Streets of Rage Collection.exe`) and the installer (`Setup.exe`);
 [tools/install.ps1](tools/install.ps1) is what Setup runs.
 

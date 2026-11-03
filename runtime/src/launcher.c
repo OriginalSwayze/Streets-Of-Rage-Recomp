@@ -48,7 +48,7 @@ bool launcher_in_collection;
 #define PANO_TOP     32                 /* the street starts under the HUD */
 #define PANO_MAX_W   1600
 
-static char cache_path[1100];
+static char cache_path[1100], launcher_base[1024];
 
 static void art_free(Art *a) { free(a->rgb); free(a->mask); memset(a, 0, sizeof *a); }
 
@@ -144,6 +144,18 @@ static bool in_round(void) {
 static int camera_x(void) { return -(int16_t)(bus.ram[0xFC22] << 8 | bus.ram[0xFC23]); }
 #endif
 
+/* Another edition's title logo is up (Bare Knuckle III's): much of the top half in its
+ * fiery orange (the intro's pictures before it are a city in blues and greys, its text white). */
+static bool title_logo(const uint32_t *fb) {
+    int n = 0;
+    for (int i = 0; i < 320 * 112; i++) {
+        uint32_t p = fb[i];
+        int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+        n += r > 170 && g > 60 && g < 210 && b < 100;
+    }
+    return n > 2500;
+}
+
 static void art_capture(void) {
     static uint32_t fb[320 * 240];
     int extra = vdp_opts.extra_width, hide = vdp_opts.hide_layers, overclock = machine_opts.overclock;
@@ -155,7 +167,17 @@ static void art_capture(void) {
     memcpy(sram, bus.sram, SRAM_SIZE);
     memset(bus.sram, 0xFF, SRAM_SIZE);
     machine_reset();
-    for (int f = 0; f < COVER_FRAME; f++) run_frames(fb, 1, f == 300 || f == 500 || (f > 300 && f < 306) || (f > 500 && f < 506) ? PAD_START : 0);
+    if (game->is_main)
+        for (int f = 0; f < COVER_FRAME; f++) run_frames(fb, 1, f == 300 || f == 500 || (f > 300 && f < 306) || (f > 500 && f < 506) ? PAD_START : 0);
+    else {
+        /* Another edition's intro runs longer (Bare Knuckle III tells its story first): Start
+         * every 200 frames until its title logo is up, then two seconds for it to fade in. */
+        int seen = 0;
+        for (int f = 0; f < 4000 && seen < 120; f++) {
+            run_frames(fb, 1, !seen && f >= 300 && f % 200 < 6 ? PAD_START : 0);
+            if (seen || title_logo(fb)) seen++;
+        }
+    }
     art_alloc(&cover, 320, 224);
     art_paste(&cover, fb, 320, 0, 0, 224);
     /* Start every 200 frames (held for 6) until round 1 is under way. */
@@ -195,7 +217,7 @@ static void art_capture(void) {
     char card[1100];
     snprintf(card, sizeof card, "%scard.png", base ? base : "");
     if (base) SDL_free(base);
-    if (cover.w) png_write(card, cover.rgb, cover.w, cover.h, cover.w);
+    if (cover.w && game->is_main) png_write(card, cover.rgb, cover.w, cover.h, cover.w);   /* the game's own cover */
 }
 #else
 static void art_capture(void) {
@@ -274,7 +296,7 @@ static void art_capture(void) {
     char card[1100];
     snprintf(card, sizeof card, "%scard.png", base ? base : "");
     if (base) SDL_free(base);
-    if (cover.w) png_write(card, cover.rgb, cover.w, cover.h, cover.w);
+    if (cover.w && game->is_main) png_write(card, cover.rgb, cover.w, cover.h, cover.w);   /* the game's own cover */
 }
 #endif
 
@@ -284,6 +306,10 @@ static void art_prepare(void) {
     art_free(&cover); art_free(&pano);
     rom_ok = settings.rom_path[0] && !bus_load_rom(settings.rom_path);
     if (!rom_ok) return;
+    settings_use_rom(settings.rom_path);  /* its edition (an older settings.ini names only rom_path) */
+    char own[64];                       /* each edition's own art */
+    game_file_name(own, sizeof own, "launcher_art.cache");
+    snprintf(cache_path, sizeof cache_path, "%s%s", launcher_base, own);
     if (!art_load_cache()) art_capture();
 }
 
@@ -742,8 +768,12 @@ static const Row tab_rows[TABS][9] = {
       { ROW_OPTION, "Combat info", OPT_COMBAT, "Damage numbers rise from enemies; health bars show what they have left." },
       { ROW_OPTION, "Rumble", OPT_RUMBLE, GAME_SOR == 1 ? "The controller rumbles on your hits, knockouts, when you are hit and on the police car."
                                                          : "The controller rumbles on your hits, knockouts and when you are hit." } },
-    { { ROW_ROM, "ROM", 0, GAME_SOR == 3 ? "Your Streets of Rage 3 (USA) cartridge file." : GAME_SOR == 2 ? "Your Streets of Rage 2 (USA) cartridge file."
-                                                                                        : "Your Streets of Rage cartridge file." },
+    { { ROW_ROM, "ROM", 0, GAME_SOR == 3 ? "Your Streets of Rage 3 (USA) or Bare Knuckle III cartridge file. Add another to play that edition."
+                         : GAME_SOR == 2 ? "Your Streets of Rage 2 (USA) cartridge file." : "Your Streets of Rage cartridge file." },
+#if GAME_EDITION_COUNT > 1
+      { ROW_OPTION, "Edition", OPT_EDITION, GAME_SOR == 3 ? "Streets of Rage 3, or Bare Knuckle III: the Japanese original, with its story and colours."
+                                                          : "The edition of the game played: each cartridge has its own code." },
+#endif
       { ROW_OPTION, "Player 2", OPT_PLAYER2, GAME_SOR == 2 ? "In a 2 PLAYERS game: a friend on a second controller, or the AI partner beside you."
                                                             : "A friend on a second controller, or the AI partner fighting beside you." },
       { ROW_OPTION, "High frame rate", OPT_SMOOTH, "Draws at your screen's refresh rate (120, 144 Hz...): movement glides between the game's 60 updates." },
@@ -764,7 +794,7 @@ static const Row tab_rows[TABS][9] = {
       { ROW_OPTION, "Infinite lives", OPT_CHEAT_LIVES, "Both players always have at least two lives left." },
       { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
 };
-static const int tab_count[TABS] = { 9, 4, 8, 5, 4, 3 };
+static const int tab_count[TABS] = { 9, 4, 8 + (GAME_EDITION_COUNT > 1), 5, 4, 3 };
 #elif GAME_SOR == 2
     { { ROW_FIGHTER, "Max", 0, "His trousers, boots, belt and skin in any colour, still or animated." },
       { ROW_FIGHTER, "Axel", 1, "His hair, shirt, jeans, gloves and skin in any colour, still or animated." },
@@ -1220,7 +1250,7 @@ static void draw_cover(float t) {
     if (cover.w) draw_art(&cover, x, y, w, h, 0, (float)cover.w, 1);
     else ui_fill_rect(x, y, w, h, rgb_hex(0x101018), 1);
     float ty = y + h + 34;
-    const char *name = GAME_NAME;
+    const char *name = game && game->title ? game->title : GAME_NAME;   /* the edition's, as sold */
     float size = GAME_SOR >= 2 ? 46 : 54;
     float nw = ui_text_width(name, HEAD, size, 400, 2);
     shadow_text(name, HEAD, size, 400, 2, x + w / 2 - nw / 2, ty + (54 - size) / 2, C_YELLOW, C_DEEP, 1);
@@ -1244,12 +1274,12 @@ static void render(float t) {
 static void update_rom_status(void) {
     if (rom_ok) snprintf(rom_status, sizeof rom_status, "Verified \xE2\x9C\x93");
     else if (!settings.rom_path[0]) snprintf(rom_status, sizeof rom_status, "Not selected");
-    else snprintf(rom_status, sizeof rom_status, "Not Streets of Rage (World)");
+    else snprintf(rom_status, sizeof rom_status, GAME_EDITION_COUNT > 1 ? "Not an edition of the game" : "Not " GAME_ROM_NAME);
 }
 
 static void init_common(void) {
     char *bp = SDL_GetBasePath();
-    snprintf(cache_path, sizeof cache_path, "%slauncher_art.cache", bp ? bp : "");
+    snprintf(launcher_base, sizeof launcher_base, "%s", bp ? bp : "");
     settings_set_base(bp ? bp : "");
     art_prepare();                      /* (may run the intro, which draws over hd_frame) */
     fighters_preview_load(bp ? bp : "");
@@ -1282,6 +1312,16 @@ int launcher_screenshot(const char *png, int width, int tab, float t) {
 }
 
 /* ---- ROM picker ------------------------------------------------------------------ */
+/* The ROM played changed (picked, or another edition): its own art, previews and music. */
+static void reload_rom(void) {
+    music_stop();
+    art_prepare();
+    fighters_preview_load(launcher_base);
+    preview_load(launcher_base);
+    update_rom_status();
+    music_start();
+}
+
 static void choose_rom(SDL_Window *win) {
 #ifdef _WIN32
     wchar_t file[1024] = L"";
@@ -1297,12 +1337,10 @@ static void choose_rom(SDL_Window *win) {
     char path[1024];
     WideCharToMultiByte(CP_UTF8, 0, file, -1, path, sizeof path, NULL, NULL);
     for (char *p = path; *p; p++) if (*p == '\\') *p = '/';
-    snprintf(settings.rom_path, sizeof settings.rom_path, "%s", path);
-    remove(cache_path);
-    music_stop();
-    art_prepare();
-    update_rom_status();
-    music_start();
+    /* An edition this build has becomes the one played; any other file is kept as picked,
+     * so the row says what is wrong with it. */
+    if (!settings_use_rom(path)) snprintf(settings.rom_path, sizeof settings.rom_path, "%s", path);
+    reload_rom();
 #else
     (void)win;
 #endif
@@ -1336,6 +1374,7 @@ static void row_action(SDL_Window *win, int dir) {
         if (row->id == OPT_VOLUME && !dir) return;
         settings_option_change(row->id, dir ? dir : 1);
         if (row->id == OPT_MUSIC) music_request(-1, 0, settings.launcher_music, !settings.launcher_music);
+        if (row->id == OPT_EDITION) reload_rom();
     }
     ui.changed_item = ui.selected;
     ui.changed_t0 = ui.t;

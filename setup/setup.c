@@ -37,19 +37,50 @@
 
 /* ---- The games and their ROMs --------------------------------------------------------- */
 typedef struct {
-    const char *name, *title, *rom_name, *sha1, *exe;
+    const char *name, *title, *rom_name, *exe;
     uint32_t accent;
-    char picked[MAX_PATH];              /* the ROM file to install (a zip's ROM is unpacked first) */
-    char shown[MAX_PATH];               /* what the player picked */
     char problem[160];                  /* why the last pick was not taken */
     bool installed;                     /* already in the folder */
 } Game;
 
 static Game games[3] = {
-    { "sor1", "Streets of Rage", "Streets of Rage (World)", "3d74dbc81f3472a5bde45bf265e636a72a314667", "StreetsOfRage.exe", 0xF8D838, "", "", "", false },
-    { "sor2", "Streets of Rage 2", "Streets of Rage 2 (USA)", "8b656eec9692d88bbbb84787142aa732b44ce0be", "StreetsOfRage2.exe", 0x7CCBFF, "", "", "", false },
-    { "sor3", "Streets of Rage 3", "Streets of Rage 3 (USA)", "40a33dd6f9dab0aff26c7525c9b8f342482c7af6", "StreetsOfRage3.exe", 0xFFB848, "", "", "", false },
+    { "sor1", "Streets of Rage", "Streets of Rage (World)", "StreetsOfRage.exe", 0xF8D838, "", false },
+    { "sor2", "Streets of Rage 2", "Streets of Rage 2 (USA)", "StreetsOfRage2.exe", 0x7CCBFF, "", false },
+    { "sor3", "Streets of Rage 3", "Streets of Rage 3 (USA) or Bare Knuckle III", "StreetsOfRage3.exe", 0xFFB848, "", false },
 };
+
+/* Every cartridge a game builds from (games/<name>/game.json: its own, then its other
+ * editions, each built into the same game). A game may have several picked. */
+typedef struct {
+    int game;
+    const char *id, *sha1;
+    bool main;                          /* the game's own (its file keeps the game's name) */
+    char picked[MAX_PATH];              /* the ROM file to install (a zip's ROM is unpacked first) */
+    char shown[MAX_PATH];               /* what the player picked */
+} Rom;
+
+static Rom roms[] = {
+    { 0, "main", "3d74dbc81f3472a5bde45bf265e636a72a314667", true, "", "" },
+    { 1, "main", "8b656eec9692d88bbbb84787142aa732b44ce0be", true, "", "" },
+    { 2, "us", "40a33dd6f9dab0aff26c7525c9b8f342482c7af6", true, "", "" },
+    { 2, "jp", "b9b2b4a98a9d8f4c49aa1e5395e2279339517fdb", false, "", "" },   /* Bare Knuckle III (Japan) */
+    { 2, "en", "d1dc85abe0889ff8e880edcaf908a6b195b75952", false, "", "" },   /* with Twilight Translations' English patch 1.00 */
+};
+#define ROMS ((int)(sizeof roms / sizeof *roms))
+
+static bool game_picked(int g) {
+    for (int r = 0; r < ROMS; r++) if (roms[r].game == g && roms[r].picked[0]) return true;
+    return false;
+}
+
+/* The patch picked for the English Bare Knuckle III (see make_english). */
+static char ips_file[MAX_PATH], ips_shown[MAX_PATH];
+
+static void game_skip(int g) {
+    for (int r = 0; r < ROMS; r++) if (roms[r].game == g) roms[r].picked[0] = roms[r].shown[0] = 0;
+    if (g == 2) ips_file[0] = 0;
+    games[g].problem[0] = 0;
+}
 
 static bool sha1_file(const char *path, char out[41]) {
     FILE *f = fopen(path, "rb");
@@ -91,16 +122,100 @@ static const char *tar_exe(void) {
     return p;
 }
 
+static int rom_index(const char *id) {
+    for (int r = 0; r < ROMS; r++) if (roms[r].game == 2 && !strcmp(roms[r].id, id)) return r;
+    return -1;
+}
+
+/* Bare Knuckle III in English: Twilight Translations' patch (bk3_100.ips, or its zip), which
+ * Setup applies to the Japanese ROM once it has both, in either order (make_english). */
+
+/* Applies an IPS patch to `rom` (n bytes, grown up to cap); the new size, or 0 if it is not one. */
+static size_t ips_apply(uint8_t *rom, size_t n, size_t cap, const uint8_t *p, size_t len) {
+    if (len < 8 || memcmp(p, "PATCH", 5)) return 0;
+    size_t i = 5;
+    while (i + 3 <= len && memcmp(p + i, "EOF", 3)) {
+        if (i + 5 > len) return 0;
+        size_t off = (size_t)p[i] << 16 | p[i + 1] << 8 | p[i + 2], size = (size_t)p[i + 3] << 8 | p[i + 4];
+        i += 5;
+        if (size) {                     /* the bytes */
+            if (i + size > len || off + size > cap) return 0;
+            memcpy(rom + off, p + i, size);
+            i += size;
+        } else {                        /* a run of one byte */
+            if (i + 3 > len) return 0;
+            size = (size_t)p[i] << 8 | p[i + 1];
+            if (off + size > cap) return 0;
+            memset(rom + off, p[i + 2], size);
+            i += 3;
+        }
+        if (off + size > n) n = off + size;
+    }
+    if (i + 6 <= len) n = (size_t)p[i + 3] << 16 | p[i + 4] << 8 | p[i + 5];   /* a size to cut to */
+    return n;
+}
+
+static uint8_t *read_all(const char *path, size_t *n, size_t extra) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    uint8_t *buf = size > 0 ? malloc((size_t)size + extra) : NULL;
+    if (buf && fread(buf, 1, (size_t)size, f) != (size_t)size) { free(buf); buf = NULL; }
+    fclose(f);
+    *n = buf ? (size_t)size : 0;
+    return buf;
+}
+
+/* With the patch and the Japanese ROM both picked: the English ROM, made in the temp folder. */
+static void make_english(void) {
+    int jp = rom_index("jp"), en = rom_index("en");
+    if (!ips_file[0]) return;
+    if (!roms[jp].picked[0]) {
+        snprintf(games[2].problem, sizeof games[2].problem, "Patch taken: now pick Bare Knuckle III (Japan) for it to be applied to.");
+        return;
+    }
+    size_t n, plen;
+    const size_t cap = 8u << 20;
+    uint8_t *rom = read_all(roms[jp].picked, &n, cap), *patch = read_all(ips_file, &plen, 0);
+    if (rom && n > cap) n = 0;
+    size_t out = rom && patch && n ? ips_apply(rom, n, cap, patch, plen) : 0;
+    char tmp[MAX_PATH], sum[41] = "";
+    GetTempPathA(MAX_PATH, tmp);
+    snprintf(tmp + strlen(tmp), MAX_PATH - strlen(tmp), "sor_setup_bk3_en.md");
+    FILE *f = out ? fopen(tmp, "wb") : NULL;
+    bool ok = f && fwrite(rom, 1, out, f) == out;
+    if (f) fclose(f);
+    free(rom); free(patch);
+    if (ok && sha1_file(tmp, sum) && !strcmp(sum, roms[en].sha1)) {
+        snprintf(roms[en].picked, MAX_PATH, "%s", tmp);
+        snprintf(roms[en].shown, MAX_PATH, "%s", ips_shown);
+        games[2].problem[0] = 0;
+    } else {
+        snprintf(games[2].problem, sizeof games[2].problem, "That patch does not make Bare Knuckle III in English: it takes Twilight Translations' 1.00 (bk3_100.ips).");
+        ips_file[0] = 0;
+    }
+}
+
 /* A ROM picked for slot `slot`: checked, unpacked from a zip if need be, and put in the
- * slot of the game it really is. */
+ * slot of the game it really is (beside that game's other editions). A patch (.ips, or a zip
+ * with one) is kept for the Japanese Bare Knuckle III. */
 static void take_rom(int slot, const char *path) {
     char file[MAX_PATH], sum[41] = "";
     snprintf(file, sizeof file, "%s", path);
     const char *dot = strrchr(path, '.');
+    if (dot && !_stricmp(dot, ".ips")) {
+        snprintf(ips_file, sizeof ips_file, "%s", path);
+        snprintf(ips_shown, sizeof ips_shown, "%s", path);
+        make_english();
+        return;
+    }
     if (dot && !_stricmp(dot, ".zip")) {
         char tmp[MAX_PATH], cmd[2 * MAX_PATH + 64];
         GetTempPathA(MAX_PATH, tmp);
-        snprintf(tmp + strlen(tmp), MAX_PATH - strlen(tmp), "sor_setup_%d", slot);
+        static int zips;                /* a folder each: a game may take several */
+        snprintf(tmp + strlen(tmp), MAX_PATH - strlen(tmp), "sor_setup_%d_%d", slot, zips++);
         CreateDirectoryA(tmp, NULL);
         snprintf(cmd, sizeof cmd, "\"%s\" -xf \"%s\" -C \"%s\"", tar_exe(), path, tmp);
         file[0] = 0;
@@ -113,16 +228,46 @@ static void take_rom(int slot, const char *path) {
                 HANDLE fh = FindFirstFileA(pat, &fd);
                 if (fh != INVALID_HANDLE_VALUE) { snprintf(file, sizeof file, "%s\\%s", tmp, fd.cFileName); FindClose(fh); }
             }
+            if (!file[0]) {             /* a patch's zip (bk3_100.zip keeps it in a folder) */
+                ips_file[0] = 0;
+                char pat[MAX_PATH];
+                WIN32_FIND_DATAA fd;
+                const char *where[2] = { "%s\\*.ips", "%s\\*\\*.ips" };
+                for (int k = 0; k < 2 && !ips_file[0]; k++) {
+                    snprintf(pat, sizeof pat, where[k], tmp);
+                    if (k) {            /* one folder down: find the folder first */
+                        char dir[MAX_PATH];
+                        snprintf(dir, sizeof dir, "%s\\*", tmp);
+                        HANDLE dh = FindFirstFileA(dir, &fd);
+                        if (dh == INVALID_HANDLE_VALUE) break;
+                        do {
+                            if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || fd.cFileName[0] == '.') continue;
+                            char sub[MAX_PATH];
+                            WIN32_FIND_DATAA fi;
+                            snprintf(sub, sizeof sub, "%s\\%s\\*.ips", tmp, fd.cFileName);
+                            HANDLE fh = FindFirstFileA(sub, &fi);
+                            if (fh != INVALID_HANDLE_VALUE) { snprintf(ips_file, sizeof ips_file, "%s\\%s\\%s", tmp, fd.cFileName, fi.cFileName); FindClose(fh); }
+                        } while (!ips_file[0] && FindNextFileA(dh, &fd));
+                        FindClose(dh);
+                    } else {
+                        HANDLE fh = FindFirstFileA(pat, &fd);
+                        if (fh != INVALID_HANDLE_VALUE) { snprintf(ips_file, sizeof ips_file, "%s\\%s", tmp, fd.cFileName); FindClose(fh); }
+                    }
+                }
+                if (ips_file[0]) { snprintf(ips_shown, sizeof ips_shown, "%s", path); make_english(); return; }
+            }
         }
         if (!file[0]) { snprintf(games[slot].problem, sizeof games[slot].problem, "No ROM (.md, .bin or .gen) in that zip."); return; }
     }
     if (!sha1_file(file, sum)) { snprintf(games[slot].problem, sizeof games[slot].problem, "Could not read that file."); return; }
-    for (int g = 0; g < 3; g++)
-        if (!strcmp(sum, games[g].sha1)) {
-            snprintf(games[g].picked, MAX_PATH, "%s", file);
-            snprintf(games[g].shown, MAX_PATH, "%s", path);
+    for (int r = 0; r < ROMS; r++)
+        if (!strcmp(sum, roms[r].sha1)) {
+            int g = roms[r].game;
+            snprintf(roms[r].picked, MAX_PATH, "%s", file);
+            snprintf(roms[r].shown, MAX_PATH, "%s", path);
             games[g].problem[0] = 0;
             if (g != slot) games[slot].problem[0] = 0;
+            if (!strcmp(roms[r].id, "jp")) make_english();   /* a patch waiting for it */
             return;
         }
     snprintf(games[slot].problem, sizeof games[slot].problem,
@@ -209,7 +354,7 @@ enum { B_NEXT = 1, B_BACK, B_CANCEL, B_BROWSE_DIR, B_ROM0, B_SKIP0 = B_ROM0 + 3,
 
 static const char *steps[4] = { "WELCOME", "FOLDER", "GAMES", "INSTALL" };
 
-static int games_ready(void) { int n = 0; for (int g = 0; g < 3; g++) n += games[g].picked[0] != 0; return n; }
+static int games_ready(void) { int n = 0; for (int g = 0; g < 3; g++) n += game_picked(g); return n; }
 
 static void draw_frame(void) {
     for (int y = 0; y < ui_h; y++) {
@@ -260,28 +405,33 @@ static void draw_page(float t) {
         break;
     case PAGE_GAMES: {
         shadow_text("YOUR GAMES", HEAD, 34, 3, x, y, C_YELLOW, rgb_hex(0x8A140A));
-        wrap("Pick each game's ROM (.md, .bin, .gen, or a .zip with one inside). Each is checked as you pick it; skip any you do not have.", x, y + 58, w, 18, C_TEXT, 1);
+        wrap("Pick each game's ROM (.md, .bin, .gen or a .zip); each is checked as you pick it. Streets of Rage 3 also takes Bare Knuckle III.", x, y + 58, w, 18, C_TEXT, 1);
         for (int g = 0; g < 3; g++) {
             Game *gm = &games[g];
             float cy = 262 + g * 104;
             Rgb accent = rgb_hex(gm->accent);
-            ui_panel(x, cy, w, 92, 5, rgb_hex(0x1C1C23), rgb_hex(0x141418), 1, gm->picked[0] ? accent : rgb_hex(0x3A3A42), gm->picked[0] ? .8f : 1);
+            ui_panel(x, cy, w, 92, 5, rgb_hex(0x1C1C23), rgb_hex(0x141418), 1, game_picked(g) ? accent : rgb_hex(0x3A3A42), game_picked(g) ? .8f : 1);
             ui_fill_rect(x, cy, 6, 92, accent, 1);
             shadow_text(gm->title, HEAD, 28, 2, x + 24, cy + 12, rgb_hex(0xFFFFFF), mix(accent, rgb_hex(0xFFFFFF), .3f));
             const char *state;
             Rgb sc;
-            char buf[MAX_PATH + 40];
-            if (gm->picked[0]) {
-                const char *base = strrchr(gm->shown, '\\');
-                if (!base) base = strrchr(gm->shown, '/');
-                snprintf(buf, sizeof buf, "\xE2\x9C\x93  %s", base ? base + 1 : gm->shown);
+            char buf[3 * MAX_PATH + 40];
+            if (gm->problem[0]) { state = gm->problem; sc = rgb_hex(0xF09A86); }
+            else if (game_picked(g)) {      /* each edition picked, by its file's name */
+                int n = snprintf(buf, sizeof buf, "\xE2\x9C\x93 ");
+                for (int r = 0; r < ROMS; r++) {
+                    if (roms[r].game != g || !roms[r].picked[0]) continue;
+                    const char *base = strrchr(roms[r].shown, '\\');
+                    if (!base) base = strrchr(roms[r].shown, '/');
+                    n += snprintf(buf + n, sizeof buf - n, "%s %s", n > 4 ? "  +" : "", base ? base + 1 : roms[r].shown);
+                }
                 state = buf; sc = rgb_hex(0x9FDCA6);
-            } else if (gm->problem[0]) { state = gm->problem; sc = rgb_hex(0xF09A86); }
+            }
             else if (gm->installed) { state = "Installed. Pick its ROM again to rebuild it, or leave it as it is."; sc = C_DIM; }
             else { state = "Skipped: not installed."; sc = C_DIM; }
             ui_draw_text(state, BODY, 16, 400, 0, x + 24, cy + 56, sc, sc, 1);
             button(x + w - 360, cy + 20, 170, 52, "BROWSE", 0, B_ROM0 + g);
-            button(x + w - 180, cy + 20, 160, 52, "SKIP", gm->picked[0] ? 0 : 2, B_SKIP0 + g);
+            button(x + w - 180, cy + 20, 160, 52, "SKIP", game_picked(g) || (g == 2 && ips_file[0]) ? 0 : 2, B_SKIP0 + g);
         }
         int ready = games_ready();
         button(1010, 596, 170, 52, "INSTALL", ready || reinstall ? 1 : 2, B_NEXT);
@@ -360,7 +510,7 @@ static void browse_folder(SDL_Window *win) {
 static void browse_rom(int g) {
     char file[MAX_PATH] = "";
     OPENFILENAMEA of = { .lStructSize = sizeof of };
-    of.lpstrFilter = "Genesis ROMs (*.md;*.bin;*.gen;*.zip)\0*.md;*.bin;*.gen;*.zip\0All files (*.*)\0*.*\0";
+    of.lpstrFilter = "Genesis ROMs and patches (*.md;*.bin;*.gen;*.zip;*.ips)\0*.md;*.bin;*.gen;*.zip;*.ips\0All files (*.*)\0*.*\0";
     of.lpstrFile = file;
     of.nMaxFile = MAX_PATH;
     char title[96];
@@ -389,18 +539,20 @@ static void progress_line(const char *s) {
     SDL_UnlockMutex(lock);
 }
 
-static bool copy_rom(int g, char *out) {
+/* roms\<game>.md for a game's own cartridge, roms\<game>-<id>.md for another edition. */
+static bool copy_rom(int r, char *out) {
     char dir[MAX_PATH];
     snprintf(dir, sizeof dir, "%s\\roms", folder);
     CreateDirectoryA(dir, NULL);
-    snprintf(out, MAX_PATH, "%s\\%s.md", dir, games[g].name);
-    if (!_stricmp(out, games[g].picked)) return true;
-    return CopyFileA(games[g].picked, out, FALSE) != 0;
+    if (roms[r].main) snprintf(out, MAX_PATH, "%s\\%s.md", dir, games[roms[r].game].name);
+    else snprintf(out, MAX_PATH, "%s\\%s-%s.md", dir, games[roms[r].game].name, roms[r].id);
+    if (!_stricmp(out, roms[r].picked)) return true;
+    return CopyFileA(roms[r].picked, out, FALSE) != 0;
 }
 
 static int SDLCALL install_thread(void *arg) {
     (void)arg;
-    char src[MAX_PATH], cmd[4 * MAX_PATH + 512];
+    char src[MAX_PATH], cmd[8 * MAX_PATH + 512];
     SHCreateDirectoryExA(NULL, folder, NULL);
     /* The source: the payload unpacked into <folder>\source, or a folder given for testing. */
     if (source_dir[0]) snprintf(src, sizeof src, "%s", source_dir);
@@ -435,11 +587,24 @@ static int SDLCALL install_thread(void *arg) {
         if (!ok) { progress_line("@@error Could not unpack the collection (Setup.exe may be damaged: download it again)."); return 1; }
     }
     /* The ROMs, copied in, for the installer. */
-    char roms[3][MAX_PATH] = { "", "", "" };
-    for (int g = 0; g < 3; g++)
-        if (games[g].picked[0] && !copy_rom(g, roms[g])) { progress_line("@@error Could not copy a ROM into the install folder."); return 1; }
+    char copies[ROMS][MAX_PATH];
+    for (int r = 0; r < ROMS; r++) {
+        copies[r][0] = 0;
+        if (roms[r].picked[0] && !copy_rom(r, copies[r])) { progress_line("@@error Could not copy a ROM into the install folder."); return 1; }
+    }
+    /* -SorN "<rom>", or with several editions "<id>=<rom>|<id>=<rom>" (the game's own first). */
     int n = snprintf(cmd, sizeof cmd, "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"%s\\tools\\install.ps1\" -Install \"%s\"", src, folder);
-    for (int g = 0; g < 3; g++) if (roms[g][0]) n += snprintf(cmd + n, sizeof cmd - n, " -Sor%d \"%s\"", g + 1, roms[g]);
+    for (int g = 0; g < 3; g++) {
+        if (!game_picked(g)) continue;
+        n += snprintf(cmd + n, sizeof cmd - n, " -Sor%d \"", g + 1);
+        bool first = true;
+        for (int r = 0; r < ROMS; r++) {
+            if (roms[r].game != g || !copies[r][0]) continue;
+            n += snprintf(cmd + n, sizeof cmd - n, "%s%s=%s", first ? "" : "|", roms[r].id, copies[r]);
+            first = false;
+        }
+        n += snprintf(cmd + n, sizeof cmd - n, "\"");
+    }
     SECURITY_ATTRIBUTES sa = { sizeof sa, NULL, TRUE };
     HANDLE rd, wr;
     CreatePipe(&rd, &wr, &sa, 0);
@@ -571,7 +736,7 @@ static bool act(int id, SDL_Window *win) {
         else if (page > PAGE_WELCOME) page--;
     } else if (id == B_BROWSE_DIR) browse_folder(win);
     else if (id >= B_ROM0 && id < B_ROM0 + 3) browse_rom(id - B_ROM0);
-    else if (id >= B_SKIP0 && id < B_SKIP0 + 3) { games[id - B_SKIP0].picked[0] = 0; games[id - B_SKIP0].shown[0] = 0; games[id - B_SKIP0].problem[0] = 0; }
+    else if (id >= B_SKIP0 && id < B_SKIP0 + 3) game_skip(id - B_SKIP0);
     else if (id == B_DESKTOP) desktop_icon = !desktop_icon;
     else if (id == B_LAUNCH) launch_after = !launch_after;
     else if (id == B_KEEP) keep_saves = !keep_saves;

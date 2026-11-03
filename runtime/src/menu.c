@@ -60,9 +60,13 @@ static const Item tab_items[TABS][MAX_ROWS] = {
 #endif
     { { ITEM_OPTION, "Volume", OPT_VOLUME }, { ITEM_OPTION, "Audio", OPT_AUDIO },
       { ITEM_ACTION, "Controls", ACT_CONTROLS }, { ITEM_OPTION, "Rumble", OPT_RUMBLE },
-      { ITEM_OPTION, "Texture pack", OPT_TEXPACK }, { ITEM_OPTION, "Dump tiles", OPT_DUMP } },
+      { ITEM_OPTION, "Texture pack", OPT_TEXPACK }, { ITEM_OPTION, "Dump tiles", OPT_DUMP },
+#if GAME_EDITION_COUNT > 1
+      { ITEM_OPTION, "Edition", OPT_EDITION },
+#endif
+    },
 };
-static const int tab_count[TABS] = { 9, 10, 4, FIGHTERS, GAME_SOR == 3 ? 3 : 5, 6 };
+static const int tab_count[TABS] = { 9, 10, 4, FIGHTERS, GAME_SOR == 3 ? 3 : 5, 6 + (GAME_EDITION_COUNT > 1) };
 
 /* ---- Look: the game's HUD, a yellow frame on charcoal, red bars (as the launcher) ------- */
 #include "theme.h"
@@ -138,6 +142,9 @@ static const char *about(const Item *it) {
     case OPT_RUMBLE: return "The controller rumbles when you land a hit, harder for a knockout and when you are hit, and long and low when the police car is called.";
     case OPT_TIMER: return "This session's play time in the top corner of the picture, for speedruns and keeping track. The total is under Stats.";
     case OPT_VOLUME: return "The game's volume.";
+    case OPT_EDITION: return settings_edition_count() > 1
+        ? "The edition of the game played: each cartridge has its own code. Changing it starts that edition from power on, with its own saves; unsaved progress here is lost."
+        : "The edition of the game played: each cartridge has its own code. Add another edition's ROM in the launcher (Game, ROM) to choose it here.";
     case OPT_AUDIO: return "Original is the console's sound as emulated. Clean removes aliasing, the hum and clipping; Rich adds wider stereo and a light room.";
     }
     return NULL;

@@ -383,7 +383,11 @@ void fighters_capture_colours(void) {
     have_cram = true;
 }
 
-static void cache_path(char *out, size_t n, const char *dir) { snprintf(out, n, "%sfighters.cache", dir ? dir : ""); }
+static void cache_path(char *out, size_t n, const char *dir) {
+    char own[64];
+    game_file_name(own, sizeof own, "fighters.cache");
+    snprintf(out, n, "%s%s", dir ? dir : "", own);
+}
 
 bool fighters_preview_save(const char *dir) {
     bool any = false;
