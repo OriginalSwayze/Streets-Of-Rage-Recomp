@@ -12,8 +12,9 @@ extern bool launcher_in_collection;
  * t, to a PNG (for checking the look without a window). */
 int launcher_screenshot(const char *png, int width, int tab, float t);
 /* Runs the soundtrack player for `seconds` without an audio device and prints its level
- * and song changes (for checking it headless). */
-int launcher_music_check(int seconds);
+ * and song changes (for checking it headless); with sfx_every, the menu's sounds play
+ * every sfx_every frames, as while browsing. */
+int launcher_music_check(int seconds, int sfx_every);
 int launcher_ost_check(int seconds);   /* every song's level per second */
 int launcher_sound_probe(int from, int to, int seconds);   /* driver requests from..to, the same */
 /* Renders the game's four menu sounds (cursor, confirm, cancel, error) to a file for the

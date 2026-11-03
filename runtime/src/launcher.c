@@ -520,8 +520,10 @@ static void music_request(int song, int step, bool on, bool off) {
 }
 
 /* --launcher-music-check: the player without an audio device, at full speed. Prints each
- * second's level and every song change, starting with the title theme. */
-int launcher_music_check(int seconds) {
+ * second's level and every song change, starting with the title theme. With sfx_every, the
+ * menu's sounds (cursor moves, a choice, a cancel) play every sfx_every frames, as while
+ * browsing, and every time the song starts over is printed: it must play on through them. */
+int launcher_music_check(int seconds, int sfx_every) {
     init_common();
     if (!rom_ok) {
         const char *why = settings.rom_path[0] ? bus_load_rom(settings.rom_path) : "no ROM path in settings";
@@ -539,17 +541,22 @@ int launcher_music_check(int seconds) {
         ost_start();
         Player p = { .peak = 1, .volume = 1, .on = true, .after_fade = -1 };
         start_song(&p, title_song >= 0 ? title_song : 0);
-        int shown = -1;
+        static const uint16_t menu[5] = { SFX_CURSOR, SFX_CURSOR, SFX_CURSOR, SFX_CONFIRM, SFX_CANCEL };
+        int shown = -1, restarts = 0;
         for (int s = 0; s < seconds; s++) {
             double sum = 0;
             long n = 0;
             for (int f = 0; f < 60; f++) {
+                int t = s * 60 + f;
                 if (p.song != shown) { printf("  second %d: song %02X\n", s, p.song); shown = p.song; }
+                if (sfx_every > 0 && t % sfx_every == 0) ost_command(menu[t / sfx_every % 5]);
                 int c = player_frame(&p);
+                if (t > 0 && p.frames == 0) { printf("  second %d: song %02X starts over\n", s, p.song); restarts++; }
                 for (int i = 0; i < c * 2; i++) { sum += (double)sound_out[i] * sound_out[i]; n++; }
             }
             if (s % 30 == 0) printf("second %4d: level %5.0f rms\n", s, n ? sqrt(sum / n) : 0);
         }
+        if (sfx_every > 0) printf("started over %d times\n", restarts);
         ost_end();
     }
     memcpy(bus.sram, sram, SRAM_SIZE);

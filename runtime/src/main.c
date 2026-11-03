@@ -411,9 +411,12 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--filter") && i + 1 < argc) { settings.filter = atoi(argv[++i]) % FILTER_COUNT; test_overrides = true; }   /* 0 off, 1 scanlines, 2 CRT, 3 LCD */
         else if (!strcmp(argv[i], "--no-launcher")) no_launcher = true;
         else if (!strcmp(argv[i], "--launcher-music-check") && i + 1 < argc) {
-            /* --launcher-music-check SECONDS: run the launcher music headless, print its level. */
+            /* --launcher-music-check SECONDS [FRAMES]: run the launcher music headless, print its
+             * level; with FRAMES, the menu's sounds play every FRAMES frames, as while browsing. */
             apply_settings();
-            return launcher_music_check(atoi(argv[++i]));
+            int seconds = atoi(argv[++i]);
+            int sfx_every = i + 1 < argc && argv[i + 1][0] != '-' ? atoi(argv[++i]) : 0;
+            return launcher_music_check(seconds, sfx_every);
         }
         else if (!strcmp(argv[i], "--png-check") && i + 1 < argc) {
             /* --png-check F.png: read a PNG and print its size and a checksum of its pixels. */
