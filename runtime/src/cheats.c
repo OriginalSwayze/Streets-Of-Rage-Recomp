@@ -61,6 +61,14 @@ static int parse(const char *spec, Code *out, int *count, int cap) {
 int cheats_add_codes(const char *spec) { return parse(spec, codes, &code_count, 64); }
 void cheats_clear_codes(void) { code_count = 0; }
 
+static void apply(const Code *c, int n);
+void cheats_poke_once(const char *spec) {
+    Code once[16];
+    int n = 0;
+    parse(spec, once, &n, 16);
+    apply(once, n);
+}
+
 static uint16_t peek16(uint16_t a) { return (uint16_t)(bus.ram[a] << 8 | bus.ram[(uint16_t)(a + 1)]); }
 static void poke16(uint16_t a, uint16_t v) { bus.ram[a] = (uint8_t)(v >> 8); bus.ram[(uint16_t)(a + 1)] = (uint8_t)v; }
 
@@ -156,7 +164,7 @@ static void cheats_sor2(void) {
     for (int p = 0; p < 2; p++) {
         uint16_t obj = p ? 0xF000 : 0xEF00;
         uint16_t state = peek16(obj);
-        if (!state || state >= 0x30) continue;                  /* not playing ($34/$36: not joined) */
+        if (!state || state == 0x34 || state == 0x36) continue;  /* not playing ($34/$36: not joined) */
         if (settings.cheat_health && peek16(obj + 0x80) && peek16(obj + 0x80) < 0x68) poke16(obj + 0x80, 0x68);
         if (settings.cheat_lives && bus.ram[obj + 0x83] < 2) bus.ram[obj + 0x83] = 2;   /* the HUD shows one more */
     }

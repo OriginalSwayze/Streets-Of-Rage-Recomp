@@ -187,6 +187,7 @@ static void apply_settings(void) {
     sound_bass_db = settings.bass;
     hd_scaler = settings.scaler;
     hd_water = settings.water;
+    hd_sides_black = settings.sides_black;
     /* Texture packs: load a pack when it changes (it can be many images), dump on request. */
     static char loaded_pack[64] = "";
     static bool pack_tried;
@@ -219,7 +220,7 @@ static HdPost finishing(int scale, float t) {
         p.cam_x = (float)(int16_t)(bus.ram[0xE002] << 8 | bus.ram[0xE003]);
     } else if (GAME_SOR == 2) {          /* in a round (player 1 in play), not the demo */
         uint16_t s = (uint16_t)(bus.ram[0xEF00] << 8 | bus.ram[0xEF01]);
-        p.world = s && s < 0x30 && !bus.ram[0xFD10] && !vdp_opts.mask_sides;
+        p.world = s && s != 0x34 && s != 0x36 && !bus.ram[0xFD10] && !vdp_opts.mask_sides;
         p.cam_x = (float)-(int16_t)(bus.ram[0xFC22] << 8 | bus.ram[0xFC23]);
     } else if (GAME_SOR == 3) {
         uint16_t s = (uint16_t)(bus.ram[0xDF00] << 8 | bus.ram[0xDF01]);
@@ -358,6 +359,8 @@ int main(int argc, char **argv) {
     const char *dump = NULL;
     uint32_t watch[16];
     int watch_count = 0, autoplay = 0;
+    int poke_at_frame[8], poke_at_count = 0;
+    const char *poke_at_codes[8];
     int check_from = -1, check_to = -1;     /* --state-check A B */
     uint32_t *check_pads = NULL;            /* the pads of frames A to B */
     int rewind_check = 0;                   /* --rewind-check K */
@@ -531,6 +534,11 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--slot") && i + 1 < argc) { settings.state_slot = atoi(argv[++i]); test_overrides = true; }
         else if (!strcmp(argv[i], "--load") && i + 1 < argc) load_from = atoi(argv[++i]);   /* load a slot first */
         else if (!strcmp(argv[i], "--poke") && i + 1 < argc) cheats_add_codes(argv[++i]);   /* FFxxxx:VV[VV],... */
+        else if (!strcmp(argv[i], "--poke-at") && i + 2 < argc && poke_at_count < 8) {
+            /* --poke-at F CODES: write the codes once, at frame F (a round to start in, for tests) */
+            poke_at_frame[poke_at_count] = atoi(argv[++i]);
+            poke_at_codes[poke_at_count++] = argv[++i];
+        }
         else if (!strcmp(argv[i], "--cheat") && i + 1 < argc) {
             /* --cheat health|spirit|weapons|double|quadruple|onehit|fast|veryfast: turn a built-in cheat on for this run. */
             const char *c = argv[++i];
@@ -670,6 +678,7 @@ int main(int argc, char **argv) {
             }
             if (rewind_check && f == headless_frames - rewind_check) len_ref = state_save(snap_ref, sizeof snap_ref);
             rewind_push(PADS_BOTH());
+            for (int k = 0; k < poke_at_count; k++) if (f == poke_at_frame[k]) cheats_poke_once(poke_at_codes[k]);
             cheats_frame();
             machine_run_frame(framebuffer, FB_W);
             if (vdp_opts.hd_capture) { hd_frame_done(); fx_after_frame(false); }

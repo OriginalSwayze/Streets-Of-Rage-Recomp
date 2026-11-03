@@ -214,7 +214,7 @@ static int fighter_of(int p) {
     return f >= 0 && f < FIGHTERS ? f : -1;
 #elif GAME_SOR == 2
     uint16_t obj = p ? 0xF000 : 0xEF00, state = (uint16_t)(bus.ram[obj] << 8 | bus.ram[obj + 1]);
-    if (!state || state >= 0x30 || bus.ram[0xFD10]) return -1;     /* not in a round, or the demo */
+    if (!state || state == 0x34 || state == 0x36 || bus.ram[0xFD10]) return -1;   /* not in a round ($34/$36: not joined), or the demo */
     for (int f = 0; f < FIGHTERS; f++) {                            /* its name, at +$78 */
         size_t n = strlen(fighter_names[f]);
         bool same = true;

@@ -47,7 +47,8 @@ static bool dead_at(int16_t raw) { return GAME_SOR >= 2 ? raw <= 0 : raw < 0; }
 
 /* What is in a slot (0: nothing), and whether it fights. */
 static uint16_t kind(uint32_t a) {
-    if (GAME_SOR >= 2) { uint16_t s = peek16(a); return s >= 0x30 ? 0 : s ? 1 : 0; }   /* $3x-$5x: a player not in */
+    if (GAME_SOR == 2) { uint16_t s = peek16(a); return s == 0x34 || s == 0x36 ? 0 : s ? 1 : 0; }   /* $34/$36: a player not in ($30 is a swing) */
+    if (GAME_SOR == 3) { uint16_t s = peek16(a); return s == 0x5A || s == 0x5C || s == 0x5E ? 0 : s ? 1 : 0; }   /* $5A-$5E: a player not in */
     return bus.ram[a & 0xFFFF];         /* the kind of object is the first byte */
 }
 static bool fights(uint32_t a) {

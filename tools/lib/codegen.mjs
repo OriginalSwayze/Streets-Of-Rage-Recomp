@@ -67,16 +67,18 @@ export function usePatches(patches) {
         : `setw(&D(${n}), addw((${K} + (uint32_t)${side === '+r' ? 'patch_sor_reach_right' : 'patch_sor_wide'}) & 0xFFFFu, D(${n}) & 0xFFFFu));`]]];
     }),
     // Sprite culling in Streets of Rage 2 and 3 (sorCullList): "dN K lo" is cmpi.w #K,dN against
-    // a piece's left edge, "dN K hi" against its right; both moved out by patch_sor_wide. "slo"
-    // and "shi" are signed screen positions (the spawner's window), moved without limits. "hii"
-    // is a right edge tested with bgt (the edge itself passes): at most $1FF, as $200 would
-    // wrap to X 0, the VDP's masking sprite.
+    // a piece's left edge, moved out by patch_sor_cull_left but never to X 0 (the VDP's masking
+    // sprite); "dN K hi" against its right, moved out by patch_sor_cull_right (both the widescreen
+    // width, and more on the side a sliding view shows, widescreen.c), at most patch_sor_x_cap:
+    // $200, or more when the VDP reads a 10th bit of X (vdp_opts.sprite_x_wide). "slo" and "shi"
+    // are signed screen positions (the spawner's window), moved by patch_sor_wide without limits.
+    // "hii" is a right edge tested with bgt (the edge itself passes): at most the cap less 1.
     ...Object.entries(PATCHES.sorCullList ?? {}).map(([pc, spec]) => {
       const [reg, k, side] = spec.split(' ');
-      const K = `0x${k}u`, w = '(uint32_t)patch_sor_wide';
-      const edge = side === 'lo' ? `(${K} > ${w} ? ${K} - ${w} : 0u)`
-        : side === 'hi' ? `(${K} + ${w} < 0x200u ? ${K} + ${w} : 0x200u)`
-        : side === 'hii' ? `(${K} + ${w} < 0x1FFu ? ${K} + ${w} : 0x1FFu)`
+      const K = `0x${k}u`, w = '(uint32_t)patch_sor_wide', l = '(uint32_t)patch_sor_cull_left', r = '(uint32_t)patch_sor_cull_right', cap = '(uint32_t)patch_sor_x_cap';
+      const edge = side === 'lo' ? `(${K} > ${l} + 1u ? ${K} - ${l} : 1u)`
+        : side === 'hi' ? `(${K} + ${r} < ${cap} ? ${K} + ${r} : ${cap})`
+        : side === 'hii' ? `(${K} + ${r} < ${cap} - 1u ? ${K} + ${r} : ${cap} - 1u)`
         : side === 'slo' ? `((${K} - ${w}) & 0xFFFFu)` : `((${K} + ${w}) & 0xFFFFu)`;
       return [parseInt(pc, 16), [`cmpi.w	#$${k},${reg}`, [`cmpw(${edge}, D(${reg[1]}) & 0xFFFFu);`]]];
     }),

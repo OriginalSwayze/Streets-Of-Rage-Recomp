@@ -194,6 +194,7 @@ static void scale_any(const uint32_t *src, int pitch, int w, int h, int scale, u
  * one tick (about 33 ms) late. */
 typedef struct {
     int w, h;
+    int extra;                          /* where the game's picture starts (it moves as the view slides) */
     uint8_t flags[HD_MAX_H];
     int16_t hscroll[2][HD_MAX_H], vscroll[2][HD_MAX_H];
 } Scroll;
@@ -242,14 +243,14 @@ static bool ensure_tex(size_t need) {
 static uint32_t sprite_tmp[SPR_PAD_MAX * SPR_PAD_MAX];
 
 static void scroll_of(Scroll *m, const HdFrame *f) {
-    m->w = f->w; m->h = f->h;
+    m->w = f->w; m->h = f->h; m->extra = f->extra;
     memcpy(m->flags, f->flags, sizeof m->flags);
     memcpy(m->hscroll, f->hscroll, sizeof m->hscroll);
     memcpy(m->vscroll, f->vscroll, sizeof m->vscroll);
 }
 
 static bool scrolled(const Scroll *a, const Scroll *b) {
-    return a->w != b->w || a->h != b->h || memcmp(a->hscroll, b->hscroll, sizeof a->hscroll) ||
+    return a->w != b->w || a->h != b->h || a->extra != b->extra || memcmp(a->hscroll, b->hscroll, sizeof a->hscroll) ||
            memcmp(a->vscroll, b->vscroll, sizeof a->vscroll);
 }
 
@@ -278,6 +279,12 @@ void hd_frame_done(void) {
         latest = now;
     }
     unsigned tick = motion_sprite_moves(&hd_frame, move_x, move_y, &hd_owned);
+    /* Sprites move on the picture as the view slides, as far as it did since the last tick. */
+    static int tick_extra;
+    if (tick != shown_tick && tick) {
+        for (int i = 0; i < SPRITES_MAX; i++) if (hd_frame.sprites[i].drawn) move_x[i] += hd_frame.extra - tick_extra;
+        tick_extra = hd_frame.extra;
+    }
     if (tick != shown_tick) {
         timeline_update(&sprites, tick && tick == shown_tick + 1);
         shown_tick = tick;
@@ -984,13 +991,88 @@ static void post_part(void *ctx, int y0, int y1) {
     post_rows(&j);
 }
 
+/* ---- Widescreen sides with nothing of the game in them -------------------------------- *
+ * Story scenes drawn for 320 pixels, and the part of a map's end the view cannot slide
+ * past, are masked (hd_frame.mask_left/right). Rather than black, they show the picture's
+ * own edge mirrored outwards, blurred and darkened, like video players do for 4:3: the
+ * picture in blocks of 8 game pixels, smoothed twice, then sampled bilinearly. */
+bool hd_sides_black;                    /* plain black instead (settings: Sides) */
+
+static void fill_sides(uint32_t *img, int w, int h, int pitch, int scale, int ml, int mr) {
+    enum { B = 8, LW = (HD_MAX_W + B - 1) / B + 1, LH = (HD_MAX_H + B - 1) / B + 1 };
+    static float lo[2][LH][LW][3];
+    int gw = w / scale, gh = h / scale, lw = (gw + B - 1) / B, lh = (gh + B - 1) / B;
+    if (lw > LW - 1 || lh > LH - 1 || ml + mr >= w) return;
+    int vx0 = ml / scale, vx1 = (w - mr) / scale;       /* the visible game columns */
+    for (int by = 0; by < lh; by++)
+        for (int bx = 0; bx < lw; bx++) {
+            float s[3] = { 0, 0, 0 };
+            int n = 0;
+            for (int gy = by * B; gy < by * B + B && gy < gh; gy += 2)
+                for (int gx = bx * B; gx < bx * B + B && gx < gw; gx += 2) {
+                    int cx = gx < vx0 ? vx0 : gx >= vx1 ? vx1 - 1 : gx;
+                    uint32_t c = img[(size_t)(gy * scale) * pitch + (size_t)(cx * scale)];
+                    s[0] += (float)((c >> 16) & 255); s[1] += (float)((c >> 8) & 255); s[2] += (float)(c & 255);
+                    n++;
+                }
+            for (int k = 0; k < 3; k++) lo[0][by][bx][k] = n ? s[k] / n : 0;
+        }
+    for (int pass = 0; pass < 2; pass++)            /* 3x3 box, twice */
+        for (int by = 0; by < lh; by++)
+            for (int bx = 0; bx < lw; bx++)
+                for (int k = 0; k < 3; k++) {
+                    float s = 0;
+                    for (int dy = -1; dy <= 1; dy++)
+                        for (int dx = -1; dx <= 1; dx++) {
+                            int yy = by + dy < 0 ? 0 : by + dy >= lh ? lh - 1 : by + dy;
+                            int xx = bx + dx < 0 ? 0 : bx + dx >= lw ? lw - 1 : bx + dx;
+                            s += lo[pass][yy][xx][k];
+                        }
+                    lo[!pass][by][bx][k] = s / 9;
+                }
+    /* after two passes the result is back in lo[0] */
+    float cell = (float)(B * scale);
+    for (int side = 0; side < 2; side++) {
+        int m = side ? mr : ml;
+        if (m <= 0) continue;
+        int edge = side ? w - mr : ml;              /* the first visible column, mirrored about */
+        for (int y = 0; y < h; y++) {
+            float fy = (y + .5f) / cell - .5f;
+            int y0 = (int)floorf(fy), y1 = y0 + 1;
+            float ty = fy - (float)y0;
+            y0 = y0 < 0 ? 0 : y0 >= lh ? lh - 1 : y0; y1 = y1 < 0 ? 0 : y1 >= lh ? lh - 1 : y1;
+            uint32_t *row = img + (size_t)y * pitch;
+            for (int i = 0; i < m; i++) {
+                int x = side ? edge + i : edge - 1 - i, d = i + 1;
+                int sx = side ? edge - d : edge + d - 1;    /* the picture just inside, mirrored */
+                float fx = (sx + .5f) / cell - .5f;
+                int x0 = (int)floorf(fx), x1 = x0 + 1;
+                float tx = fx - (float)x0;
+                x0 = x0 < 0 ? 0 : x0 >= lw ? lw - 1 : x0; x1 = x1 < 0 ? 0 : x1 >= lw ? lw - 1 : x1;
+                float dim = .5f - .3f * (float)d / (float)m;   /* darker towards the outer edge */
+                uint32_t out = 0;
+                for (int k = 0; k < 3; k++) {
+                    float a = lo[0][y0][x0][k] + (lo[0][y0][x1][k] - lo[0][y0][x0][k]) * tx;
+                    float b = lo[0][y1][x0][k] + (lo[0][y1][x1][k] - lo[0][y1][x0][k]) * tx;
+                    int v = (int)((a + (b - a) * ty) * dim + .5f);
+                    out |= (uint32_t)(v > 255 ? 255 : v) << (16 - 8 * k);
+                }
+                row[x] = out;
+            }
+        }
+    }
+}
+
 const uint32_t *hd_post(const uint32_t *src, int w, int h, int pitch, const HdPost *p) {
     static uint32_t *buf;
     static size_t cap;
     bool light = p->lighting > 0;
     bool world_fx = p->world && (p->elements || p->footsteps || combat_active(p));
     int hdr = p->hdr < 0 ? 0 : p->hdr > 2 ? 2 : p->hdr;
-    if (light || world_fx || hdr) {
+    int scale = p->scale < 1 ? 1 : p->scale;
+    int ml = hd_frame.mask_left * scale, mr = hd_frame.mask_right * scale;
+    bool sides = !hd_sides_black && (ml > 0 || mr > 0) && w == hd_frame.w * scale;
+    if (light || world_fx || hdr || sides) {
         size_t need = (size_t)w * h;
         if (need > cap) { free(buf); buf = malloc(need * 4); cap = buf ? need : 0; }
         if (buf) {
@@ -1016,6 +1098,7 @@ const uint32_t *hd_post(const uint32_t *src, int w, int h, int pitch, const HdPo
                 for (int y = 0; y < h; y++) memcpy(buf + (size_t)y * w, src + (size_t)y * pitch, (size_t)w * 4);
             }
             if (world_fx) { fx_draw(buf, w, h, p); combat_draw(buf, w, h, p); }
+            if (sides) fill_sides(buf, w, h, w, scale, ml, mr);
             src = buf;
             pitch = w;
         }
@@ -1115,7 +1198,9 @@ static void compose_between(int scale, float tp, float ts) {
     for (int line = 0; line < hd_frame.h; line++) {
         bool still = !planes_move || (hd_frame.flags[line] & HD_LINE_COLUMN_VSCROLL) || !(before.flags[line] & HD_LINE_DISPLAY);
         for (int p = 0; p < 2; p++) {
-            int dh = still ? 0 : scroll_delta(hd_frame.hscroll[p][line], before.hscroll[p][line]);
+            /* A sliding view moves the planes on the picture too. */
+            int dh = still ? 0 : scroll_delta(hd_frame.hscroll[p][line], before.hscroll[p][line]) +
+                                 (p == 1 && line < hd_frame.hud_b_lines ? 0 : hd_frame.extra - before.extra);
             int dv = still ? 0 : scroll_delta(hd_frame.vscroll[p][line], before.vscroll[p][line]);
             if (abs(dh) > 24 || abs(dv) > 24) dh = dv = 0;    /* a cut, not a scroll */
             ox[p][line] = (int)lroundf(back * dh * scale);

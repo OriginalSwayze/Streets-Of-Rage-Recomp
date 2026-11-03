@@ -11,7 +11,7 @@ enemies and items from `$FFF100` to `$FFF900`.
 
 | Offset | Size | What |
 |---|---|---|
-| `+$00` | word | state: 0 = free; 2 while in play (4 and others while hit or thrown); a player who has not joined is `$34`/`$36` |
+| `+$00` | word | state: 0 = free; 2 while in play (4 and others while hit or thrown, `$30` while swinging a pipe); a player who has not joined is `$34`/`$36` |
 | `+$02` | word | world X (`+$04`: its fraction) |
 | `+$06` | word | depth: the Y position on the street |
 | `+$20` | word | X again (`+$24` depth), the copy the sprite code reads |
@@ -60,5 +60,9 @@ widescreen columns past it hold whatever was drawn there earlier, so `widescreen
 them black (`vdp_opts.mask_right`) and the players stop at the map's end.
 
 Each area's map starts at camera X 0 (the camera, `$FFFC22` negated, goes back to 0 for round 1's
-bar and for the alley after it): left of it is black (`vdp_opts.mask_left`) until the camera
-has moved past the widescreen columns.
+bar and for the alley after it). At either end the wide view slides back inside the map
+(`vdp_opts.view_slide`, widescreen.c): at an area's start it shows the columns the row drawer
+filled when the area began (456 pixels), with sprites past hardware X `$1FF` (the game writes
+the whole word; the VDP reads a 10th bit then, `vdp_opts.sprite_x_wide`); at its end the
+columns the planes still hold left of the camera. The HUD is the window plane (its top 40
+lines, register 18 = 5), which stays put.

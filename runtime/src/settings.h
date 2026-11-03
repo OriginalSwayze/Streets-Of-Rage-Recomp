@@ -12,6 +12,7 @@ typedef struct {
     char edition[16];                   /* the edition played (GameEdition id), "" for the one rom_path is */
     bool widescreen;
     int  aspect_w, aspect_h;            /* target aspect ratio when widescreen is on */
+    bool sides_black;                   /* widescreen sides with nothing of the game: black, not blurred (hd_sides_black) */
     bool fullscreen;
     bool integer_scale;
     bool no_sprite_limit;
@@ -69,7 +70,7 @@ extern Settings settings;
 void settings_load(const char *path);
 void settings_save(const char *path);
 /* Options the launcher and the in-game menu show: a value label, and stepping it. */
-enum { OPT_WIDESCREEN, OPT_ASPECT, OPT_FULLSCREEN, OPT_INTEGER, OPT_WINDOW, OPT_FLICKER, OPT_REWIND, OPT_REWIND_MB,
+enum { OPT_WIDESCREEN, OPT_ASPECT, OPT_SIDES, OPT_FULLSCREEN, OPT_INTEGER, OPT_WINDOW, OPT_FLICKER, OPT_REWIND, OPT_REWIND_MB,
        OPT_LAUNCHER, OPT_CHEAT_HEALTH, OPT_CHEAT_SPIRIT, OPT_CHEAT_WEAPONS,
        OPT_CHEAT_ATTACK, OPT_CHEAT_SPEED, OPT_INTERNAL, OPT_SMOOTH,
        OPT_REWIND_ALL,                  /* rewind off or its buffer size, in one option */

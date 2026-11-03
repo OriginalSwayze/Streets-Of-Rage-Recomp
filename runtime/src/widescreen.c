@@ -28,6 +28,7 @@ static int pad;                         /* extra columns kept valid on each side
 uint32_t patch_cull_left, patch_cull_widen;
 uint32_t patch_sor_x_lo = 0x60, patch_sor_x_hi = 0x1E0;
 int patch_sor_wide, patch_sor_reach, patch_sor_reach_right;
+int patch_sor_cull_left, patch_sor_cull_right, patch_sor_x_cap = 0x200;
 int patch_sprite_cap = 0x50;
 int patch_cam_margin;
 
@@ -200,73 +201,105 @@ static uint32_t redraw_rect(uint32_t pc) {
     return return_to_caller(rows * cols * 30 + 300);
 }
 
+/* Streets of Rage 2 and 3: the wide view at the ends of a map. `before` and `after` are how
+ * far the wide view would show past the map's left and right ends (0 or less inside it).
+ * Rather than show what the planes hold there (leftovers of other scenes), the view slides
+ * back inside the map, taking its width from the other side (vdp_opts.view_slide); the HUD,
+ * on the window plane, stays. What it cannot cover stays masked (blurred or black, hd_post).
+ *
+ * Sliding left (at a map's end) shows columns the game drew while the camera came, which the
+ * 512-pixel planes keep for 512 - 344 - 2 x the widescreen width past the camera's left
+ * (the right column drawers reach 344 + that width). Sliding right (at a map's start) shows
+ * columns the row drawers filled when the area began (to 456 or 512). Sprites are drawn as
+ * far as the view goes (patch_sor_cull_left/right); past hardware X $1FF (sliding right) the
+ * VDP reads a 10th bit of X, which the games write whole. The players still stop at the
+ * map's end. */
+static void slide_view(int before, int after) {
+    int extra = vdp_opts.extra_width;
+    patch_sor_cull_left = patch_sor_cull_right = extra;
+    patch_sor_x_cap = 0x200;
+    patch_sor_reach_right = extra - (after < 0 ? 0 : after < extra ? after : extra);
+    vdp_opts.view_slide = 0;
+    vdp_opts.sprite_x_wide = false;
+    if (!extra || (before > 0 && after > 0)) {
+        vdp_opts.mask_left = before > 0 ? (before < extra ? before : extra) : 0;
+        vdp_opts.mask_right = after > 0 ? (after < extra ? after : extra) : 0;
+        return;
+    }
+    if (after > 0) {
+        int room = 512 - 344 - 2 * extra, d = after < extra ? after : extra;
+        if (d > room) d = room > 0 ? room : 0;
+        if (d > -before) d = -before;           /* not past the map's start either */
+        vdp_opts.view_slide = d;
+        patch_sor_cull_left = extra + d;
+        vdp_opts.mask_right = (after < extra ? after : extra) - d;
+    } else if (before > 0) {
+        int d = before < extra ? before : extra;
+        if (d > -after) d = -after;
+        vdp_opts.view_slide = -d;
+        patch_sor_cull_right = extra + d;
+        patch_sor_x_cap = 0x200 + d + 16;
+        vdp_opts.sprite_x_wide = true;
+        vdp_opts.mask_left = (before < extra ? before : extra) - d;
+    }
+}
+
 /* The extra columns only show real content while a map layer is active (gameplay and
  * in-engine scenes). Logos, the title, menus and story scenes are drawn for 320 pixels,
- * so their sides are masked to black. */
+ * so their sides are masked. */
 void widescreen_frame(void) {
     vdp_opts.mask_left = vdp_opts.mask_right = 0;
+    vdp_opts.view_slide = 0;
+    vdp_opts.sprite_x_wide = false;
     if (GAME_SOR == 3) {
-        /* Streets of Rage 3: each area's camera ($FFF710) starts at its map's left end, X 0;
-         * left of it the planes hold nothing of the level, so that part of the left side is
-         * black until the camera has moved past the widescreen columns. The map is a table
-         * of 256-pixel blocks, 16 a row (plane A's at $FF8C00, RAM offsets; zero past the
-         * map's end, the first block being at offset 0 too): past its last block the planes
-         * show what was drawn there before (at the end of round 1's first area, part of the
-         * next one), so that part of the right side is black and the players stop there. */
-        patch_sor_reach_right = patch_sor_wide;
+        /* Streets of Rage 3: each area's camera ($FFF710) starts at its map's left end, X 0.
+         * The map is a table of 256-pixel blocks, 16 a row (plane A's at $FF8C00, RAM offsets;
+         * zero past the map's end, the first block being at offset 0 too): it ends after its
+         * last block (round 1's first area: 8 blocks, the camera stopping at $6C0). Its HUD is
+         * plane B's top 40 lines (scrolled 0; the street's background is below them). */
         uint16_t s = rd16(0xFFDF00);
         bool round = s && s != 0x5C && s != 0x5E && s != 0x5A && !rd8(0xFFFB13);
         int cam = (int16_t)rd16(0xFFF710), extra = vdp_opts.extra_width;
-        if (round && cam < extra) vdp_opts.mask_left = extra - (cam > 0 ? cam : 0);
-        if (round && extra) {
-            int blocks = 0;
-            for (int row = 0; row < 16; row++)
-                for (int k = 15; k >= blocks; k--)
-                    if (rd16(0xFF8C00 + (uint32_t)(row * 32 + k * 2))) { blocks = k + 1; break; }
-            int past = cam + 320 + extra - (blocks ? blocks : 1) * 256;
-            if (past > 0) {
-                vdp_opts.mask_right = past < extra ? past : extra;
-                patch_sor_reach_right = patch_sor_wide - vdp_opts.mask_right;
-            }
-        }
+        int blocks = 0;
+        for (int row = 0; row < 16 && round; row++)
+            for (int k = 15; k >= blocks; k--)
+                if (rd16(0xFF8C00 + (uint32_t)(row * 32 + k * 2))) { blocks = k + 1; break; }
+        vdp_opts.hud_b_lines = 40;
+        if (round) slide_view(extra - cam, cam + 320 + extra - (blocks ? blocks : 1) * 256);
+        else slide_view(-extra, -extra);
     }
     if (GAME_SOR == 2) {
         /* Streets of Rage 2: each area of a stage scrolls to a limit per section (the table at
          * $003996: by stage, $FFFC42, a list of camera X limits, negated, two entries a
          * section, $FFFC44). The camera ($FFFC22, negated) stops there; at an area's end (the
          * stage's last section, or one before a new area with a smaller limit) its map ends
-         * at the limit + 320. Past it the planes still hold what was drawn there before (at
-         * the end of round 2, part of the truck), so that part of the right side is black and
-         * the players stop at the map's end. */
-        patch_sor_reach_right = patch_sor_wide;
+         * at the limit + 320 (past it, at the end of round 2, part of the truck showed). Each
+         * area's map starts at camera X 0 (round 1's bar and the alley after it start there
+         * again). */
         uint16_t s = rd16(0xFFEF00);
         int stage = rd16(0xFFFC42), section = rd16(0xFFFC44), extra = vdp_opts.extra_width;
-        /* Each area's map starts at camera X 0 too (round 1's bar and the alley after it
-         * start there again): left of it is black, as in Streets of Rage 3. */
-        int cam0 = -(int16_t)rd16(0xFFFC22);
-        if (extra && s && s < 0x30 && cam0 < extra) vdp_opts.mask_left = extra - (cam0 > 0 ? cam0 : 0);
-        if (extra && s && s < 0x30 && !rd8(0xFFFD10) && stage >= 0 && stage < 16 && !(stage & 1) && section >= 0 && section < 64) {
+        int cam = -(int16_t)rd16(0xFFFC22), before = -extra, after = -extra;
+        bool round = extra && s && s != 0x34 && s != 0x36;
+        if (round) before = extra - cam;
+        if (round && !rd8(0xFFFD10) && stage >= 0 && stage < 16 && !(stage & 1) && section >= 0 && section < 64) {
             uint32_t ptr = 0x003996 + (uint32_t)stage, table = ptr + (uint32_t)(int16_t)rd16(ptr);
             uint32_t next_stage = stage < 14 ? ptr + 2 + (uint32_t)(int16_t)rd16(ptr + 2) : 0;
             uint32_t at = table + (uint32_t)section * 4, next = at + 8;
             int limit = -(int16_t)rd16(at);
             bool end = (next_stage && next >= next_stage) || -(int16_t)rd16(next) <= limit;
-            int cam = -(int16_t)rd16(0xFFFC22), past = cam + extra - limit;
-            if (end && past > 0) {
-                vdp_opts.mask_right = past < extra ? past : extra;
-                patch_sor_reach_right = patch_sor_wide - vdp_opts.mask_right;
-            }
+            if (end) after = cam + extra - limit;
         }
+        slide_view(before, after);
     }
     if (GAME_SOR != 1 && !GAME_WIDESCREEN) {
         /* Streets of Rage 2 and 3: the sides show only with a player in the game. The intro
          * and the other story scenes are drawn for 320 pixels, with what comes next waiting
          * beside them (Mr. X's hands in 2's). A player slot is in use from its first state
-         * up to the ones for "not in" ($30 and up in 2; $5A-$5E in 3). */
+         * except the ones for "not in" ($34/$36 in 2, where $30 is a swing; $5A-$5E in 3). */
         bool playing = false;
         for (int k = 0; k < 2; k++) {
             uint16_t s = rd16(GAME_SOR == 3 ? 0xFFDF00 + k * 0x100 : 0xFFEF00 + k * 0x100);
-            playing |= GAME_SOR == 3 ? s && s != 0x5A && s != 0x5C && s != 0x5E : s && s < 0x30;
+            playing |= GAME_SOR == 3 ? s && s != 0x5A && s != 0x5C && s != 0x5E : s && s != 0x34 && s != 0x36;
         }
         vdp_opts.mask_sides = GAME_SOR >= 2 && !playing;
         return;
@@ -301,6 +334,7 @@ void widescreen_patches(int extra_width) {
         /* The players walk to the new edges, enemies walk in from beyond them and count as
          * on screen across the whole width. */
         patch_sor_wide = patch_sor_reach = patch_sor_reach_right = extra_width;
+        patch_sor_cull_left = patch_sor_cull_right = extra_width;
         return;
     }
     pad = (extra_width + 7) / 8;

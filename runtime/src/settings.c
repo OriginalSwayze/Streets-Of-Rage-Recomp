@@ -65,6 +65,7 @@ void settings_load(const char *path) {
             snprintf(settings.rom_paths[edition_index(k + 4)], sizeof settings.rom_paths[0], "%s", v);
         else if (!strcmp(k, "widescreen")) settings.widescreen = parse_bool(v);
         else if (!strcmp(k, "aspect")) sscanf(v, "%d:%d", &settings.aspect_w, &settings.aspect_h);
+        else if (!strcmp(k, "sides")) settings.sides_black = !strcmp(v, "black");
         else if (!strcmp(k, "fullscreen")) settings.fullscreen = parse_bool(v);
         else if (!strcmp(k, "integer_scale")) settings.integer_scale = parse_bool(v);
         else if (!strcmp(k, "no_sprite_limit")) settings.no_sprite_limit = parse_bool(v);
@@ -175,6 +176,7 @@ void settings_save(const char *path) {
     }
     fprintf(f, "widescreen=%d\n", settings.widescreen);
     fprintf(f, "aspect=%d:%d\n", settings.aspect_w, settings.aspect_h);
+    fprintf(f, "sides=%s\n", settings.sides_black ? "black" : "blurred");
     fprintf(f, "fullscreen=%d\n", settings.fullscreen);
     fprintf(f, "integer_scale=%d\n", settings.integer_scale);
     fprintf(f, "no_sprite_limit=%d\n", settings.no_sprite_limit);
@@ -251,6 +253,7 @@ void settings_option_text(int id, char *out, size_t n) {
     switch (id) {
     case OPT_WIDESCREEN: snprintf(out, n, "%s", settings.widescreen ? "On" : "Off"); break;
     case OPT_ASPECT:     snprintf(out, n, "%d:%d", settings.aspect_w, settings.aspect_h); break;
+    case OPT_SIDES:      snprintf(out, n, "%s", settings.sides_black ? "Black" : "Blurred"); break;
     case OPT_FULLSCREEN: snprintf(out, n, "%s", settings.fullscreen ? "On" : "Off"); break;
     case OPT_INTEGER:    snprintf(out, n, "%s", settings.integer_scale ? "On" : "Off"); break;
     case OPT_WINDOW:     snprintf(out, n, "%d\xC3\x97", settings.window_scale); break;
@@ -326,6 +329,7 @@ int settings_cycle(int v, int count, int dir) { return ((v + dir) % count + coun
 void settings_option_change(int id, int dir) {
     switch (id) {
     case OPT_WIDESCREEN: settings.widescreen = !settings.widescreen; break;
+    case OPT_SIDES:      settings.sides_black = !settings.sides_black; break;
     case OPT_ASPECT: {
         int cur = 1;
         for (int i = 0; i < 3; i++) if (aspects[i][0] == settings.aspect_w && aspects[i][1] == settings.aspect_h) cur = i;

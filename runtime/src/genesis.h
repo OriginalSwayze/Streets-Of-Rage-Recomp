@@ -76,6 +76,14 @@ typedef struct {
     int  mask_left;                     /* and this many of the left ones (the world left of a level's start) */
     int  mask_right;                    /* and this many of the right ones (the world right of an area's end) */
     bool window_narrow;                 /* the window plane stops at the original 320 columns (the planes show beside it) */
+    int  view_slide;                    /* the game's picture moved this far right in the wide one (left
+                                           if negative): at a map's end the view stops there, taking its
+                                           width from the other side. The window plane (the HUD) stays. */
+    int  hud_b_lines;                   /* the top lines of plane B are the HUD (Streets of Rage 3's 40):
+                                           they stay as the view slides */
+    bool sprite_x_wide;                 /* sprite X has a 10th bit (values past $1FF are further right,
+                                           not wrapped): the games write the whole word, culled before $200
+                                           unless widescreen asks for more (patch_sor_cull_right) */
     int  hide_layers;                   /* debugging: bit 0 plane A, 1 plane B, 2 sprites, 3 window */
     bool hd_capture;                    /* keep each line's layers for hd_compose() (hd.h) */
     bool outfit;                        /* draw the player's sprites with vdp_outfit's colours */

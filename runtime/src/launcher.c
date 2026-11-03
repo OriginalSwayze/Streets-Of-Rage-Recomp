@@ -139,7 +139,7 @@ static int camera_x(void) { return (int16_t)(bus.ram[0xF710] << 8 | bus.ram[0xF7
 #define PANO_TOP_GAME 40
 static bool in_round(void) {
     uint16_t s = (uint16_t)(bus.ram[0xEF00] << 8 | bus.ram[0xEF01]);
-    return s && s < 0x30 && !bus.ram[0xFD10];
+    return s && s != 0x34 && s != 0x36 && !bus.ram[0xFD10];   /* $34/$36: not joined ($30 is a swing) */
 }
 static int camera_x(void) { return -(int16_t)(bus.ram[0xFC22] << 8 | bus.ram[0xFC23]); }
 #endif
@@ -766,6 +766,7 @@ static const Row tab_rows[TABS][9] = {
     { { ROW_OPTION, "Lighting", OPT_LIGHTING, "Glow from bright light; Neon: the signs and lamps only, buzzing." },
       { ROW_OPTION, "HDR look", OPT_HDR, "Deeper shadows, brighter highlights, richer colour." },
       { ROW_OPTION, "Combat info", OPT_COMBAT, "Damage numbers rise from enemies; health bars show what they have left." },
+      { ROW_OPTION, "Widescreen sides", OPT_SIDES, "Story scenes and the street's ends: the picture's edge blurred, or black." },
       { ROW_OPTION, "Rumble", OPT_RUMBLE, GAME_SOR == 1 ? "The controller rumbles on your hits, knockouts, when you are hit and on the police car."
                                                          : "The controller rumbles on your hits, knockouts and when you are hit." } },
     { { ROW_ROM, "ROM", 0, GAME_SOR == 3 ? "Your Streets of Rage 3 (USA) or Bare Knuckle III cartridge file. Add another to play that edition."
@@ -795,7 +796,7 @@ static const Row tab_rows[TABS][9] = {
       { ROW_OPTION, "Infinite lives", OPT_CHEAT_LIVES, "Both players always have at least two lives left." },
       { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
 };
-static const int tab_count[TABS] = { 9, 4, 8 + (GAME_EDITION_COUNT > 1), 6, 4, 3 };
+static const int tab_count[TABS] = { 9, 5, 8 + (GAME_EDITION_COUNT > 1), 6, 4, 3 };
 #elif GAME_SOR == 2
     { { ROW_FIGHTER, "Max", 0, "His trousers, boots, belt and skin in any colour, still or animated." },
       { ROW_FIGHTER, "Axel", 1, "His hair, shirt, jeans, gloves and skin in any colour, still or animated." },
@@ -807,7 +808,7 @@ static const int tab_count[TABS] = { 9, 4, 8 + (GAME_EDITION_COUNT > 1), 6, 4, 3
       { ROW_OPTION, "Infinite time", OPT_CHEAT_TIME, "The round timer never runs down." },
       { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
 };
-static const int tab_count[TABS] = { 9, 4, 8, 6, 4, 5 };
+static const int tab_count[TABS] = { 9, 5, 8, 6, 4, 5 };
 #else
     { { ROW_FIGHTER, "Axel", 0, "His hair, top, jeans and skin in any colour, still or animated." },
       { ROW_FIGHTER, "Adam", 1, "His vest, trousers, skin and shoes in any colour, still or animated." },
@@ -818,7 +819,7 @@ static const int tab_count[TABS] = { 9, 4, 8, 6, 4, 5 };
       { ROW_OPTION, "Infinite time", OPT_CHEAT_TIME, "The round timer never runs down." },
       { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
 };
-static const int tab_count[TABS] = { 9, 4, 8, 6, 3, 5 };
+static const int tab_count[TABS] = { 9, 5, 8, 6, 3, 5 };
 #endif
 
 /* ---- Look: the game's HUD, a yellow frame on charcoal, red bars ---------------------- */

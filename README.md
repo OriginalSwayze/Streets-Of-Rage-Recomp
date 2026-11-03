@@ -62,8 +62,9 @@ Setup again; Uninstall can keep your saves).
 In all three games:
 
 * **Widescreen** (16:9 and other shapes), with the play area widened to match: the players walk
-  to the new edges and enemies walk in from beyond them; past either end of a map the sides
-  are black
+  to the new edges and enemies walk in from beyond them. At either end of a street the view
+  stops at the street's end and takes its width from the other side, so the picture is the
+  game's own scenery edge to edge; scenes drawn for 4:3 get blurred sides (or black)
 * **High frame rate**: drawn at your screen's refresh rate (120, 144 Hz or more), the scrolling
   and every sprite gliding between the game's 60 updates
 * **Internal resolution** up to 6x with dither-aware scalers (Edge, Smooth/xBR, Sharp),
@@ -99,7 +100,8 @@ StreetsOfRage2.exe --headless 4000 --press <script> --hash-log b.log --interpret
 past the title. Widescreen and the cheats change the game on purpose (their patches only run
 natively); with them off every game matches the interpreter frame for frame. To get further,
 `--autoplay N` has player 1 play itself from frame N (the AI partner's fighting, walking on
-when the street is clear); with `--cheat health` it gets through the first round.
+when the street is clear); with `--cheat health` it gets through the first rounds. `--poke-at F CODES` writes RAM
+codes (`FFxxxx:VV`) once, at frame F.
 
 New code is found by playing: the runtime records every instruction it runs in
 `coverage.bin`, and `node tools/save-coverage.mjs --game <name>` adds it to the game's

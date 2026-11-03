@@ -448,7 +448,7 @@ static void draw_sprites(uint8_t *out, int w, int extra, int line) {
         link = size & 0x7F;
         if (line >= y && line < y + vcells * 8) {
             uint16_t attr = (uint16_t)(e[4] << 8 | e[5]);
-            int x = ((e[6] << 8 | e[7]) & 0x1FF) - 128;
+            int x = ((e[6] << 8 | e[7]) & (vdp_opts.sprite_x_wide ? 0x3FF : 0x1FF)) - 128;
             if (++on_line > max_line) { vdp.status |= 0x40; break; }
             /* A sprite at X=0 hides every lower-priority sprite on this line. */
             if (x == -128 && any_nonzero_x) { if (vdp_opts.hd_capture) hd_frame.sprite_mask = true; break; }
@@ -555,8 +555,11 @@ uint32_t vdp_compose(uint32_t a, uint32_t b, uint32_t s, uint16_t backdrop, bool
 }
 
 void vdp_render_line(int line, uint32_t *dst) {
-    int extra = vdp_opts.extra_width;
-    int w = vdp_screen_width() + extra * 2;
+    int wide = vdp_opts.extra_width;
+    int w = vdp_screen_width() + wide * 2;
+    /* Where the game's picture starts in the wide one: the window plane (the HUD) stays at
+     * the middle, the planes and sprites move with the view. */
+    int extra = wide ? wide + vdp_opts.view_slide : 0;
     uint16_t backdrop = vdp.cram[vdp.reg[7] & 0x3F];
     bool capture = vdp_opts.hd_capture && line < HD_MAX_H;
     if (line == 0) {
@@ -566,8 +569,9 @@ void vdp_render_line(int line, uint32_t *dst) {
     if (capture) {
         if (line == 0) {
             hd_frame.w = w; hd_frame.extra = extra; hd_frame.mask_sides = vdp_opts.mask_sides;
-            hd_frame.mask_left = vdp_opts.mask_sides ? extra : vdp_opts.mask_left < extra ? vdp_opts.mask_left : extra;
-            hd_frame.mask_right = vdp_opts.mask_sides ? extra : vdp_opts.mask_right < extra ? vdp_opts.mask_right : extra;
+            hd_frame.hud_b_lines = extra != wide ? vdp_opts.hud_b_lines : 0;
+            hd_frame.mask_left = vdp_opts.mask_sides ? wide : vdp_opts.mask_left < wide ? vdp_opts.mask_left : wide;
+            hd_frame.mask_right = vdp_opts.mask_sides ? wide : vdp_opts.mask_right < wide ? vdp_opts.mask_right : wide;
             hd_serial++;
             for (int k = 0; k < 80; k++) hd_frame.sprites[k].drawn = false;
             hd_frame.sprite_count = 0;
@@ -592,9 +596,9 @@ void vdp_render_line(int line, uint32_t *dst) {
     static uint8_t a[320 + MAX_EXTRA_WIDTH * 2], b[320 + MAX_EXTRA_WIDTH * 2], s[320 + MAX_EXTRA_WIDTH * 2];
     memset(s, 0, (size_t)w);
     if (vdp_opts.tile_refs) memset(ref_s, 0, (size_t)w * sizeof *ref_s);
-    draw_plane(b, w, extra, line, (vdp.reg[4] & 7) << 13, 1);
+    draw_plane(b, w, line < vdp_opts.hud_b_lines ? wide : extra, line, (vdp.reg[4] & 7) << 13, 1);
     draw_plane(a, w, extra, line, (vdp.reg[2] & 0x38) << 10, 0);
-    draw_window(a, w, extra, line);
+    draw_window(a, w, wide, line);
     draw_sprites(s, w, extra, line);
     if (vdp_opts.hide_layers) {
         if (vdp_opts.hide_layers & 1) memset(a, 0, (size_t)w);
@@ -614,13 +618,13 @@ void vdp_render_line(int line, uint32_t *dst) {
     } else {
         for (int i = 0; i < w; i++) dst[i] = vdp_compose(layer_px(a[i]), layer_px(b[i]), sprite_px(s[i]), backdrop, sh);
     }
-    if (vdp_opts.mask_sides && extra) {
-        memset(dst, 0, (size_t)extra * sizeof *dst);
-        memset(dst + w - extra, 0, (size_t)extra * sizeof *dst);
-    } else if (extra) {
-        if (vdp_opts.mask_left > 0) memset(dst, 0, (size_t)(vdp_opts.mask_left < extra ? vdp_opts.mask_left : extra) * sizeof *dst);
+    if (vdp_opts.mask_sides && wide) {
+        memset(dst, 0, (size_t)wide * sizeof *dst);
+        memset(dst + w - wide, 0, (size_t)wide * sizeof *dst);
+    } else if (wide) {
+        if (vdp_opts.mask_left > 0) memset(dst, 0, (size_t)(vdp_opts.mask_left < wide ? vdp_opts.mask_left : wide) * sizeof *dst);
         if (vdp_opts.mask_right > 0) {
-            int r = vdp_opts.mask_right < extra ? vdp_opts.mask_right : extra;
+            int r = vdp_opts.mask_right < wide ? vdp_opts.mask_right : wide;
             memset(dst + w - r, 0, (size_t)r * sizeof *dst);
         }
     }

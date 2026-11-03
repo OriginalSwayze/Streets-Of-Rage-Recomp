@@ -40,7 +40,8 @@ static const Item tab_items[TABS][MAX_ROWS] = {
       { ITEM_OPTION, "Sharpening", OPT_SHARPEN }, { ITEM_OPTION, "High frame rate", OPT_SMOOTH },
       { ITEM_OPTION, "Sprite flicker fix", OPT_FLICKER }, { ITEM_OPTION, "Slowdown fix", OPT_OVERCLOCK } },
     { { ITEM_OPTION, "Lighting", OPT_LIGHTING }, { ITEM_OPTION, "HDR look", OPT_HDR },
-      { ITEM_OPTION, "Combat info", OPT_COMBAT }, { ITEM_OPTION, "Play timer", OPT_TIMER } },
+      { ITEM_OPTION, "Combat info", OPT_COMBAT }, { ITEM_OPTION, "Play timer", OPT_TIMER },
+      { ITEM_OPTION, "Widescreen sides", OPT_SIDES } },
 #if GAME_SOR == 3
     { { ITEM_ACTION, "Axel", ACT_FIGHTER0 }, { ITEM_ACTION, "Blaze", ACT_FIGHTER1 }, { ITEM_ACTION, "Skate", ACT_FIGHTER2 },
       { ITEM_ACTION, "Zan", ACT_FIGHTER3 } },
@@ -66,7 +67,7 @@ static const Item tab_items[TABS][MAX_ROWS] = {
 #endif
     },
 };
-static const int tab_count[TABS] = { 9, 10, 4, FIGHTERS, GAME_SOR == 3 ? 3 : 5, 7 + (GAME_EDITION_COUNT > 1) };
+static const int tab_count[TABS] = { 9, 10, 5, FIGHTERS, GAME_SOR == 3 ? 3 : 5, 7 + (GAME_EDITION_COUNT > 1) };
 
 /* ---- Look: the game's HUD, a yellow frame on charcoal, red bars (as the launcher) ------- */
 #include "theme.h"
@@ -108,6 +109,7 @@ static const char *about(const Item *it) {
     switch (it->id) {
     case OPT_WIDESCREEN: return "Shows more of the street at the sides, and the enemies walking in from beyond the old edges. Off is the original 4:3 picture.";
     case OPT_ASPECT: return "The shape of the widescreen picture.";
+    case OPT_SIDES: return "Where the widescreen sides have nothing of the game (story scenes drawn for 4:3, past the end of a street): the picture's own edge, blurred and dimmed, or black.";
     case OPT_INTEGER: return "Scales by whole numbers only, so every game pixel is the same size. That leaves black borders on most screens: on a 1080p screen the picture is 4×, with a band all round. Off, the picture fills the screen.";
     case OPT_INTERNAL: return "Draws each layer at a higher resolution, rounding the edges of the pixel art. Native is the original look; 6x (2544 x 1344) is for 1440p and 4K screens and needs a fast CPU.";
     case OPT_SCALER: return "How the layers are scaled for the internal resolution: Edge rounds corners, Smooth (xBR) follows curves and slopes, Sharp keeps every pixel square, exactly as drawn. Edge and Smooth leave dither patterns crisp.";

@@ -60,7 +60,7 @@ static bool alive(uint32_t o) {
     return state != 0 && state != 0x5C && state != 0x5E && hp_of(o) > 0;   /* $5C/$5E: not joined */
 #elif GAME_SOR == 2
     int state = peek16(o);
-    return state > 0 && state < 0x30 && hp_of(o) > 0;
+    return state > 0 && state != 0x34 && state != 0x36 && hp_of(o) > 0;   /* $34/$36: not joined ($30 is a swing) */
 #else
     return peek16(o) != 0 && peek16(o + 0x32) >= 0 && peek16(o + 0x30) != 0x300;
 #endif
@@ -156,7 +156,11 @@ uint16_t ai_pilot_pad(void) {
     me = L.p1;
     frame++;
     if (special_wait) special_wait--;
-    if (!alive(P1)) return frame % 90 < 10 ? PAD_START : 0;  /* the title, the menus, a continue */
+    /* The title, the menus, a continue: Start, but never in play, where it would pause. */
+    int s1 = peek16(P1);
+    bool out = GAME_SOR == 3 ? !s1 || s1 == 0x5A || s1 == 0x5C || s1 == 0x5E : GAME_SOR == 2 ? !s1 || s1 == 0x34 || s1 == 0x36 : !s1;
+    if (out) return frame % 90 < 10 ? PAD_START : 0;
+    if (!alive(P1)) return 0;
     return fight(0, true);
 }
 
@@ -232,6 +236,9 @@ static uint16_t fight(uint16_t pad, bool pilot) {
     /* Walking into something that will not move (a wall, a car): jump. */
     if (pad && mx == last_x && mz == last_z) {
         if (++stuck > 40) { pad |= PAD_C; if (stuck > 48) stuck = 0; }
+        /* Piloting: it may be a barrel or a crate in the way, which a punch breaks; or an
+         * edge of the street, which a step up or down gets round. */
+        else if (pilot && stuck > 20) pad = (stuck & 4 ? PAD_B : 0) | (frame / 240 % 2 ? PAD_UP : PAD_DOWN);
     } else stuck = 0;
     last_x = mx; last_z = mz;
     return pad;

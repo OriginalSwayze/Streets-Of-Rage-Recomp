@@ -36,7 +36,9 @@ typedef struct {
  * bits 16-23 the layer byte (colour index, 0x40 = high priority, HD_WINDOW). */
 typedef struct {
     int w, h;                           /* line width (with widescreen) and line count */
-    int extra;                          /* widescreen columns on each side */
+    int extra;                          /* where the game's picture starts: the widescreen columns on
+                                           the left (more or fewer as the view slides, widescreen.c) */
+    int hud_b_lines;                    /* plane B's top lines are the HUD: not moved by the slide */
     bool mask_sides;
     int mask_left;                      /* left columns drawn black (vdp_opts.mask_left) */
     int mask_right;                     /* right columns drawn black (vdp_opts.mask_right) */
@@ -85,6 +87,9 @@ extern bool hd_texpack;
 extern float hd_time;                   /* seconds, for animations drawn with the layers */
 /* Water shimmers, foams, glints and reflects the sprites above it (while compositing). */
 extern bool hd_water;
+/* Widescreen sides with nothing of the game in them (story scenes, past a map's end): black,
+ * or (false) the picture's edge mirrored, blurred and darkened (hd_post). */
+extern bool hd_sides_black;
 
 /* The finishing steps on the picture before it goes to the GPU (hd_post): glow,
  * particles, sharpening. */
