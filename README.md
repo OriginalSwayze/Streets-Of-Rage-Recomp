@@ -77,6 +77,11 @@ In all three games:
 * Save states, rewind, fast-forward, a slowdown fix and a sprite flicker fix
 * A launcher and pause menu in each game's own colours, with its own music and sounds
 
+In Streets of Rage 3:
+
+* **Bare Knuckle III**, the Japanese original with its story, as an edition (also in English
+  with Twilight Translations' patch, which Setup applies): see [above](#streets-of-rage-collection)
+
 ## Testing
 
 The native build of each game must behave exactly like the interpreter:
