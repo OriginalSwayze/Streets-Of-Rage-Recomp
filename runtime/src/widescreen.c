@@ -27,7 +27,7 @@
 static int pad;                         /* extra columns kept valid on each side */
 uint32_t patch_cull_left, patch_cull_widen;
 uint32_t patch_sor_x_lo = 0x60, patch_sor_x_hi = 0x1E0;
-int patch_sor_wide, patch_sor_reach;
+int patch_sor_wide, patch_sor_reach, patch_sor_reach_right;
 int patch_sprite_cap = 0x50;
 int patch_cam_margin;
 
@@ -204,7 +204,7 @@ static uint32_t redraw_rect(uint32_t pc) {
  * in-engine scenes). Logos, the title, menus and story scenes are drawn for 320 pixels,
  * so their sides are masked to black. */
 void widescreen_frame(void) {
-    vdp_opts.mask_left = 0;
+    vdp_opts.mask_left = vdp_opts.mask_right = 0;
     if (GAME_SOR == 3) {
         /* Streets of Rage 3: a round's camera ($FFF710) starts at the level's left end, X 0;
          * left of it the planes hold nothing of the level, so that part of the left side is
@@ -213,6 +213,30 @@ void widescreen_frame(void) {
         bool round = s && s != 0x5C && s != 0x5E && s != 0x5A && !rd8(0xFFFB13);
         int cam = (int16_t)rd16(0xFFF710);
         if (round && cam < vdp_opts.extra_width) vdp_opts.mask_left = vdp_opts.extra_width - (cam > 0 ? cam : 0);
+    }
+    if (GAME_SOR == 2) {
+        /* Streets of Rage 2: each area of a stage scrolls to a limit per section (the table at
+         * $003996: by stage, $FFFC42, a list of camera X limits, negated, two entries a
+         * section, $FFFC44). The camera ($FFFC22, negated) stops there; at an area's end (the
+         * stage's last section, or one before a new area with a smaller limit) its map ends
+         * at the limit + 320. Past it the planes still hold what was drawn there before (at
+         * the end of round 2, part of the truck), so that part of the right side is black and
+         * the players stop at the map's end. */
+        patch_sor_reach_right = patch_sor_wide;
+        uint16_t s = rd16(0xFFEF00);
+        int stage = rd16(0xFFFC42), section = rd16(0xFFFC44), extra = vdp_opts.extra_width;
+        if (extra && s && s < 0x30 && !rd8(0xFFFD10) && stage >= 0 && stage < 16 && !(stage & 1) && section >= 0 && section < 64) {
+            uint32_t ptr = 0x003996 + (uint32_t)stage, table = ptr + (uint32_t)(int16_t)rd16(ptr);
+            uint32_t next_stage = stage < 14 ? ptr + 2 + (uint32_t)(int16_t)rd16(ptr + 2) : 0;
+            uint32_t at = table + (uint32_t)section * 4, next = at + 8;
+            int limit = -(int16_t)rd16(at);
+            bool end = (next_stage && next >= next_stage) || -(int16_t)rd16(next) <= limit;
+            int cam = -(int16_t)rd16(0xFFFC22), past = cam + extra - limit;
+            if (end && past > 0) {
+                vdp_opts.mask_right = past < extra ? past : extra;
+                patch_sor_reach_right = patch_sor_wide - vdp_opts.mask_right;
+            }
+        }
     }
     if (GAME_SOR != 1 && !GAME_WIDESCREEN) { vdp_opts.mask_sides = false; return; }
     if (!GAME_WIDESCREEN) {
@@ -244,7 +268,7 @@ void widescreen_patches(int extra_width) {
         patch_sor_x_hi = (uint32_t)(hi > 0x200 ? 0x200 : hi);
         /* The players walk to the new edges, enemies walk in from beyond them and count as
          * on screen across the whole width. */
-        patch_sor_wide = patch_sor_reach = extra_width;
+        patch_sor_wide = patch_sor_reach = patch_sor_reach_right = extra_width;
         return;
     }
     pad = (extra_width + 7) / 8;

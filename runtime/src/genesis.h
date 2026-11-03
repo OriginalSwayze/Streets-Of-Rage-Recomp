@@ -72,6 +72,7 @@ typedef struct {
     bool long_sprite_list;              /* the sprite list goes past 80 entries (SPRITES_MAX) */
     bool mask_sides;                    /* draw the widescreen columns black (screens made for 320) */
     int  mask_left;                     /* and this many of the left ones (the world left of a level's start) */
+    int  mask_right;                    /* and this many of the right ones (the world right of an area's end) */
     bool window_narrow;                 /* the window plane stops at the original 320 columns (the planes show beside it) */
     int  hide_layers;                   /* debugging: bit 0 plane A, 1 plane B, 2 sprites, 3 window */
     bool hd_capture;                    /* keep each line's layers for hd_compose() (hd.h) */

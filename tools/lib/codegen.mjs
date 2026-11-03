@@ -54,13 +54,14 @@ const REPLACED = new Map([
   }),
   // Screen edges in Streets of Rage 2 and 3 (sorWideAdd): "dN K -" is addi.w #K,dN for a left
   // edge, moved left by patch_sor_wide but not below K itself (where each level starts);
-  // "dN K +" a right edge, moved right.
+  // "dN K +" a right edge, moved right; "dN K +r" the players' right limit, moved by
+  // patch_sor_reach_right (less than patch_sor_wide where the map ends, widescreen.c).
   ...Object.entries(PATCHES.sorWideAdd ?? {}).map(([pc, spec]) => {
     const [reg, k, side] = spec.split(' ');
     const n = reg[1], K = `0x${k}u`;
     return [parseInt(pc, 16), [`addi.w	#$${k},${reg}`, [side === '-'
       ? `{ uint32_t v = addw((${K} - (uint32_t)patch_sor_wide) & 0xFFFFu, D(${n}) & 0xFFFFu); if ((int16_t)v < (int16_t)${K}) v = ${K}; setw(&D(${n}), v); }`
-      : `setw(&D(${n}), addw((${K} + (uint32_t)patch_sor_wide) & 0xFFFFu, D(${n}) & 0xFFFFu));`]]];
+      : `setw(&D(${n}), addw((${K} + (uint32_t)${side === '+r' ? 'patch_sor_reach_right' : 'patch_sor_wide'}) & 0xFFFFu, D(${n}) & 0xFFFFu));`]]];
   }),
   // Sprite culling in Streets of Rage 2 and 3 (sorCullList): "dN K lo" is cmpi.w #K,dN against
   // a piece's left edge, "dN K hi" against its right; both moved out by patch_sor_wide. "slo"

@@ -655,7 +655,8 @@ static int compose_band(void *arg) {
     int scale = j->scale;
     const uint32_t *sprites = j->sprites;
     const int *ox_a = j->ox_a, *oy_a = j->oy_a, *ox_b = j->ox_b, *oy_b = j->oy_b;
-    int mask = hd_frame.mask_sides ? hd_frame.extra * scale : 0, mask_left = hd_frame.mask_left * scale;
+    int mask = hd_frame.mask_sides ? hd_frame.extra * scale : 0, mask_left = hd_frame.mask_left * scale,
+        mask_right = hd_frame.mask_right * scale;
     for (int y = j->y0; y < j->y1; y++) {
         int line = y / scale;
         uint16_t backdrop = hd_frame.backdrop[line];
@@ -718,8 +719,9 @@ static int compose_band(void *arg) {
         if (mask) {
             memset(out, 0, (size_t)mask * 4);
             memset(out + hd_w - mask, 0, (size_t)mask * 4);
-        } else if (mask_left) {
-            memset(out, 0, (size_t)mask_left * 4);
+        } else {
+            if (mask_left) memset(out, 0, (size_t)mask_left * 4);
+            if (mask_right) memset(out + hd_w - mask_right, 0, (size_t)mask_right * 4);
         }
     }
     return 0;

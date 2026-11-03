@@ -567,6 +567,7 @@ void vdp_render_line(int line, uint32_t *dst) {
         if (line == 0) {
             hd_frame.w = w; hd_frame.extra = extra; hd_frame.mask_sides = vdp_opts.mask_sides;
             hd_frame.mask_left = vdp_opts.mask_sides ? extra : vdp_opts.mask_left < extra ? vdp_opts.mask_left : extra;
+            hd_frame.mask_right = vdp_opts.mask_sides ? extra : vdp_opts.mask_right < extra ? vdp_opts.mask_right : extra;
             hd_serial++;
             for (int k = 0; k < 80; k++) hd_frame.sprites[k].drawn = false;
             hd_frame.sprite_count = 0;
@@ -616,7 +617,11 @@ void vdp_render_line(int line, uint32_t *dst) {
     if (vdp_opts.mask_sides && extra) {
         memset(dst, 0, (size_t)extra * sizeof *dst);
         memset(dst + w - extra, 0, (size_t)extra * sizeof *dst);
-    } else if (vdp_opts.mask_left > 0 && extra) {
-        memset(dst, 0, (size_t)(vdp_opts.mask_left < extra ? vdp_opts.mask_left : extra) * sizeof *dst);
+    } else if (extra) {
+        if (vdp_opts.mask_left > 0) memset(dst, 0, (size_t)(vdp_opts.mask_left < extra ? vdp_opts.mask_left : extra) * sizeof *dst);
+        if (vdp_opts.mask_right > 0) {
+            int r = vdp_opts.mask_right < extra ? vdp_opts.mask_right : extra;
+            memset(dst + w - r, 0, (size_t)r * sizeof *dst);
+        }
     }
 }

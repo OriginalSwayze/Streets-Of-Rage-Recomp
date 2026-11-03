@@ -39,6 +39,7 @@ typedef struct {
     int extra;                          /* widescreen columns on each side */
     bool mask_sides;
     int mask_left;                      /* left columns drawn black (vdp_opts.mask_left) */
+    int mask_right;                     /* right columns drawn black (vdp_opts.mask_right) */
     uint32_t a[HD_MAX_H][HD_MAX_W];     /* plane A with the window */
     uint32_t b[HD_MAX_H][HD_MAX_W];
     uint32_t s[HD_MAX_H][HD_MAX_W];
