@@ -81,8 +81,10 @@ typedef struct {
                                            width from the other side. The window plane (the HUD) stays. */
     int  hud_b_lines;                   /* the top lines of plane B are the HUD (Streets of Rage 3's 40):
                                            they stay as the view slides */
-    bool still_b_mirror;                /* plane B's strips scrolled 0 are 320-wide pictures: their
-                                           widescreen columns mirror them (Streets of Rage 3) */
+    bool still_planes;                  /* strips scrolled 0 are 320-wide pictures: plane B's
+                                           widescreen columns mirror them, plane A's are clear */
+    int  still_cam;                     /* the game's camera X, for telling a still strip from one
+                                           that follows the camera through 0 */
     bool sprite_x_wide;                 /* sprite X has a 10th bit (values past $1FF are further right,
                                            not wrapped): the games write the whole word, culled before $200
                                            unless widescreen asks for more (patch_sor_cull_right) */

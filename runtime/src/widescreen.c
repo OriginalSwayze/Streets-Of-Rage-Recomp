@@ -250,7 +250,7 @@ static void slide_view(int before, int after) {
 void widescreen_frame(void) {
     vdp_opts.mask_left = vdp_opts.mask_right = 0;
     vdp_opts.view_slide = 0;
-    vdp_opts.still_b_mirror = false;
+    vdp_opts.still_planes = false;
     vdp_opts.sprite_x_wide = false;
     if (GAME_SOR == 3) {
         /* Streets of Rage 3: each area's camera ($FFF710) starts at its map's left end, X 0.
@@ -266,10 +266,10 @@ void widescreen_frame(void) {
             for (int k = 15; k >= blocks; k--)
                 if (rd16(0xFF8C00 + (uint32_t)(row * 32 + k * 2))) { blocks = k + 1; break; }
         vdp_opts.hud_b_lines = 40;
-        /* Plane B strips that hold still are 320-wide pictures (the ship deck's edge, the
-         * boat's graphics beside it): mirrored at the sides, once the camera has moved away
-         * from X 0, where a following strip would read 0 too. */
-        vdp_opts.still_b_mirror = round && cam > 16;
+        /* Strips that hold still while the camera moves are 320-wide pictures (the ship
+         * deck's edge, the boat's graphics beside it): vdp.c mirrors or clears their sides. */
+        vdp_opts.still_planes = round;
+        vdp_opts.still_cam = cam;
         /* The section's camera limit ($FF8864): when it lies in the map's last block, the
          * map ends where the camera stops (limit + 320), short of a whole block when the
          * room is (round 3's bar: two blocks, the camera held at 96, the art ending at 416). */
@@ -289,7 +289,7 @@ void widescreen_frame(void) {
         uint16_t s = rd16(0xFFEF00);
         int stage = rd16(0xFFFC42), section = rd16(0xFFFC44), extra = vdp_opts.extra_width;
         int cam = -(int16_t)rd16(0xFFFC22), before = -extra, after = -extra;
-        bool round = extra && s && s != 0x34 && s != 0x36;
+        bool round = extra && s && s != 0x32 && s != 0x34 && s != 0x36;   /* $32: the round's title card */
         if (round) before = extra - cam;
         if (round && !rd8(0xFFFD10) && stage >= 0 && stage < 16 && !(stage & 1) && section >= 0 && section < 64) {
             uint32_t ptr = 0x003996 + (uint32_t)stage, table = ptr + (uint32_t)(int16_t)rd16(ptr);
@@ -304,17 +304,21 @@ void widescreen_frame(void) {
              * map is the one screen. */
             if (end && limit < 320 && cam == limit && section > 0 && -(int16_t)rd16(at - 8) == limit) before = extra - (cam - limit);
         }
+        /* Still strips: as in Streets of Rage 3 (the truck's inside, plane A holding still). */
+        vdp_opts.still_planes = round;
+        vdp_opts.still_cam = cam;
         slide_view(before, after);
     }
     if (GAME_SOR != 1 && !GAME_WIDESCREEN) {
         /* Streets of Rage 2 and 3: the sides show only with a player in the game. The intro
          * and the other story scenes are drawn for 320 pixels, with what comes next waiting
          * beside them (Mr. X's hands in 2's). A player slot is in use from its first state
-         * except the ones for "not in" ($34/$36 in 2, where $30 is a swing; $5A-$5E in 3). */
+         * except the ones for "not in" ($34/$36 in 2, and $32 its round title card, where $30 is a
+         * swing; $5A-$5E in 3). */
         bool playing = false;
         for (int k = 0; k < 2; k++) {
             uint16_t s = rd16(GAME_SOR == 3 ? 0xFFDF00 + k * 0x100 : 0xFFEF00 + k * 0x100);
-            playing |= GAME_SOR == 3 ? s && s != 0x5A && s != 0x5C && s != 0x5E : s && s != 0x34 && s != 0x36;
+            playing |= GAME_SOR == 3 ? s && s != 0x5A && s != 0x5C && s != 0x5E : s && s != 0x32 && s != 0x34 && s != 0x36;
         }
         vdp_opts.mask_sides = GAME_SOR >= 2 && !playing;
         return;

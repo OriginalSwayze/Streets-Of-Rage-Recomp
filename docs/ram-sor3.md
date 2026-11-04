@@ -72,7 +72,7 @@ Plane B scrolls in 8-line strips, each at its own speed. On round 1's ship deck 
 the deck's edge (lines 112-151) hold still: a picture drawn for 320 columns, with the boat's
 graphics kept in the plane beside it (purple blocks in the widescreen columns). Strips that
 hold still while the camera has moved on are mirrored into those columns
-(`vdp_opts.still_b_mirror`).
+(`vdp_opts.still_planes`; a strip of plane A holding still has its sides cleared instead).
 
 ## Sound
 

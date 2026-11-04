@@ -66,3 +66,11 @@ filled when the area began (456 pixels), with sprites past hardware X `$1FF` (th
 the whole word; the VDP reads a 10th bit then, `vdp_opts.sprite_x_wide`); at its end the
 columns the planes still hold left of the camera. The HUD is the window plane (its top 40
 lines, register 18 = 5), which stays put.
+
+Inside round 2's truck plane A holds still (scroll 0, the whole screen) while plane B, the
+wall, scrolls with the camera: plane A is a picture drawn for 320 columns, with other graphics
+kept beside it (its back door, the city). A plane holding still while the camera moves has its
+widescreen columns cleared (`vdp_opts.still_planes`), so plane B shows there.
+
+Player 1's state is `$32` on the round's title card ("STAGE 1 START"), before play begins:
+the sides are masked then, keeping it centred.

@@ -554,6 +554,18 @@ uint32_t vdp_compose(uint32_t a, uint32_t b, uint32_t s, uint16_t backdrop, bool
     return rgb(color, mode);
 }
 
+/* Whether a plane's scroll on this line holds still at 0 (within 8): unchanged while the
+ * camera (vdp_opts.still_cam) has gone 32 pixels or more since it last changed. A plane that
+ * follows the camera passes 0 every 1024 pixels, but changes as the camera does. */
+static bool still_strip(int plane, int line, int hs) {
+    static int16_t last[2][256];
+    static int since[2][256];
+    line &= 255;
+    if (hs != last[plane][line]) { last[plane][line] = (int16_t)hs; since[plane][line] = vdp_opts.still_cam; }
+    int moved = vdp_opts.still_cam - since[plane][line];
+    return (hs <= 8 || hs >= 1024 - 8) && (moved >= 32 || moved <= -32);
+}
+
 void vdp_render_line(int line, uint32_t *dst) {
     int wide = vdp_opts.extra_width;
     int w = vdp_screen_width() + wide * 2;
@@ -604,14 +616,16 @@ void vdp_render_line(int line, uint32_t *dst) {
         memset(b, 0, (size_t)wide);
         memset(b + wide + vdp_screen_width(), 0, (size_t)(w - wide - vdp_screen_width()));
     }
-    /* A strip of plane B that holds still while the camera has moved on is a picture drawn
-     * for the original 320 columns (Streets of Rage 3's ship deck: its edge, with the boat's
-     * graphics kept beside it). Its widescreen columns show it mirrored at the edges. */
-    if (!hud_line && vdp_opts.still_b_mirror && wide) {
-        uint32_t hs_base = (vdp.reg[13] & 0x3F) << 10;
-        int mode = vdp.reg[11] & 3, hs_line = mode == 2 ? line & ~7 : mode == 3 ? line : 0;
-        int hs = vram16(hs_base + hs_line * 4 + 2) & 0x3FF;
-        if (hs <= 8 || hs >= 1024 - 8) {
+    /* A strip of a plane that holds still while the camera has moved on is a picture drawn
+     * for the original 320 columns, with other graphics kept beside it: Streets of Rage 3's
+     * ship deck (plane B: its edge, the boat's graphics), the inside of Streets of Rage 2's
+     * truck (plane A, over the scrolling wall: its back door, the city beyond). Plane B's
+     * widescreen columns show it mirrored at the edges; plane A's are left clear. */
+    uint32_t hs_base = (vdp.reg[13] & 0x3F) << 10;
+    int hs_mode = vdp.reg[11] & 3, hs_line = hs_mode == 2 ? line & ~7 : hs_mode == 3 ? line : 0;
+    int still_l = extra, still_r = extra + vdp_screen_width();
+    if (!hud_line && vdp_opts.still_planes && wide && still_strip(1, line, vram16(hs_base + hs_line * 4 + 2) & 0x3FF)) {
+        {
             int sw = vdp_screen_width(), l = extra, r = extra + sw;
             for (int i = 0; i < l && 2 * l - 1 - i < r; i++) b[i] = b[2 * l - 1 - i];
             for (int i = r; i < w && 2 * r - 1 - i >= l; i++) b[i] = b[2 * r - 1 - i];
@@ -622,6 +636,12 @@ void vdp_render_line(int line, uint32_t *dst) {
         }
     }
     draw_plane(a, w, extra, line, (vdp.reg[2] & 0x38) << 10, 0);
+    if (vdp_opts.still_planes && wide && still_strip(0, line, vram16(hs_base + hs_line * 4) & 0x3FF)) {
+        {
+            memset(a, 0, (size_t)(still_l > 0 ? still_l : 0));
+            if (still_r < w) memset(a + still_r, 0, (size_t)(w - still_r));
+        }
+    }
     draw_window(a, w, wide, line);
     draw_sprites(s, w, extra, line);
     if (vdp_opts.hide_layers) {
