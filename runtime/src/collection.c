@@ -174,7 +174,11 @@ static bool play(SDL_Window *win, int g) {
     DWORD code = 0;
     GetExitCodeProcess(pi.hProcess, &code);
     CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
-    if (code == 3) return false;        /* EXIT_WINDOW_CLOSED (launcher.h) */
+    /* Back to the collection only when the player chose to (Back, Quit: exit code 0). The
+     * window's X (EXIT_WINDOW_CLOSED, launcher.h), ending the game in Task Manager (1) or a
+     * crash close the collection too: it coming back looked like the launcher reopening
+     * by itself, however often it was ended (issue #9). */
+    if (code != 0) return false;
     find_games();                       /* it may have made its card */
     SDL_ShowWindow(win);
     SDL_RaiseWindow(win);
