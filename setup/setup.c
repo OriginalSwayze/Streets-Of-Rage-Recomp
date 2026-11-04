@@ -33,7 +33,7 @@
 
 #define APP_NAME   "Streets of Rage Collection"
 #define UNINST_KEY "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\StreetsOfRageCollection"
-#define VERSION    "2.3.1"
+#define VERSION    "2.3.2"
 
 /* ---- The games and their ROMs --------------------------------------------------------- */
 typedef struct {
@@ -580,7 +580,11 @@ static int SDLCALL install_thread(void *arg) {
         if (self) fclose(self);
         if (ok) {
             SHCreateDirectoryExA(NULL, src, NULL);
-            snprintf(cmd, sizeof cmd, "\"%s\" -xf \"%s\" -C \"%s\" --strip-components=1", tar_exe(), zip, src);
+            /* -m: the files get the time of unpacking, not the zip's. The zip's times are the
+             * release server's clock with no time zone, so right after a release they can lie in
+             * the future here, and ninja then finds its build file older than its sources every
+             * time ("manifest 'build.ninja' still dirty after 100 tries"). */
+            snprintf(cmd, sizeof cmd, "\"%s\" -m -xf \"%s\" -C \"%s\" --strip-components=1", tar_exe(), zip, src);
             ok = run_hidden(cmd, NULL) == 0;
         }
         DeleteFileA(zip);
