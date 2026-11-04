@@ -250,6 +250,7 @@ static void slide_view(int before, int after) {
 void widescreen_frame(void) {
     vdp_opts.mask_left = vdp_opts.mask_right = 0;
     vdp_opts.view_slide = 0;
+    vdp_opts.still_b_mirror = false;
     vdp_opts.sprite_x_wide = false;
     if (GAME_SOR == 3) {
         /* Streets of Rage 3: each area's camera ($FFF710) starts at its map's left end, X 0.
@@ -265,6 +266,10 @@ void widescreen_frame(void) {
             for (int k = 15; k >= blocks; k--)
                 if (rd16(0xFF8C00 + (uint32_t)(row * 32 + k * 2))) { blocks = k + 1; break; }
         vdp_opts.hud_b_lines = 40;
+        /* Plane B strips that hold still are 320-wide pictures (the ship deck's edge, the
+         * boat's graphics beside it): mirrored at the sides, once the camera has moved away
+         * from X 0, where a following strip would read 0 too. */
+        vdp_opts.still_b_mirror = round && cam > 16;
         /* The section's camera limit ($FF8864): when it lies in the map's last block, the
          * map ends where the camera stops (limit + 320), short of a whole block when the
          * room is (round 3's bar: two blocks, the camera held at 96, the art ending at 416). */

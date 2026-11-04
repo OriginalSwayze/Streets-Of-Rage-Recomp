@@ -131,12 +131,13 @@ add_executable(${GAME_EXE} WIN32
   runtime/src/z80bus.c
   runtime/src/ai.c
   runtime/src/fighters.c
+  runtime/src/music.c
   runtime/src/sound.cpp)
 target_link_libraries(${GAME_EXE} PRIVATE recomp musashi z80core ymfm SDL2::SDL2main SDL2::SDL2-static)
 target_compile_options(${GAME_EXE} PRIVATE -Wall -Wextra -Wno-unused-parameter)
 if(WIN32)
   target_link_options(${GAME_EXE} PRIVATE -static)
-  target_link_libraries(${GAME_EXE} PRIVATE gdi32 comdlg32)
+  target_link_libraries(${GAME_EXE} PRIVATE gdi32 comdlg32 mfplat mfreadwrite mfuuid ole32)
 endif()
 
 # ---- The collection's front end (built with the first game) -----------------------

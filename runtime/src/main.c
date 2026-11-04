@@ -25,6 +25,7 @@
 #include "texpack.h"
 #include "menu.h"
 #include "savestate.h"
+#include "music.h"
 #include "ui.h"
 #include <SDL.h>
 #include "m68k.h"
@@ -188,6 +189,8 @@ static void apply_settings(void) {
     hd_scaler = settings.scaler;
     hd_water = settings.water;
     hd_sides_black = settings.sides_black;
+    music_scan();
+    music_files_on = settings.music_files;
     /* Texture packs: load a pack when it changes (it can be many images), dump on request. */
     static char loaded_pack[64] = "";
     static bool pack_tried;
@@ -343,6 +346,7 @@ int main(int argc, char **argv) {
     char *bp = SDL_GetBasePath();
     if (bp) { snprintf(base_dir, sizeof base_dir, "%s", bp); SDL_free(bp); }
     settings_set_base(base_dir);
+    music_set_folder(base_dir);
     char ini[1100];
     path_in_base(ini, sizeof ini, "settings.ini");
     savestate_init(base_dir);

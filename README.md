@@ -79,6 +79,10 @@ In all three games:
 * Save states, rewind, fast-forward, a slowdown fix and a sprite flicker fix
 * Sound at the console's own balance, as emulated or cleaned up (no aliasing, hum or
   clipping), with a bass setting
+* **Your own music**: put recordings in a `music` folder beside the game, named by the
+  launcher's Track number (`07.flac`, or `07 - Go Straight.mp3`), and the game plays them
+  instead of its songs, looping where the songs loop, with its sound effects on top. MP3,
+  FLAC, WAV, M4A/AAC or WMA (Windows decodes them); the Music files setting turns them off
 * A launcher and pause menu in each game's own colours, with its own music and sounds
 
 In Streets of Rage 3:

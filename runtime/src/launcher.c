@@ -786,7 +786,8 @@ static const Row tab_rows[TABS][9] = {
     { { ROW_OPTION, "Launcher music", OPT_MUSIC, NULL }, { ROW_TRACK, "Track", 0, NULL },
       { ROW_OPTION, "Player", OPT_OST_MODE, NULL }, { ROW_OPTION, "Volume", OPT_VOLUME, NULL },
       { ROW_OPTION, "Audio", OPT_AUDIO, NULL },
-      { ROW_OPTION, "Bass", OPT_BASS, "The low end, lighter or heavier. As made is the console's own balance." } },
+      { ROW_OPTION, "Bass", OPT_BASS, "The low end, lighter or heavier. As made is the console's own balance." },
+      { ROW_OPTION, "Music files", OPT_MUSIC_FILES, "Your own recordings, in the music folder: 07.flac for Track 7 (MP3, FLAC, WAV, M4A, WMA)." } },
 #if GAME_SOR == 3
     { { ROW_FIGHTER, "Axel", 0, "His top, hair, trousers, gloves and skin in any colour, still or animated." },
       { ROW_FIGHTER, "Blaze", 1, "Her outfit, hair and skin in any colour, still or animated." },
@@ -796,7 +797,7 @@ static const Row tab_rows[TABS][9] = {
       { ROW_OPTION, "Infinite lives", OPT_CHEAT_LIVES, "Both players always have at least two lives left." },
       { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
 };
-static const int tab_count[TABS] = { 9, 5, 8 + (GAME_EDITION_COUNT > 1), 6, 4, 3 };
+static const int tab_count[TABS] = { 9, 5, 8 + (GAME_EDITION_COUNT > 1), 7, 4, 3 };
 #elif GAME_SOR == 2
     { { ROW_FIGHTER, "Max", 0, "His trousers, boots, belt and skin in any colour, still or animated." },
       { ROW_FIGHTER, "Axel", 1, "His hair, shirt, jeans, gloves and skin in any colour, still or animated." },
@@ -808,7 +809,7 @@ static const int tab_count[TABS] = { 9, 5, 8 + (GAME_EDITION_COUNT > 1), 6, 4, 3
       { ROW_OPTION, "Infinite time", OPT_CHEAT_TIME, "The round timer never runs down." },
       { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
 };
-static const int tab_count[TABS] = { 9, 5, 8, 6, 4, 5 };
+static const int tab_count[TABS] = { 9, 5, 8, 7, 4, 5 };
 #else
     { { ROW_FIGHTER, "Axel", 0, "His hair, top, jeans and skin in any colour, still or animated." },
       { ROW_FIGHTER, "Adam", 1, "His vest, trousers, skin and shoes in any colour, still or animated." },
@@ -819,7 +820,7 @@ static const int tab_count[TABS] = { 9, 5, 8, 6, 4, 5 };
       { ROW_OPTION, "Infinite time", OPT_CHEAT_TIME, "The round timer never runs down." },
       { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
 };
-static const int tab_count[TABS] = { 9, 5, 8, 6, 3, 5 };
+static const int tab_count[TABS] = { 9, 5, 8, 7, 3, 5 };
 #endif
 
 /* ---- Look: the game's HUD, a yellow frame on charcoal, red bars ---------------------- */

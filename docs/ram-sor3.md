@@ -68,6 +68,12 @@ held at 96: its art ends at 416).
 The HUD is plane B's top 40 lines (5 strips of the 8-line scroll, scrolled 0; no window
 plane), which stay put as the view slides (`vdp_opts.hud_b_lines`).
 
+Plane B scrolls in 8-line strips, each at its own speed. On round 1's ship deck the strips at
+the deck's edge (lines 112-151) hold still: a picture drawn for 320 columns, with the boat's
+graphics kept in the plane beside it (purple blocks in the widescreen columns). Strips that
+hold still while the camera has moved on are mirrored into those columns
+(`vdp_opts.still_b_mirror`).
+
 ## Sound
 
 The driver is 68000 code at `$1A8000` (update, once a frame from the V blank), `$1A8004`

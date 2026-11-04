@@ -156,6 +156,9 @@ static void render(int w, int h, float t) {
 }
 
 /* ---- Playing ------------------------------------------------------------------------ */
+static Uint64 back_at;
+static bool armed = true;               /* input counts (false just after a game ends) */
+
 /* Returns false when the game's window was closed (its X): then the collection closes too. */
 static bool play(SDL_Window *win, int g) {
     if (!games[g].installed) { say("That game is not installed: run Setup again and pick its ROM."); return true; }
@@ -175,7 +178,26 @@ static bool play(SDL_Window *win, int g) {
     find_games();                       /* it may have made its card */
     SDL_ShowWindow(win);
     SDL_RaiseWindow(win);
+    /* Whatever was pressed to leave the game (A or Start on the pad, Enter, the click that
+     * closed it or ended it in Task Manager) is still down, or waiting in the queue: it
+     * would start a game again at once. Nothing counts until everything is let go. */
+    SDL_PumpEvents();
+    SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);
+    back_at = SDL_GetTicks64();
+    armed = false;
     return true;
+}
+
+/* Back from a game: input counts again once every key, button and mouse button is up, and
+ * a moment has passed. */
+static bool all_released(SDL_GameController *pad) {
+    int n = 0;
+    const Uint8 *keys = SDL_GetKeyboardState(&n);
+    for (int k = 0; k < n; k++) if (keys[k]) return false;
+    if (SDL_GetMouseState(NULL, NULL)) return false;
+    for (int b = 0; pad && b < SDL_CONTROLLER_BUTTON_MAX; b++)
+        if (SDL_GameControllerGetButton(pad, (SDL_GameControllerButton)b)) return false;
+    return SDL_GetTicks64() - back_at > 300;
 }
 
 int main(int argc, char **argv) {
@@ -202,9 +224,11 @@ int main(int argc, char **argv) {
     Uint64 t0 = SDL_GetPerformanceCounter(), last = t0;
     while (running) {
         SDL_Event e;
+        if (!armed) armed = all_released(pad);
         while (SDL_PollEvent(&e)) {
             int move = 0;
             bool go = false;
+            if (!armed && e.type != SDL_QUIT && e.type != SDL_CONTROLLERDEVICEADDED) continue;
             switch (e.type) {
             case SDL_QUIT: running = false; break;
             case SDL_CONTROLLERDEVICEADDED: if (!pad) pad = SDL_GameControllerOpen(e.cdevice.which); break;

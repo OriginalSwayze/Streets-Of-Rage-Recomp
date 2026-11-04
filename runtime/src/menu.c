@@ -60,6 +60,7 @@ static const Item tab_items[TABS][MAX_ROWS] = {
       { ITEM_OPTION, "Attack power", OPT_CHEAT_ATTACK } },
 #endif
     { { ITEM_OPTION, "Volume", OPT_VOLUME }, { ITEM_OPTION, "Audio", OPT_AUDIO }, { ITEM_OPTION, "Bass", OPT_BASS },
+      { ITEM_OPTION, "Music files", OPT_MUSIC_FILES },
       { ITEM_ACTION, "Controls", ACT_CONTROLS }, { ITEM_OPTION, "Rumble", OPT_RUMBLE },
       { ITEM_OPTION, "Texture pack", OPT_TEXPACK }, { ITEM_OPTION, "Dump tiles", OPT_DUMP },
 #if GAME_EDITION_COUNT > 1
@@ -67,7 +68,7 @@ static const Item tab_items[TABS][MAX_ROWS] = {
 #endif
     },
 };
-static const int tab_count[TABS] = { 9, 10, 5, FIGHTERS, GAME_SOR == 3 ? 3 : 5, 7 + (GAME_EDITION_COUNT > 1) };
+static const int tab_count[TABS] = { 9, 10, 5, FIGHTERS, GAME_SOR == 3 ? 3 : 5, 8 + (GAME_EDITION_COUNT > 1) };
 
 /* ---- Look: the game's HUD, a yellow frame on charcoal, red bars (as the launcher) ------- */
 #include "theme.h"
@@ -147,6 +148,7 @@ static const char *about(const Item *it) {
     case OPT_EDITION: return settings_edition_count() > 1
         ? "The edition of the game played: each cartridge has its own code. Changing it starts that edition from power on, with its own saves; unsaved progress here is lost."
         : "The edition of the game played: each cartridge has its own code. Add another edition's ROM in the launcher (Game, ROM) to choose it here.";
+    case OPT_MUSIC_FILES: return "Your own recordings of the songs, in the folder named music beside the game, each named by the launcher's Track number: 07.flac, or 07 - title.mp3. MP3, FLAC, WAV, M4A or WMA. They loop where the game's songs loop, and its sound effects play on. A change takes effect from the next song.";
     case OPT_BASS: return "The low end of the music and sound, from -12 dB (lighter) to +12 dB (heavier). As made is the console's own balance.";
     case OPT_AUDIO: return "Original is the console's sound as emulated. Clean removes aliasing, the hum and clipping; Rich adds wider stereo and a light room.";
     }

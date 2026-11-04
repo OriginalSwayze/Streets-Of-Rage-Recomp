@@ -51,6 +51,8 @@
 
 /* The song's name in the player, or NULL to number it. */
 const char *ost_song_name(int song);
+/* The player's song number for a driver request (a song's), or -1 for anything else. */
+int ost_song_of_request(uint16_t request);
 /* The song the title screen plays, or -1 if the driver does not say. */
 int ost_title_song(void);
 

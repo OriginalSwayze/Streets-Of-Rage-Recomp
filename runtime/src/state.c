@@ -9,6 +9,7 @@
  * the header carries a fingerprint of the struct sizes and rejects anything else. */
 #include "genesis.h"
 #include "m68kcpu.h"
+#include "music.h"
 #include "motion.h"
 #include "fx.h"
 #include "combat.h"
@@ -62,6 +63,7 @@ static bool state_io_all(StateIO *s) {
     z80_state(s);
     sound_state(s);
     machine_state(s);
+    music_state(s);                     /* last: older states end before it */
     return s->ok;
 }
 

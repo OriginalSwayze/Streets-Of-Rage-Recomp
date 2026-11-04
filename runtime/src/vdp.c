@@ -604,6 +604,23 @@ void vdp_render_line(int line, uint32_t *dst) {
         memset(b, 0, (size_t)wide);
         memset(b + wide + vdp_screen_width(), 0, (size_t)(w - wide - vdp_screen_width()));
     }
+    /* A strip of plane B that holds still while the camera has moved on is a picture drawn
+     * for the original 320 columns (Streets of Rage 3's ship deck: its edge, with the boat's
+     * graphics kept beside it). Its widescreen columns show it mirrored at the edges. */
+    if (!hud_line && vdp_opts.still_b_mirror && wide) {
+        uint32_t hs_base = (vdp.reg[13] & 0x3F) << 10;
+        int mode = vdp.reg[11] & 3, hs_line = mode == 2 ? line & ~7 : mode == 3 ? line : 0;
+        int hs = vram16(hs_base + hs_line * 4 + 2) & 0x3FF;
+        if (hs <= 8 || hs >= 1024 - 8) {
+            int sw = vdp_screen_width(), l = extra, r = extra + sw;
+            for (int i = 0; i < l && 2 * l - 1 - i < r; i++) b[i] = b[2 * l - 1 - i];
+            for (int i = r; i < w && 2 * r - 1 - i >= l; i++) b[i] = b[2 * r - 1 - i];
+            if (vdp_opts.tile_refs) {
+                for (int i = 0; i < l && 2 * l - 1 - i < r; i++) ref_b[i] = ref_b[2 * l - 1 - i];
+                for (int i = r; i < w && 2 * r - 1 - i >= l; i++) ref_b[i] = ref_b[2 * r - 1 - i];
+            }
+        }
+    }
     draw_plane(a, w, extra, line, (vdp.reg[2] & 0x38) << 10, 0);
     draw_window(a, w, wide, line);
     draw_sprites(s, w, extra, line);

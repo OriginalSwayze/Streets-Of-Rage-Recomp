@@ -73,6 +73,19 @@ static int nrequests;
 const char *ost_song_name(int song) { (void)song; return NULL; }
 int ost_title_song(void) { return -1; }
 #endif
+int ost_song_of_request(uint16_t request) {
+    for (int k = 0; k < OST_SONGS; k++) {
+#if GAME_SMPS
+        if (songs[k].id == request) return k;
+#elif GAME_SOR >= 2
+        if (songs[k] == request) return k;
+#else
+        if (k == request) return k;
+#endif
+    }
+    return -1;
+}
+
 #define RETURN_HERE   0x0001FC          /* in the cartridge header */
 #if GAME_SOR >= 2
 #define PARK          0xFFE000          /* object and sprite tables: the drivers keep to $FF9F00-$FFA6FF */

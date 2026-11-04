@@ -5,6 +5,7 @@
 #include "m68kcpu.h"
 #include "recomp_rt.h"
 #include "motion.h"
+#include "music.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -72,6 +73,8 @@ static RecompBlock generated_fn(uint32_t pc) {
         for (const RecompEntry *e = game->tables[t]; e->fn; e++) if (e->pc == pc) return e->fn;
     return NULL;
 }
+
+RecompBlock machine_generated(uint32_t pc) { return generated_fn(pc); }
 
 /* Replaces the code at pc with hand-written C; NULL restores the generated code. */
 void machine_override(uint32_t pc, RecompBlock fn) {
@@ -218,6 +221,8 @@ void machine_reset(void) {
     m68k_execute(1);
     overrun = 0;
     recomp_init();
+    music_stop();
+    music_hooks();                      /* after recomp_init, which drops the overrides */
 }
 
 /* Scheduler counters (snapshots are taken between frames, so the per-line ones are idle). */

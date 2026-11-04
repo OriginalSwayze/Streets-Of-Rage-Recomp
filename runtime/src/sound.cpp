@@ -8,6 +8,7 @@
 
 extern "C" {
 #include "genesis.h"
+#include "music.h"
 }
 
 namespace {
@@ -299,6 +300,7 @@ void sound_advance(int m68k_cycles) {
 }
 
 void sound_end_frame(void) {
+    music_mix(sound_out, sound_out_count, sound_out_rate, sound_quality ? HEADROOM : 1.f);   // the player's files (music.c)
     bool bass = sound_bass_db != 0;
     if (bass && (shelf.db != sound_bass_db || shelf.rate != sound_out_rate)) shelf.make(sound_bass_db, sound_out_rate);
     if (!sound_quality) {

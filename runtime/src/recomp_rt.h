@@ -50,6 +50,8 @@ static inline uint32_t random_drop(uint32_t item, uint32_t place) {
 
 /* Replaces the code at pc with hand-written C (machine.c); NULL restores the generated code. */
 void machine_override(uint32_t pc, RecompBlock fn);
+/* The recompiled code at pc, whether or not an override replaces it (NULL if none). */
+RecompBlock machine_generated(uint32_t pc);
 
 /* ---- Memory (work RAM fast path) ------------------------------------------ */
 static inline uint32_t rd8(uint32_t a) {
