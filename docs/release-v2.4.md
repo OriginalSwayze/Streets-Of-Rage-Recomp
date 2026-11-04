@@ -9,5 +9,5 @@
 
 Also fixed:
 
-- **The collection no longer starts a game again by itself.** Back from a game, the button or key that left it (A or Start on a controller, Enter, the click that closed it or ended it in Task Manager) was still pressed, and started the selected game once more. The collection now waits until everything is let go. (GitHub issue #9)
+- **The collection no longer starts a game again with the press that left it.** Back from a game, it waits until every key and button is let go before taking input.
 - **Streets of Rage 3, widescreen, round 1's ship deck:** the purple blocks at the sides (the boat's graphics, kept beside the background) are gone. The background's still strips are pictures drawn for 4:3, and their sides now continue them. (GitHub issue #8)
