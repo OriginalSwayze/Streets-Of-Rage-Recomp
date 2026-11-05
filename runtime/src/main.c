@@ -83,6 +83,10 @@ static void parse_presses(const char *spec, int player) {
     }
 }
 
+static bool virtual_pads;
+static SDL_Joystick *vpad[3];
+static int vpad_index[3];
+
 static uint16_t scripted_pad(int frame, int player) {
     uint16_t bits = 0;
     for (int i = 0; i < press_count; i++)
@@ -370,6 +374,7 @@ int main(int argc, char **argv) {
     const char *poke_at_codes[8];
     int check_from = -1, check_to = -1;     /* --state-check A B */
     uint32_t *check_pads = NULL;            /* the pads of frames A to B */
+    uint16_t *check_third = NULL;           /* and the third pad's */
     int rewind_check = 0;                   /* --rewind-check K */
     bool no_launcher = false;
     const char *launcher_shot = NULL;
@@ -420,6 +425,7 @@ int main(int argc, char **argv) {
         }
         else if (!strcmp(argv[i], "--press") && i + 1 < argc) parse_presses(argv[++i], 0);
         else if (!strcmp(argv[i], "--press2") && i + 1 < argc) parse_presses(argv[++i], 1);
+        else if (!strcmp(argv[i], "--virtual-pads")) virtual_pads = true;   /* tests: --press scripts through three virtual controllers */
         else if (!strcmp(argv[i], "--press3") && i + 1 < argc) { parse_presses(argv[++i], 2); settings.third_player = true; test_overrides = true; }
         else if (!strcmp(argv[i], "--press-file") && i + 1 < argc) {
             /* --press-file F: --press entries from a file, for scripts too long for a command line. */
@@ -625,6 +631,17 @@ int main(int argc, char **argv) {
         return 1;
     }
     if (!headless_frames) pads_init();
+    if (virtual_pads) {
+        SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
+        for (int k = 0; k < 3; k++) {
+            SDL_VirtualJoystickDesc d = { .version = SDL_VIRTUAL_JOYSTICK_DESC_VERSION, .type = SDL_JOYSTICK_TYPE_GAMECONTROLLER,
+                                          .naxes = SDL_CONTROLLER_AXIS_MAX, .nbuttons = SDL_CONTROLLER_BUTTON_MAX };
+            vpad_index[k] = SDL_JoystickAttachVirtualEx(&d);
+        }
+        pads_init();
+        for (int k = 0; k < 3; k++) vpad[k] = SDL_GameControllerGetJoystick(pads_player(k));
+        fprintf(stderr, "virtual pads: %d\n", pads_count());
+    }
     if (!headless_frames && settings.show_launcher && !no_launcher && GAME_LAUNCHER) {
         apply_settings();
         if (!launcher_run(ini)) { SDL_Quit(); return launcher_window_closed ? EXIT_WINDOW_CLOSED : 0; }
@@ -679,12 +696,29 @@ int main(int argc, char **argv) {
             pad_state[0] = autoplay && f >= autoplay ? ai_pilot_pad() : scripted_pad(f, 0);
             pad_state[1] = settings.player2 ? ai_pad() : scripted_pad(f, 1);
             third_pad = scripted_pad(f, 2);
+            if (virtual_pads) {
+                /* --virtual-pads: the scripts go through SDL as button presses, and come back
+                 * the way real controllers' do. */
+                static const struct { uint16_t bit; int in; } map[] = {
+                    { PAD_UP, IN_UP }, { PAD_DOWN, IN_DOWN }, { PAD_LEFT, IN_LEFT }, { PAD_RIGHT, IN_RIGHT },
+                    { PAD_A, IN_A }, { PAD_B, IN_B }, { PAD_C, IN_C }, { PAD_START, IN_START } };
+                uint16_t script[3] = { pad_state[0], pad_state[1], third_pad };
+                for (int k = 0; k < 3; k++)
+                    for (size_t m = 0; m < sizeof map / sizeof *map; m++)
+                        SDL_JoystickSetVirtualButton(vpad[k], settings.bind_pad[map[m].in], script[k] & map[m].bit ? 1 : 0);
+                SDL_GameControllerUpdate();
+                pad_state[0] = input_pad_bits(NULL, pads_player(0));
+                pad_state[1] = input_pad_bits(NULL, pads_player(1));
+                third_pad = pads_count() >= 3 ? input_pad_bits(NULL, pads_player(2)) : 0;
+            }
             if (f == check_from) len_a = state_save(snap_a, sizeof snap_a);
             if (f == check_to) len_b = state_save(snap_b, sizeof snap_b);
             /* The pads as played (the AI partner's too), for replaying the checked frames. */
             if (f >= check_from && f < check_to) {
                 if (!check_pads) check_pads = malloc((size_t)(check_to - check_from) * sizeof *check_pads);
                 if (check_pads) check_pads[f - check_from] = PADS_BOTH();
+                if (!check_third) check_third = malloc((size_t)(check_to - check_from) * sizeof *check_third);
+                if (check_third) check_third[f - check_from] = third_pad;
             }
             if (rewind_check && f == headless_frames - rewind_check) len_ref = state_save(snap_ref, sizeof snap_ref);
             rewind_push(PADS_BOTH());
@@ -784,6 +818,7 @@ int main(int argc, char **argv) {
             for (int f = check_from; f < check_to; f++) {
                 uint32_t p = check_pads ? check_pads[f - check_from] : 0;
                 pad_state[0] = (uint16_t)p; pad_state[1] = (uint16_t)(p >> 16);
+                third_pad = check_third ? check_third[f - check_from] : 0;
                 machine_run_frame(framebuffer, FB_W);
             }
             size_t len = state_save(again, sizeof again);

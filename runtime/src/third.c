@@ -30,7 +30,11 @@ uint16_t third_pad;
 #define HUD_OFF   0x52800003u           /* window plane row 5, below the HUD */
 
 static bool ran;                        /* this frame's third update has been started */
-static uint8_t held, timer_a, timer_b, pad_held, pad_pressed;
+static uint8_t pad_held, pad_pressed;
+/* The pad's memory lives in the object's unused end, so save states and rewind keep it. */
+#define HELD    (SLOT + 0xF0)
+#define TIMER_A (SLOT + 0xF1)
+#define TIMER_B (SLOT + 0xF2)
 static bool playing;                    /* it has joined: the slot's clearing does not end that */
 static uint16_t saved_health;
 static uint8_t saved_lives = 2;
@@ -46,8 +50,9 @@ static uint32_t original(uint32_t pc) {
 /* sub_000800 for the third pad: a press of A counts for 20 frames, two taps of a direction
  * make a dash, and a held B charges the special. */
 static void pad_word(void) {
-    uint8_t now = (uint8_t)(third_pad & ~PAD_START), pressed = (uint8_t)(now & ~held);   /* its Start is for joining */
-    held = now;
+    uint8_t now = (uint8_t)(third_pad & ~PAD_START), pressed = (uint8_t)(now & ~rd8(HELD));   /* its Start is for joining */
+    uint8_t timer_a = (uint8_t)rd8(TIMER_A), timer_b = (uint8_t)rd8(TIMER_B);
+    wr8(HELD, now);
     pad_held = now;
     pad_pressed = pressed;
     if (timer_a) timer_a--;
@@ -74,6 +79,8 @@ static void pad_word(void) {
         if (charge < 0x3C) wr8(SLOT + 0x58, charge + 1u);
         wr8(SLOT + 0x59, 0);
     }
+    wr8(TIMER_A, timer_a);
+    wr8(TIMER_B, timer_b);
 }
 
 /* After player 2's update: the fighter routine, then the health bar's, then back here. */
@@ -176,14 +183,13 @@ void third_hooks(void) {
     machine_override(0x00F3A8, target_b);
     machine_override(0x00E624, rival_there);
     ran = playing = false;
-    held = timer_a = timer_b = 0;
     saved_health = 0; saved_lives = 2;
 }
 
 /* The frame's graphics, as the V blank does for the players: the DMA's length is at +$B4
- * and its source at the frame's data, +$3C. */
+ * and its source at the frame's data, +$3C. Every frame, changed or not: the bank is not in
+ * save states or the rewind buffer, and this puts it right after one is loaded. */
 static void stream(void) {
-    if (!(rd8(SLOT + 0x1E) & 0x20)) return;
     wr8(SLOT + 0x1E, rd8(SLOT + 0x1E) & ~0x20u);
     uint32_t len = rd32(SLOT + 0xB4), f = rd32(SLOT + 0x3C);
     uint32_t words = (len >> 16 & 0xFF) << 8 | (len & 0xFF);
@@ -225,6 +231,7 @@ static void enter(void) {
     wr16(SLOT + 0x80, saved_health ? saved_health : 0x68);
     wr8(SLOT + 0x83, saved_lives);
     wr8(SLOT + 0x1E, rd8(SLOT + 0x1E) | 0x20);
+    wr8(HELD, 0); wr8(TIMER_A, 0); wr8(TIMER_B, 0);
 }
 
 void third_frame(void) {
