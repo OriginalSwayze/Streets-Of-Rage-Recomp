@@ -6,6 +6,7 @@ Fixed:
 
 - **After loading a save state or rewinding, the third fighter's picture is right at once.** It used to stay wrong until its next move.
 - **Save states and rewind keep the third pad's timing** (dashes, the charged special).
+- **Turning Third player off, or loading a save state made with it on while it is off,** removes the third fighter. It used to leave broken graphics on screen.
 
 Now tested:
 

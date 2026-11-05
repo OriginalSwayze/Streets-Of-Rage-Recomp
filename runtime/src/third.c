@@ -234,9 +234,30 @@ static void enter(void) {
     wr8(HELD, 0); wr8(TIMER_A, 0); wr8(TIMER_B, 0);
 }
 
+/* The slot back as sub_00DD12 leaves an enemy's: the sprite builder goes by +$1E. */
+static void leave(void) {
+    wr16(SLOT, 0);
+    wr16(SLOT + 0x0A, 0x220);
+    wr16(SLOT + 0x10, 0xFFFF);
+    wr8(SLOT + 0x1E, 0); wr8(SLOT + 0x1F, 0);
+    wr8(SLOT + 0x48, 0); wr8(SLOT + 0x49, 0); wr8(SLOT + 0x9B, 0);
+}
+
 void third_frame(void) {
+    static int leaving;
     vdp_third_on = on();
-    if (!on()) return;
+    if (!on()) {
+        /* Switched off in a game, or a save state from when it was on: without the bank its
+         * tile numbers would draw the planes' tables. The sprite table holds them for a few
+         * frames more, until the game has written it again. */
+        if (rd16(SLOT + 0x0A) == VDP_THIRD_TILE) {
+            leave();
+            memset(vdp_third_tiles, 0, sizeof vdp_third_tiles);
+            leaving = 8;
+        }
+        if (leaving) { leaving--; vdp_third_on = true; }
+        return;
+    }
     /* A new area clears the enemy slots, this one with them: the fighter comes back, as it
      * was, once the round is under way. Out of lives (state $34 up), it waits for Start. */
     if (!joined()) {
@@ -244,7 +265,7 @@ void third_frame(void) {
         return;
     }
     if (rd16(SLOT) >= 0x34) {
-        wr16(SLOT, 0);
+        leave();
         playing = false;
         saved_health = 0; saved_lives = 2;
         return;
