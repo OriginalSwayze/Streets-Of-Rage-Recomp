@@ -86,6 +86,11 @@ In all three games:
   FLAC, WAV, M4A/AAC or WMA (Windows decodes them); the Music files setting turns them off
 * A launcher and pause menu in each game's own colours, with its own music and sounds
 
+In Streets of Rage 2:
+
+* A **third player** (experimental, off by default): with three controllers, Start on the third
+  joins a round as a third fighter
+
 In Streets of Rage 3:
 
 * **Bare Knuckle III**, the Japanese original with its story, as an edition (also in English

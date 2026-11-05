@@ -152,6 +152,13 @@ extern uint16_t pad_state[2];           /* PAD_* bits, 1 = pressed */
 typedef struct { uint8_t data[3], ctrl[3]; } IoState;   /* I/O port data and direction registers */
 extern IoState io;
 
+/* The third fighter's frame (third.c): sprites reach it through tile numbers from
+ * VDP_THIRD_TILE, which are the planes' tables in video memory, never sprite graphics. */
+#define VDP_THIRD_TILE 0x600
+#define VDP_THIRD_TILES 80
+extern uint8_t vdp_third_tiles[VDP_THIRD_TILES * 32];
+extern bool vdp_third_on;
+
 uint8_t io_read8(uint32_t a);
 void    io_frame(void);                 /* a frame starts: the 6-button pads' TH count starts over */
 void    io_write8(uint32_t a, uint8_t v);

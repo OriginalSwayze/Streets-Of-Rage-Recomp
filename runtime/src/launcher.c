@@ -814,9 +814,10 @@ static const int tab_count[TABS] = { 9, 5, 8 + (GAME_EDITION_COUNT > 1), 7, 4, 4
       { ROW_OPTION, "Free specials", OPT_CHEAT_SPECIALS, "Special moves cost no health when they land." },
       { ROW_OPTION, "Infinite time", OPT_CHEAT_TIME, "The round timer never runs down." },
       { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." },
-      { ROW_OPTION, "Hidden options", OPT_CHEAT_UNLOCK, "Options gets Very Easy and Mania, up to 9 lives and a stage select." } },
+      { ROW_OPTION, "Hidden options", OPT_CHEAT_UNLOCK, "Options gets Very Easy and Mania, up to 9 lives and a stage select." },
+      { ROW_OPTION, "Third player", OPT_THIRD, "Experimental: a third controller's Start joins the round as a third fighter." } },
 };
-static const int tab_count[TABS] = { 9, 5, 8, 7, 4, 6 };
+static const int tab_count[TABS] = { 9, 5, 8, 7, 4, 7 };
 #else
     { { ROW_FIGHTER, "Axel", 0, "His hair, top, jeans and skin in any colour, still or animated." },
       { ROW_FIGHTER, "Adam", 1, "His vest, trousers, skin and shoes in any colour, still or animated." },

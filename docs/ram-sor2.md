@@ -36,6 +36,22 @@ attack power cheats.
 | `$FFFC3C` | byte | round timer, BCD seconds (set to `$99` with `move.w #$9900` at the start of each life) |
 | `$FFFD10` | byte | nonzero during the demo: `sub_00089E` then plays the recorded pads from `$FFFD20` |
 
+## The third fighter
+
+`runtime/src/third.c`, with `settings.third_player`. `sub_00B4CC` is the whole fighter update:
+a2 the fighter, a1 the other one, d7 the pad (held, pressed), called from the play loops at
+`$005DE4`, `$00766A` and `$007A06`. The third runs on it from slot `$FFF600`. Enemy-only loops
+and searches are held below that slot (`$00DD9E`, `$00E3B4`, `$00E426`, `$00E508`, `$00E526`,
+`$00E752`); the fighters' attacks and the sprite builder cover it as they are. The enemies'
+attacks loop over two players (`$004FC2`, extended at `$00511E`), and `$00F282`/`$00F3A8` pick
+whom to go for, with `sub_00E624` saying whether player 2 is there.
+
+The V blank streams frames only for `$FFEF00`, `$FFF000` and `$FFF100`, 80 tiles each, and
+video memory is full, so the third's frame goes to `vdp_third_tiles`, which sprites reach
+through tile numbers from `$600` (the planes' tables: never sprite graphics). All four
+fighters share palette 0. A new area clears the slot (`sub_00DD12`): the fighter is put back
+with the health and lives it had.
+
 ## Widescreen
 
 The game is written for 320 pixels; games/sor2/patches.json moves its screen edges out by the

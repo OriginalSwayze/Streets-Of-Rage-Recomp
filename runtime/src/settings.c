@@ -112,6 +112,7 @@ void settings_load(const char *path) {
         else if (!strcmp(k, "cheat_specials")) settings.cheat_specials = parse_bool(v);
         else if (!strcmp(k, "cheat_time")) settings.cheat_time = parse_bool(v);
         else if (!strcmp(k, "cheat_unlock")) settings.cheat_unlock = parse_bool(v);
+        else if (!strcmp(k, "third_player")) settings.third_player = parse_bool(v);
         else if (!strcmp(k, "cheat_weapons")) settings.cheat_weapons = parse_bool(v);
         else if (!strcmp(k, "cheat_attack")) settings.cheat_attack = atoi(v);
         else if (!strcmp(k, "cheat_speed")) settings.cheat_speed = atoi(v);
@@ -220,6 +221,7 @@ void settings_save(const char *path) {
     fprintf(f, "cheat_specials=%d\n", settings.cheat_specials);
     fprintf(f, "cheat_time=%d\n", settings.cheat_time);
     fprintf(f, "cheat_unlock=%d\n", settings.cheat_unlock);
+    fprintf(f, "third_player=%d\n", settings.third_player);
     fprintf(f, "cheat_weapons=%d\n", settings.cheat_weapons);
     fprintf(f, "cheat_attack=%d\n", settings.cheat_attack);
     fprintf(f, "cheat_speed=%d\n", settings.cheat_speed);
@@ -324,6 +326,7 @@ void settings_option_text(int id, char *out, size_t n) {
     case OPT_CHEAT_SPECIALS: snprintf(out, n, "%s", settings.cheat_specials ? "On" : "Off"); break;
     case OPT_CHEAT_TIME:    snprintf(out, n, "%s", settings.cheat_time ? "On" : "Off"); break;
     case OPT_CHEAT_UNLOCK:  snprintf(out, n, "%s", settings.cheat_unlock ? "On" : "Off"); break;
+    case OPT_THIRD:         snprintf(out, n, "%s", settings.third_player ? "On" : "Off"); break;
     case OPT_CHEAT_WEAPONS: snprintf(out, n, "%s", settings.cheat_weapons ? "On" : "Off"); break;
     case OPT_CHEAT_ATTACK:  snprintf(out, n, "%s", attack_names[settings.cheat_attack & 3]); break;
     case OPT_CHEAT_SPEED:   snprintf(out, n, "%s", speed_names[settings.cheat_speed % 3]); break;
@@ -443,6 +446,7 @@ void settings_option_change(int id, int dir) {
     case OPT_CHEAT_SPECIALS: settings.cheat_specials = !settings.cheat_specials; break;
     case OPT_CHEAT_TIME:    settings.cheat_time = !settings.cheat_time; break;
     case OPT_CHEAT_UNLOCK:  settings.cheat_unlock = !settings.cheat_unlock; break;
+    case OPT_THIRD:         settings.third_player = !settings.third_player; break;
     case OPT_CHEAT_WEAPONS: settings.cheat_weapons = !settings.cheat_weapons; break;
     case OPT_CHEAT_ATTACK:  settings.cheat_attack = settings_cycle(settings.cheat_attack, 4, dir); break;
     case OPT_CHEAT_SPEED:   settings.cheat_speed = settings_cycle(settings.cheat_speed, 3, dir); break;

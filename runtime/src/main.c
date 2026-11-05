@@ -4,6 +4,7 @@
  *   headless extras: --press "FRAME:BUTTONS[:FRAMES],..." --shots EVERY DIR --widescreen 0|1 */
 #include "genesis.h"
 #include "settings.h"
+#include "third.h"
 #include "png.h"
 #include "launcher.h"
 #include "ost.h"
@@ -419,6 +420,7 @@ int main(int argc, char **argv) {
         }
         else if (!strcmp(argv[i], "--press") && i + 1 < argc) parse_presses(argv[++i], 0);
         else if (!strcmp(argv[i], "--press2") && i + 1 < argc) parse_presses(argv[++i], 1);
+        else if (!strcmp(argv[i], "--press3") && i + 1 < argc) { parse_presses(argv[++i], 2); settings.third_player = true; test_overrides = true; }
         else if (!strcmp(argv[i], "--press-file") && i + 1 < argc) {
             /* --press-file F: --press entries from a file, for scripts too long for a command line. */
             FILE *pf = fopen(argv[++i], "rb");
@@ -676,6 +678,7 @@ int main(int argc, char **argv) {
             if (profile_frames && f == headless_frames - profile_frames) pc_profile = calloc(ROM_SIZE / 2, 4);
             pad_state[0] = autoplay && f >= autoplay ? ai_pilot_pad() : scripted_pad(f, 0);
             pad_state[1] = settings.player2 ? ai_pad() : scripted_pad(f, 1);
+            third_pad = scripted_pad(f, 2);
             if (f == check_from) len_a = state_save(snap_a, sizeof snap_a);
             if (f == check_to) len_b = state_save(snap_b, sizeof snap_b);
             /* The pads as played (the AI partner's too), for replaying the checked frames. */
@@ -1098,6 +1101,7 @@ int main(int argc, char **argv) {
                     bool two = !settings.player2 && pads_count() >= 2;
                     pad_state[0] = input_pad_bits(keys, two ? pads_player(0) : pads_active());
                     pad_state[1] = settings.player2 ? ai_pad() : two ? input_pad_bits(NULL, pads_player(1)) : 0;
+                    third_pad = pads_count() >= 3 ? input_pad_bits(NULL, pads_player(2)) : 0;
                     rewind_push(PADS_BOTH());
                     cheats_frame();
                     machine_run_frame(framebuffer, FB_W);

@@ -10,6 +10,9 @@
 #include "m68k.h"
 #include "fighters.h"
 
+uint8_t vdp_third_tiles[VDP_THIRD_TILES * 32];
+bool vdp_third_on;
+
 /* Debugging (--trace-vram LO HI): log CPU writes and DMAs that touch VRAM [lo, hi). */
 uint32_t vdp_trace_lo, vdp_trace_hi;
 static void trace_vram(const char *kind, uint32_t dst, uint32_t len, uint32_t src) {
@@ -476,7 +479,9 @@ static void draw_sprites(uint8_t *out, int w, int extra, int line) {
                 int i = x + sx + extra;
                 int cx = (attr & 0x0800) ? hcells * 8 - 1 - sx : sx;
                 int tile = ((attr & 0x7FF) + (cx >> 3) * vcells + (sy >> 3)) & 0x7FF;
-                uint8_t b = vdp.vram[(tile * 32 + (sy & 7) * 4 + ((cx & 7) >> 1)) & 0xFFFF];
+                uint8_t b = vdp_third_on && tile >= VDP_THIRD_TILE && tile < VDP_THIRD_TILE + VDP_THIRD_TILES
+                          ? vdp_third_tiles[(tile - VDP_THIRD_TILE) * 32 + (sy & 7) * 4 + ((cx & 7) >> 1)]
+                          : vdp.vram[(tile * 32 + (sy & 7) * 4 + ((cx & 7) >> 1)) & 0xFFFF];
                 int c = (cx & 1) ? (b & 0xF) : (b >> 4);
                 if (!c) continue;
                 uint8_t v = (uint8_t)(((attr >> 9) & 0x30) | c | ((attr & 0x8000) ? PRI : 0));
