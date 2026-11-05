@@ -354,6 +354,10 @@ static struct {
 static bool music_to_title(void) {
     vdp_opts.extra_width = 0;
     widescreen_patches(0);
+    /* At the console's own speed: overclocked, the parked driver loses Streets of Rage 3's
+     * instrument writes (algorithm, panning, volume), so FM channels play wrong or not at
+     * all. Nothing here needs the speed; music_stop() puts the setting back. */
+    machine_opts.overclock = 100;
     memset(bus.sram, 0xFF, SRAM_SIZE);
     machine_reset();
     run_frames(music_fb, 1000, 0);
@@ -524,6 +528,7 @@ static void music_stop(void) {
     music_sram = NULL;
     vdp_opts.extra_width = settings_extra_width();
     widescreen_patches(vdp_opts.extra_width);
+    machine_opts.overclock = settings.overclock;
     pad_state[0] = 0;
 }
 

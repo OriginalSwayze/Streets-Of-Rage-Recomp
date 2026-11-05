@@ -554,16 +554,18 @@ uint32_t vdp_compose(uint32_t a, uint32_t b, uint32_t s, uint16_t backdrop, bool
     return rgb(color, mode);
 }
 
-/* Whether a plane's scroll on this line holds still at 0 (within 8): unchanged while the
- * camera (vdp_opts.still_cam) has gone 32 pixels or more since it last changed. A plane that
- * follows the camera passes 0 every 1024 pixels, but changes as the camera does. */
+/* Whether a plane's scroll on this line holds still: unchanged while the camera
+ * (vdp_opts.still_cam) has gone 32 pixels or more since it last changed. A plane that follows
+ * the camera changes as the camera does. Plane B has to hold at 0 (within 8), where its
+ * pictures drawn for 320 columns are. Plane A can stop anywhere: on Streets of Rage 3's pier
+ * it stays where the ship left it (-831), with the ship's hull just left of the 4:3 view. */
 static bool still_strip(int plane, int line, int hs) {
     static int16_t last[2][256];
     static int since[2][256];
     line &= 255;
     if (hs != last[plane][line]) { last[plane][line] = (int16_t)hs; since[plane][line] = vdp_opts.still_cam; }
     int moved = vdp_opts.still_cam - since[plane][line];
-    return (hs <= 8 || hs >= 1024 - 8) && (moved >= 32 || moved <= -32);
+    return (plane == 0 || hs <= 8 || hs >= 1024 - 8) && (moved >= 32 || moved <= -32);
 }
 
 void vdp_render_line(int line, uint32_t *dst) {
