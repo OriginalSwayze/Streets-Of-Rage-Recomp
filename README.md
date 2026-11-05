@@ -72,7 +72,8 @@ In all three games:
 * **Neon glow** (the scenery's signs and lamps light up) and an **HDR look**
 * **AI partner** for player 2, or a second controller (in Streets of Rage 2, pick 2 PLAYERS)
 * **Cheats**: infinite health and lives, attack power up to one-hit kills; the timer and the
-  specials where the game has them
+  specials where the game has them; the **hidden options** of each game's own Options screen
+  (round select and lives; in Streets of Rage 2 also Very Easy and Mania) without the codes
 * **Combat info** (damage numbers, health bars over ordinary enemies), rumble, a play timer and stats
 * **Fighters' colours**: every playable fighter's clothes, hair and skin in any of the
   Genesis' 512 colours, still or animated, with a live preview
@@ -89,6 +90,8 @@ In Streets of Rage 3:
 
 * **Bare Knuckle III**, the Japanese original with its story, as an edition (also in English
   with Twilight Translations' patch, which Setup applies): see [above](#streets-of-rage-collection)
+* A **six-button pad**, as the game reads on a Mega Drive: Z for the back attack, X for the
+  full-strength blitz moves
 
 ## Testing
 
@@ -153,6 +156,7 @@ Default controls (all remappable in the pause menu's Controls page):
 | Move | Arrows | D-pad (the left stick always works too) |
 | A / B / C | Z / X / C | X / A / B |
 | Start | Enter | Start |
+| X / Y / Z (Streets of Rage 3) | A / S / D | Y / left stick / right stick |
 | Rewind (hold) | Backspace | LB |
 | Fast-forward (hold) | Tab | RB |
 | Pause menu | Esc | Back (Guide and Esc always work too) |

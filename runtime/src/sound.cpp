@@ -304,10 +304,19 @@ void sound_end_frame(void) {
     bool bass = sound_bass_db != 0;
     if (bass && (shelf.db != sound_bass_db || shelf.rate != sound_out_rate)) shelf.make(sound_bass_db, sound_out_rate);
     if (!sound_quality) {
-        // Original: only the bass setting, then clipped as the mix is.
-        if (bass)
+        // Original: only the bass setting, then clipped as the mix is. While a music file
+        // plays, the DC filter too: the stopped song's DAC can hold a level under it.
+        bool dc = music_playing();
+        if (bass || dc)
             for (int i = 0; i < sound_out_count * 2; i++) {
-                float y = shelf.run(i & 1, sound_out[i]);
+                float y = sound_out[i];
+                if (dc) {
+                    int c = i & 1;
+                    dc_out[c] = y - dc_in[c] + 0.9985f * dc_out[c];
+                    dc_in[c] = y;
+                    y = dc_out[c];
+                }
+                if (bass) y = shelf.run(i & 1, y);
                 sound_out[i] = int16_t(y < -32768 ? -32768 : y > 32767 ? 32767 : y);
             }
         return;

@@ -24,6 +24,7 @@
 
 #include "genesis.h"
 #include "settings.h"
+#include "recomp_rt.h"
 
 int patch_no_damage;
 int patch_attack;
@@ -222,3 +223,57 @@ void cheats_frame(void) {
     apply(codes, code_count);
 }
 
+
+/* ---- Hidden options ------------------------------------------------------------------------ *
+ * Each game's Options screen has entries its makers kept behind a code; the code sets a flag
+ * the screen reads. With cheat_unlock the flag is set where the code would set it, as the
+ * screen starts, so whatever pads are held:
+ *   Streets of Rage:   A+B+C+Right held on controller 2 as Options is picked ($001164) sets
+ *                      $FFFA7B: the round select and the lives setting.
+ *   Streets of Rage 2: A+B held on controller 2 as the Options screen starts ($00FC58) sets
+ *                      $FFA902: Very Easy and Mania, up to 9 lives and the stage select.
+ *   Streets of Rage 3: Up+B held as Options is picked on the title menu ($013DC2 in the US
+ *                      edition: game mode $1C) sets $FFF525: the stage select. Found by its
+ *                      bytes, as the Japanese editions have it elsewhere. */
+static uint32_t unlock_original(uint32_t pc) {
+    RecompBlock fn = machine_generated(pc);
+    return fn ? fn(pc) : (pc | BAIL);
+}
+
+#if GAME_SOR == 1
+static uint32_t unlock_hook(uint32_t pc) {
+    if (settings.cheat_unlock) bus.ram[0xFA7B] = 1;
+    return unlock_original(pc);
+}
+#elif GAME_SOR == 2
+static uint32_t unlock_hook(uint32_t pc) {
+    if (settings.cheat_unlock && !peek16(0xA902)) poke16(0xA902, 1);
+    return unlock_original(pc);
+}
+#elif GAME_SOR == 3
+static uint16_t unlock_flag;
+static uint32_t unlock_hook(uint32_t pc) {
+    if (settings.cheat_unlock && peek16(0xFB00) == 0x1C) bus.ram[unlock_flag] = 1;
+    return unlock_original(pc);
+}
+#endif
+
+void cheats_hooks(void) {
+#if GAME_SOR == 1
+    machine_override(0x001174, unlock_hook);   /* after the check at $001164, either way */
+#elif GAME_SOR == 2
+    machine_override(0x00FC80, unlock_hook);   /* after the check at $00FC58, either way */
+#elif GAME_SOR == 3
+    /* cmpi.w #$1C,($FB00).w; bne.s; btst #4,($F704).w; beq.s; btst #0,($F704).w; beq.s;
+     * move.b #1,($xxxx).w; move.l #sound,d0; jsr (sound).l: hooked after it, where the
+     * ways meet. */
+    static const uint8_t code[] = { 0x0C, 0x78, 0x00, 0x1C, 0xFB, 0x00, 0x66, 0x22, 0x08, 0x38, 0x00, 0x04, 0xF7, 0x04,
+                                    0x67, 0x1A, 0x08, 0x38, 0x00, 0x00, 0xF7, 0x04, 0x67, 0x12, 0x11, 0xFC, 0x00, 0x01 };
+    for (uint32_t a = 0; a + 42 <= ROM_SIZE; a += 2)
+        if (!memcmp(bus.rom + a, code, sizeof code)) {
+            unlock_flag = (uint16_t)(bus.rom[a + 28] << 8 | bus.rom[a + 29]);
+            machine_override(a + 42, unlock_hook);
+            break;
+        }
+#endif
+}

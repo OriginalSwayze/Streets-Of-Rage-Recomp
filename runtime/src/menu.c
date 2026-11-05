@@ -53,11 +53,11 @@ static const Item tab_items[TABS][MAX_ROWS] = {
 #endif
 #if GAME_SOR == 3
     { { ITEM_OPTION, "Infinite health", OPT_CHEAT_HEALTH }, { ITEM_OPTION, "Infinite lives", OPT_CHEAT_LIVES },
-      { ITEM_OPTION, "Attack power", OPT_CHEAT_ATTACK } },
+      { ITEM_OPTION, "Attack power", OPT_CHEAT_ATTACK }, { ITEM_OPTION, "Hidden options", OPT_CHEAT_UNLOCK } },
 #else
     { { ITEM_OPTION, "Infinite health", OPT_CHEAT_HEALTH }, { ITEM_OPTION, "Infinite lives", OPT_CHEAT_LIVES },
       { ITEM_OPTION, GAME_SOR == 2 ? "Free specials" : "Infinite specials", OPT_CHEAT_SPECIALS }, { ITEM_OPTION, "Infinite time", OPT_CHEAT_TIME },
-      { ITEM_OPTION, "Attack power", OPT_CHEAT_ATTACK } },
+      { ITEM_OPTION, "Attack power", OPT_CHEAT_ATTACK }, { ITEM_OPTION, "Hidden options", OPT_CHEAT_UNLOCK } },
 #endif
     { { ITEM_OPTION, "Volume", OPT_VOLUME }, { ITEM_OPTION, "Audio", OPT_AUDIO }, { ITEM_OPTION, "Bass", OPT_BASS },
       { ITEM_OPTION, "Music files", OPT_MUSIC_FILES },
@@ -68,7 +68,7 @@ static const Item tab_items[TABS][MAX_ROWS] = {
 #endif
     },
 };
-static const int tab_count[TABS] = { 9, 10, 5, FIGHTERS, GAME_SOR == 3 ? 3 : 5, 8 + (GAME_EDITION_COUNT > 1) };
+static const int tab_count[TABS] = { 9, 10, 5, FIGHTERS, GAME_SOR == 3 ? 4 : 6, 8 + (GAME_EDITION_COUNT > 1) };
 
 /* ---- Look: the game's HUD, a yellow frame on charcoal, red bars (as the launcher) ------- */
 #include "theme.h"
@@ -131,6 +131,9 @@ static const char *about(const Item *it) {
     case OPT_CHEAT_SPECIALS: return GAME_SOR == 2 ? "Special moves cost no health when they land."
                                                   : "There is always a police car to call: the special attack never runs out.";
     case OPT_CHEAT_TIME: return "The round timer stays at 99, so time never runs out.";
+    case OPT_CHEAT_UNLOCK: return GAME_SOR == 3 ? "The game's own Options screen gets its stage select, as holding Up+B while picking Options on the title menu gives it."
+                                : GAME_SOR == 2 ? "The game's own Options screen gets Very Easy and Mania, up to 9 lives and a stage select, as holding A+B on controller 2 gives them."
+                                : "The game's own Options screen gets its round select and lives setting, as holding A+B+C+Right on controller 2 gives them.";
     case OPT_CHEAT_SPIRIT: return "Spirit power stays full, so the spirits can be called and kept as long as you like.";
     case OPT_CHEAT_WEAPONS: return "Weapons never wear out: a weapon keeps its uses however often it strikes.";
     case OPT_CHEAT_ATTACK: return "Enemies take double or four times the damage from the players' hits, or fall to a single one. Bosses too.";

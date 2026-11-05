@@ -15,4 +15,8 @@ void cheats_clear_codes(void);
 /* Called once per frame before the game runs: applies the enabled cheats. */
 void cheats_frame(void);
 
+/* After every machine reset (machine_override): the Options screens' hidden entries, for
+ * settings.cheat_unlock. */
+void cheats_hooks(void);
+
 #endif

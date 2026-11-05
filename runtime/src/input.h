@@ -8,7 +8,16 @@
 #include <stdint.h>
 #include <stdio.h>
 
-enum { IN_UP, IN_DOWN, IN_LEFT, IN_RIGHT, IN_A, IN_B, IN_C, IN_START, IN_REWIND, IN_MENU, IN_FAST, IN_COUNT };
+#include "game.h"
+
+/* Streets of Rage 3 reads a six-button pad (io.c): X, Y and Z have bindings too. */
+#define INPUT_SIX_BUTTON (GAME_SOR == 3)
+
+enum { IN_UP, IN_DOWN, IN_LEFT, IN_RIGHT, IN_A, IN_B, IN_C, IN_START,
+#if INPUT_SIX_BUTTON
+       IN_X, IN_Y, IN_Z,
+#endif
+       IN_REWIND, IN_MENU, IN_FAST, IN_COUNT };
 
 extern const char *const input_labels[IN_COUNT];   /* "Up", "A button", "Rewind", ... */
 

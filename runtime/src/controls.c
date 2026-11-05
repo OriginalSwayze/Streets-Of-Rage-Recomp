@@ -24,7 +24,8 @@
 #define KEY_X   (PANEL_X + 330)
 #define PAD_X   (PANEL_X + 510)
 #define LIST_Y  (PANEL_Y + 128)
-#define ROW_H   33
+#define ROW_H   (IN_COUNT > 11 ? 26 : 33)   /* Streets of Rage 3's X, Y and Z rows too */
+#define TEXT_Y  (IN_COUNT > 11 ? 3 : 7)
 
 static bool open_, capturing;
 static int selected;
@@ -132,20 +133,20 @@ void controls_render(double time_s) {
             ui_fill_rect(LIST_X - 14, y + 1, 5, ROW_H - 2, yellow, 1);
         }
         Rgb lc = focus ? rgb_hex(0xFFFFFF) : rgb_hex(0xC5CAD5);
-        if (i == ROW_RESET) { ui_draw_text("Reset to defaults", "Segoe UI", 17, 400, 0, LIST_X, y + 7, lc, lc, 1); continue; }
-        if (i == ROW_BACK) { ui_draw_text("Back", "Segoe UI", 17, 400, 0, LIST_X, y + 7, lc, lc, 1); continue; }
-        ui_draw_text(input_labels[i], "Segoe UI", 17, 400, 0, LIST_X, y + 7, lc, lc, 1);
+        if (i == ROW_RESET) { ui_draw_text("Reset to defaults", "Segoe UI", 17, 400, 0, LIST_X, y + TEXT_Y, lc, lc, 1); continue; }
+        if (i == ROW_BACK) { ui_draw_text("Back", "Segoe UI", 17, 400, 0, LIST_X, y + TEXT_Y, lc, lc, 1); continue; }
+        ui_draw_text(input_labels[i], "Segoe UI", 17, 400, 0, LIST_X, y + TEXT_Y, lc, lc, 1);
         if (focus && capturing) {
             /* Blinking prompt in place of the two bindings. */
             float a = .55f + .45f * (float)((int)(now * 2.5) & 1);
             ui_draw_text("Press a key or a controller button\xE2\x80\xA6   Esc cancels", "Segoe UI Semibold", 15, 600, 0,
-                         KEY_X, y + 9, rgb_hex(0xF3DDA4), rgb_hex(0xF3DDA4), a);
+                         KEY_X, y + TEXT_Y + 2, rgb_hex(0xF3DDA4), rgb_hex(0xF3DDA4), a);
             continue;
         }
         Rgb vc = focus ? yellow : C_VALUE;
         if (focus && now < captured_until) vc = rgb_hex(0x8FD19E);
-        ui_draw_text(input_key_name(i), "Segoe UI Semibold", 16.5f, 600, 0, KEY_X, y + 7, vc, vc, 1);
-        ui_draw_text(input_button_name(i), "Segoe UI Semibold", 16.5f, 600, 0, PAD_X, y + 7, vc, vc, 1);
+        ui_draw_text(input_key_name(i), "Segoe UI Semibold", 16.5f, 600, 0, KEY_X, y + TEXT_Y, vc, vc, 1);
+        ui_draw_text(input_button_name(i), "Segoe UI Semibold", 16.5f, 600, 0, PAD_X, y + TEXT_Y, vc, vc, 1);
     }
     const char *keys = "\xE2\x86\x91\xE2\x86\x93 select     Enter  change     Esc  back     "
                        "Esc, F-keys and the menus' own keys always work";

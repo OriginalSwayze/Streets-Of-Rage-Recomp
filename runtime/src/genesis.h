@@ -153,6 +153,7 @@ typedef struct { uint8_t data[3], ctrl[3]; } IoState;   /* I/O port data and dir
 extern IoState io;
 
 uint8_t io_read8(uint32_t a);
+void    io_frame(void);                 /* a frame starts: the 6-button pads' TH count starts over */
 void    io_write8(uint32_t a, uint8_t v);
 
 /* ---- Z80 (z80bus.c) and sound chips (sound.cpp) ------------------------------ */

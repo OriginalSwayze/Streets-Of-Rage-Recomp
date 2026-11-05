@@ -257,9 +257,11 @@ void widescreen_frame(void) {
          * The map is a table of 256-pixel blocks, 16 a row (plane A's at $FF8C00, RAM offsets;
          * zero past the map's end, the first block being at offset 0 too): it ends after its
          * last block (round 1's first area: 8 blocks, the camera stopping at $6C0). Its HUD is
-         * plane B's top 40 lines (scrolled 0; the street's background is below them). */
+         * plane B's top 40 lines (scrolled 0; the street's background is below them). The
+         * game mode ($FFFB01) is $0E in play; the round's title, the bonus tally and the
+         * story scenes between rounds are other modes, drawn for 320 pixels. */
         uint16_t s = rd16(0xFFDF00);
-        bool round = s && s != 0x5C && s != 0x5E && s != 0x5A && !rd8(0xFFFB13);
+        bool round = s && s != 0x5C && s != 0x5E && s != 0x5A && !rd8(0xFFFB13) && rd8(0xFFFB01) == 0x0E;
         int cam = (int16_t)rd16(0xFFF710), extra = vdp_opts.extra_width;
         int blocks = 0;
         for (int row = 0; row < 16 && round; row++)
@@ -289,7 +291,10 @@ void widescreen_frame(void) {
         uint16_t s = rd16(0xFFEF00);
         int stage = rd16(0xFFFC42), section = rd16(0xFFFC44), extra = vdp_opts.extra_width;
         int cam = -(int16_t)rd16(0xFFFC22), before = -extra, after = -extra;
-        bool round = extra && s && s != 0x32 && s != 0x34 && s != 0x36;   /* $32: the round's title card */
+        /* $32: the round's title card. The stage's bonus tally keeps the player's state; its
+         * text attribute ($FFFC12, $8760 in play) is $A760 then. */
+        bool tally = rd8(0xFFFC12) & 0x20;
+        bool round = extra && s && s != 0x32 && s != 0x34 && s != 0x36 && !tally;
         if (round) before = extra - cam;
         if (round && !rd8(0xFFFD10) && stage >= 0 && stage < 16 && !(stage & 1) && section >= 0 && section < 64) {
             uint32_t ptr = 0x003996 + (uint32_t)stage, table = ptr + (uint32_t)(int16_t)rd16(ptr);
@@ -314,12 +319,14 @@ void widescreen_frame(void) {
          * and the other story scenes are drawn for 320 pixels, with what comes next waiting
          * beside them (Mr. X's hands in 2's). A player slot is in use from its first state
          * except the ones for "not in" ($34/$36 in 2, and $32 its round title card, where $30 is a
-         * swing; $5A-$5E in 3). */
+         * swing; $5A-$5E in 3, and only in play mode, $0E). */
         bool playing = false;
         for (int k = 0; k < 2; k++) {
             uint16_t s = rd16(GAME_SOR == 3 ? 0xFFDF00 + k * 0x100 : 0xFFEF00 + k * 0x100);
             playing |= GAME_SOR == 3 ? s && s != 0x5A && s != 0x5C && s != 0x5E : s && s != 0x32 && s != 0x34 && s != 0x36;
         }
+        if (GAME_SOR == 3 && rd8(0xFFFB01) != 0x0E) playing = false;
+        if (GAME_SOR == 2 && (rd8(0xFFFC12) & 0x20)) playing = false;   /* the bonus tally */
         vdp_opts.mask_sides = GAME_SOR >= 2 && !playing;
         return;
     }

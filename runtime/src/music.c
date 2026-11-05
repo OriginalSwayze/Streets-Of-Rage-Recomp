@@ -194,6 +194,11 @@ void music_stop(void) {
     SDL_UnlockMutex(lock);
 }
 
+/* The game's song is silenced for a file (which may have ended since): until the next song. */
+static bool replaced;
+
+bool music_playing(void) { return replaced || now != NULL; }
+
 static void start_fade(void) {
     ensure_lock();
     SDL_LockMutex(lock);
@@ -207,6 +212,7 @@ static uint16_t on_request(uint16_t request, uint16_t silent) {
     ensure_lock();
     SDL_LockMutex(lock);
     bool ours = music_files_on && song >= 0 && paths[song][0];
+    replaced = ours;
     if (ours) { if (song != now_song) play_locked(song, 0); }   /* asked again while it plays: it plays on */
     else play_locked(-1, 0);
     SDL_UnlockMutex(lock);
@@ -266,26 +272,21 @@ static uint32_t request_hook(uint32_t pc) {
 }
 #elif defined(UPDATE_PC)
 static uint32_t update_hook(uint32_t pc) {
-    bool stopped = false;
     for (int k = 0; k < 3; k++) {
         uint8_t req = bus.ram[QUEUE + k];
-        if (req >= 0x81 && req <= 0x9F) {
-            bus.ram[QUEUE + k] = (uint8_t)on_request(req, 0xE1);
-            stopped |= bus.ram[QUEUE + k] == 0xE1;
-        }
+        if (req >= 0x81 && req <= 0x9F) bus.ram[QUEUE + k] = (uint8_t)on_request(req, 0xE1);
         else if (req == 0xE1 || req == 0xE4) music_stop();
         else if (req == 0xE0) start_fade();
     }
-    /* The drums' DAC stays on at its last sample after the stop, and the driver turns it on
-     * again every frame: a constant level under the file (5700 of 32767, a click, and in
-     * Original no DC filter takes it out). While a file plays the sixth channel is FM,
-     * silent since the stop. */
-    if (stopped || now) { ym_write(0, 0x2B); ym_write(1, 0x00); }
+    /* The drums' DAC holds its last sample after the stop: a constant level under the file,
+     * which the mix's DC filter takes out (sound_end_frame; in Original too while a file
+     * plays). The DAC stays on: the voices play through it. */
     return run_original(pc);
 }
 #endif
 
 void music_hooks(void) {
+    replaced = false;
 #ifdef REQUEST_PC
     machine_override(REQUEST_PC, request_hook);
 #elif defined(UPDATE_PC)

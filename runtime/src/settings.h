@@ -48,13 +48,14 @@ typedef struct {
     int  ost_mode;                      /* soundtrack player: OST_MODE_* (launcher.c) */
     int  ost_track;                     /* the song it played last, or -1 for the title theme */
     int  volume;                        /* 0-100: game sound and launcher music */
-    int  bind_key[11];                  /* input.h IN_*: SDL scancode for each action */
-    int  bind_pad[11];                  /* input.h IN_*: SDL game controller button for each action */
+    int  bind_key[16];                  /* input.h IN_*: SDL scancode for each action */
+    int  bind_pad[16];                  /* input.h IN_*: SDL game controller button for each action */
     bool cheat_health;                  /* infinite health: no damage, health held full */
     bool cheat_spirit;                  /* infinite spirit power */
     bool cheat_lives;                   /* lives held at 3 or more (both players) */
     bool cheat_specials;                /* a special attack always left (both players) */
     bool cheat_time;                    /* the round timer held at 99 */
+    bool cheat_unlock;                  /* the Options screen's hidden entries (cheats.c) */
     bool cheat_weapons;                 /* weapons never break */
     int  cheat_attack;                  /* attack power: 0 normal, 1 double, 2 quadruple, 3 one-hit kills */
     int  cheat_speed;                   /* move speed: 0 normal, 1 fast (1.5x), 2 very fast (2x) */
@@ -81,7 +82,7 @@ enum { OPT_WIDESCREEN, OPT_ASPECT, OPT_SIDES, OPT_FULLSCREEN, OPT_INTEGER, OPT_W
        OPT_SHARPEN, OPT_SCALER, OPT_LIGHTING, OPT_AUDIO, OPT_BASS, OPT_MUSIC_FILES, OPT_ELEMENTS, OPT_FOOTSTEPS, OPT_WATER,
        OPT_TEXPACK, OPT_DUMP,
        OPT_COMBAT, OPT_RUMBLE, OPT_FAST, OPT_TIMER, OPT_RANDOMIZER,
-       OPT_PLAYER2, OPT_CHEAT_LIVES, OPT_CHEAT_SPECIALS, OPT_CHEAT_TIME, OPT_HDR,
+       OPT_PLAYER2, OPT_CHEAT_LIVES, OPT_CHEAT_SPECIALS, OPT_CHEAT_TIME, OPT_CHEAT_UNLOCK, OPT_HDR,
        OPT_EDITION };                   /* which edition of the game is played (switching restarts it) */
 enum { OST_MODE_ALL, OST_MODE_REPEAT, OST_MODE_SHUFFLE, OST_MODE_COUNT };
 void settings_set_volume_fraction(float v);         /* sets volume from a slider (0-1), in steps of 5 */                    /* all three cheats as presets: Off, Health, Health + spirit, All */

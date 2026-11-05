@@ -6,6 +6,7 @@
 #include "recomp_rt.h"
 #include "motion.h"
 #include "music.h"
+#include "cheats.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -223,6 +224,7 @@ void machine_reset(void) {
     recomp_init();
     music_stop();
     music_hooks();                      /* after recomp_init, which drops the overrides */
+    cheats_hooks();
 }
 
 /* Scheduler counters (snapshots are taken between frames, so the per-line ones are idle). */
@@ -304,6 +306,7 @@ static void run(int cycles) {
 
 void machine_run_frame(uint32_t *fb, int pitch) {
     sound_out_count = 0;
+    io_frame();
     if (vdp_opts.extra_width) widescreen_frame();
     int height = vdp_screen_height();
     for (int line = 0; line < LINES_NTSC; line++) {

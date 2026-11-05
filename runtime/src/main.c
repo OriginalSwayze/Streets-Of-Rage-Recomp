@@ -70,6 +70,8 @@ static void parse_presses(const char *spec, int player) {
             case 'L': p.bits |= PAD_LEFT; break;  case 'R': p.bits |= PAD_RIGHT; break;
             case 'A': p.bits |= PAD_A; break;     case 'B': p.bits |= PAD_B; break;
             case 'C': p.bits |= PAD_C; break;     case 'S': p.bits |= PAD_START; break;
+            case 'X': p.bits |= PAD_X; break;     case 'Y': p.bits |= PAD_Y; break;
+            case 'Z': p.bits |= PAD_Z; break;
             }
         }
         if (*c == ':') p.len = atoi(++c);
@@ -544,7 +546,7 @@ int main(int argc, char **argv) {
             poke_at_codes[poke_at_count++] = argv[++i];
         }
         else if (!strcmp(argv[i], "--cheat") && i + 1 < argc) {
-            /* --cheat health|spirit|weapons|double|quadruple|onehit|fast|veryfast: turn a built-in cheat on for this run. */
+            /* --cheat health|spirit|unlock|weapons|double|quadruple|onehit|fast|veryfast: turn a built-in cheat on for this run. */
             const char *c = argv[++i];
             test_overrides = true;
             if (!strcmp(c, "health")) settings.cheat_health = true;
@@ -552,6 +554,7 @@ int main(int argc, char **argv) {
             else if (!strcmp(c, "lives")) settings.cheat_lives = true;
             else if (!strcmp(c, "specials")) settings.cheat_specials = true;
             else if (!strcmp(c, "time")) settings.cheat_time = true;
+            else if (!strcmp(c, "unlock")) settings.cheat_unlock = true;
             else if (!strcmp(c, "weapons")) settings.cheat_weapons = true;
             else if (!strcmp(c, "double")) settings.cheat_attack = 1;
             else if (!strcmp(c, "quadruple")) settings.cheat_attack = 2;

@@ -5,33 +5,44 @@
 #include "genesis.h"
 #include "settings.h"
 
-_Static_assert(sizeof settings.bind_key / sizeof *settings.bind_key == IN_COUNT &&
-               sizeof settings.bind_pad / sizeof *settings.bind_pad == IN_COUNT, "settings.h binding arrays");
+_Static_assert(sizeof settings.bind_key / sizeof *settings.bind_key >= IN_COUNT &&
+               sizeof settings.bind_pad / sizeof *settings.bind_pad >= IN_COUNT, "settings.h binding arrays");
+
+#if INPUT_SIX_BUTTON
+#define SIX(...) __VA_ARGS__,
+#else
+#define SIX(...)
+#endif
 
 const char *const input_labels[IN_COUNT] = {
-    "Up", "Down", "Left", "Right", "A button", "B button", "C button", "Start", "Rewind (hold)", "Pause menu", "Fast-forward (hold)",
+    "Up", "Down", "Left", "Right", "A button", "B button", "C button", "Start",
+    SIX("X button", "Y button", "Z button")
+    "Rewind (hold)", "Pause menu", "Fast-forward (hold)",
 };
 
 /* settings.ini names. */
 static const char *const ini_names[IN_COUNT] = {
-    "up", "down", "left", "right", "a", "b", "c", "start", "rewind", "menu", "fast",
+    "up", "down", "left", "right", "a", "b", "c", "start", SIX("x", "y", "z") "rewind", "menu", "fast",
 };
 
 static const uint16_t pad_bit[IN_COUNT] = {
-    PAD_UP, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_A, PAD_B, PAD_C, PAD_START, 0, 0, 0,
+    PAD_UP, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_A, PAD_B, PAD_C, PAD_START, SIX(PAD_X, PAD_Y, PAD_Z) 0, 0, 0,
 };
 
 void input_defaults(void) {
     static const SDL_Scancode keys[IN_COUNT] = {
         SDL_SCANCODE_UP, SDL_SCANCODE_DOWN, SDL_SCANCODE_LEFT, SDL_SCANCODE_RIGHT,
         SDL_SCANCODE_Z, SDL_SCANCODE_X, SDL_SCANCODE_C, SDL_SCANCODE_RETURN,
+        SIX(SDL_SCANCODE_A, SDL_SCANCODE_S, SDL_SCANCODE_D)
         SDL_SCANCODE_BACKSPACE, SDL_SCANCODE_ESCAPE, SDL_SCANCODE_TAB,
     };
-    /* Xbox layout: the Genesis A, B, C row sits on X, A, B. */
+    /* Xbox layout: the Genesis A, B, C row sits on X, A, B; X, Y and Z (Streets of Rage 3)
+     * on Y and the two stick buttons. */
     static const SDL_GameControllerButton buttons[IN_COUNT] = {
         SDL_CONTROLLER_BUTTON_DPAD_UP, SDL_CONTROLLER_BUTTON_DPAD_DOWN,
         SDL_CONTROLLER_BUTTON_DPAD_LEFT, SDL_CONTROLLER_BUTTON_DPAD_RIGHT,
         SDL_CONTROLLER_BUTTON_X, SDL_CONTROLLER_BUTTON_A, SDL_CONTROLLER_BUTTON_B, SDL_CONTROLLER_BUTTON_START,
+        SIX(SDL_CONTROLLER_BUTTON_Y, SDL_CONTROLLER_BUTTON_LEFTSTICK, SDL_CONTROLLER_BUTTON_RIGHTSTICK)
         SDL_CONTROLLER_BUTTON_LEFTSHOULDER, SDL_CONTROLLER_BUTTON_BACK, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
     };
     for (int i = 0; i < IN_COUNT; i++) { settings.bind_key[i] = keys[i]; settings.bind_pad[i] = buttons[i]; }

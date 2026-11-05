@@ -795,9 +795,10 @@ static const Row tab_rows[TABS][9] = {
       { ROW_FIGHTER, "Zan", 3, "His jacket, trousers, shoes and metal head in any colour, still or animated." } },
     { { ROW_OPTION, "Infinite health", OPT_CHEAT_HEALTH, "Both players take no damage from enemies." },
       { ROW_OPTION, "Infinite lives", OPT_CHEAT_LIVES, "Both players always have at least two lives left." },
-      { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
+      { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." },
+      { ROW_OPTION, "Hidden options", OPT_CHEAT_UNLOCK, "The game's Options screen has its stage select, as when Up+B is held as it is picked." } },
 };
-static const int tab_count[TABS] = { 9, 5, 8 + (GAME_EDITION_COUNT > 1), 7, 4, 3 };
+static const int tab_count[TABS] = { 9, 5, 8 + (GAME_EDITION_COUNT > 1), 7, 4, 4 };
 #elif GAME_SOR == 2
     { { ROW_FIGHTER, "Max", 0, "His trousers, boots, belt and skin in any colour, still or animated." },
       { ROW_FIGHTER, "Axel", 1, "His hair, shirt, jeans, gloves and skin in any colour, still or animated." },
@@ -807,9 +808,10 @@ static const int tab_count[TABS] = { 9, 5, 8 + (GAME_EDITION_COUNT > 1), 7, 4, 3
       { ROW_OPTION, "Infinite lives", OPT_CHEAT_LIVES, "Both players always have at least three lives." },
       { ROW_OPTION, "Free specials", OPT_CHEAT_SPECIALS, "Special moves cost no health when they land." },
       { ROW_OPTION, "Infinite time", OPT_CHEAT_TIME, "The round timer never runs down." },
-      { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
+      { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." },
+      { ROW_OPTION, "Hidden options", OPT_CHEAT_UNLOCK, "Options gets Very Easy and Mania, up to 9 lives and a stage select." } },
 };
-static const int tab_count[TABS] = { 9, 5, 8, 7, 4, 5 };
+static const int tab_count[TABS] = { 9, 5, 8, 7, 4, 6 };
 #else
     { { ROW_FIGHTER, "Axel", 0, "His hair, top, jeans and skin in any colour, still or animated." },
       { ROW_FIGHTER, "Adam", 1, "His vest, trousers, skin and shoes in any colour, still or animated." },
@@ -818,9 +820,10 @@ static const int tab_count[TABS] = { 9, 5, 8, 7, 4, 5 };
       { ROW_OPTION, "Infinite lives", OPT_CHEAT_LIVES, "Both players always have at least three lives." },
       { ROW_OPTION, "Infinite specials", OPT_CHEAT_SPECIALS, "The police car can always be called." },
       { ROW_OPTION, "Infinite time", OPT_CHEAT_TIME, "The round timer never runs down." },
-      { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." } },
+      { ROW_OPTION, "Attack power", OPT_CHEAT_ATTACK, "Double or quadruple damage, or every enemy falls to one hit." },
+      { ROW_OPTION, "Hidden options", OPT_CHEAT_UNLOCK, "The game's Options screen has its round select and lives setting." } },
 };
-static const int tab_count[TABS] = { 9, 5, 8, 7, 3, 5 };
+static const int tab_count[TABS] = { 9, 5, 8, 7, 3, 6 };
 #endif
 
 /* ---- Look: the game's HUD, a yellow frame on charcoal, red bars ---------------------- */

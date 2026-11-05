@@ -26,6 +26,7 @@ void music_hooks(void);
 /* Mixes the playing file into a frame's output (sound_end_frame), at `gain` (the mix's
  * headroom). */
 void music_mix(int16_t *out, int frames, int rate, float gain);
+bool music_playing(void);               /* a file plays, or a game song is silenced for one */
 /* Stops the file (a reset, the launcher's player stopping). */
 void music_stop(void);
 
