@@ -163,7 +163,8 @@ uint16_t ai_pilot_pad(void) {
     /* Streets of Rage 3's fighter select already has player 1 in its slot: play is game
      * mode $0E ($FFFB01), the title, menus and select screens the others. */
     bool out = GAME_SOR == 3 ? bus.ram[0xFB01] != 0x0E || !s1 || s1 == 0x5A || s1 == 0x5C || s1 == 0x5E
-             : GAME_SOR == 2 ? !s1 || s1 == 0x34 || s1 == 0x36 : !s1;
+             : GAME_SOR == 2 ? !s1 || s1 == 0x34 || s1 == 0x36
+             : !(bus.ram[0xFF18] & 3) || bus.ram[0xFF2A];   /* Streets of Rage: in a game, not the demo */
     if (out) return frame % 90 < 10 ? PAD_START : 0;
     if (!alive(P1)) return 0;
     return fight(0, true);
@@ -230,10 +231,11 @@ static uint16_t fight(uint16_t pad, bool pilot) {
         if ((dx < 0 ? -dx : dx) < 24 && (dz < 0 ? -dz : dz) < 6) { stuck = 0; return 0; }
     }
 
-    /* Stay on screen: the camera follows player 1. */
+    /* Stay on screen: the camera follows player 1. The widescreen columns are play area too
+     * (an area's exit can lie past the original right edge). */
     int cam = camera();
-    if (want_x < cam + 16) want_x = cam + 16;
-    if (want_x > cam + 304) want_x = cam + 304;
+    if (want_x < cam + 16 - vdp_opts.extra_width) want_x = cam + 16 - vdp_opts.extra_width;
+    if (want_x > cam + 304 + vdp_opts.extra_width) want_x = cam + 304 + vdp_opts.extra_width;
 
     pad |= toward(mx, want_x, CLOSE_X, PAD_LEFT, PAD_RIGHT);
     pad |= toward(mz, want_z, ROW_Z - 1, PAD_UP, PAD_DOWN);

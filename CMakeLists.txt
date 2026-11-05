@@ -76,9 +76,9 @@ foreach(edition ${GAME_EDITIONS})
 endforeach()
 file(GLOB RECOMP_TOOLS ${CMAKE_SOURCE_DIR}/tools/*.mjs ${CMAKE_SOURCE_DIR}/tools/lib/*.mjs)
 set(RECOMP_DEPENDS ${RECOMP_TOOLS} ${GAME_DIR}/game.json ${GAME_DIR}/patches.json)
-foreach(f editions.json ../../local.json)
+foreach(f entries.json coverage.txt editions.json ../../local.json)
   if(EXISTS ${GAME_DIR}/${f})
-    list(APPEND RECOMP_DEPENDS ${GAME_DIR}/${f})                # mapped addresses; a ROM added or moved
+    list(APPEND RECOMP_DEPENDS ${GAME_DIR}/${f})                # code found by tracing or play; mapped addresses; a ROM added or moved
   endif()
 endforeach()
 add_custom_command(
