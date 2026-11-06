@@ -31,6 +31,7 @@ static uint16_t me;
 #define FOLLOW_Z    24                  /* and this many rows off his */
 
 static int frame, stuck, last_x, last_z, special_wait, join_wait;
+static int walk_x, walk_still, walk_dir = 1;   /* piloting, with nothing to fight */
 
 static uint8_t peek8(uint32_t a) { return bus.ram[a & 0xFFFF]; }
 static int16_t peek16(uint32_t a) { a &= 0xFFFF; return (int16_t)(bus.ram[a] << 8 | bus.ram[(a + 1) & 0xFFFF]); }
@@ -215,7 +216,11 @@ static uint16_t fight(uint16_t pad, bool pilot) {
             return pad;
         }
     } else if (pilot) {
-        want_x = mx + 80;               /* on along the street */
+        /* On along the street; held at one spot for 3 s, the other way (Streets of Rage's
+         * last round goes left). */
+        if (mx != walk_x) { walk_x = mx; walk_still = 0; }
+        else if (++walk_still > 180) { walk_dir = -walk_dir; walk_still = 0; }
+        want_x = mx + 80 * walk_dir;
         want_z = z_of(P1);
     } else {
         /* Nothing to fight: keep up with player 1, behind and on another row, out of the

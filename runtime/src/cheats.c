@@ -145,7 +145,14 @@ static void cheats_sor1(void) {
             uint16_t obj = p ? 0xB880 : 0xB800, hp = peek16(obj + 0x32);
             if (settings.cheat_health && peek16(obj) && hp < 0x50) poke16(obj + 0x32, 0x50);
             if (settings.cheat_lives && bus.ram[0xFF20 + 3 * p] < 3) bus.ram[0xFF20 + 3 * p] = 3;
-            if (settings.cheat_specials && !bus.ram[0xFF21 + 3 * p]) bus.ram[0xFF21 + 3 * p] = 1;
+            /* Not in the last two rooms (round 8, part 5 on: the two bosses and Mr. X): there
+             * the police car never finishes and the game waits for it for good, in the
+             * interpreter too, so the cheat takes the call away rather than give one. */
+            if (settings.cheat_specials) {
+                bool no_car = bus.ram[0xFF03] == 7 && bus.ram[0xFF05] >= 5;
+                if (no_car) bus.ram[0xFF21 + 3 * p] = 0;
+                else if (!bus.ram[0xFF21 + 3 * p]) bus.ram[0xFF21 + 3 * p] = 1;
+            }
         }
         /* The timer never goes down: held at the highest it has been this stretch (it
          * starts each part of a round full). */
