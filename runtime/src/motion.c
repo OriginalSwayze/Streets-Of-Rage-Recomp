@@ -215,6 +215,47 @@ static unsigned frame_moves(const HdFrame *f, int dx[SPRITES_MAX], int dy[SPRITE
             if (d < best) { best = d; dx[i] = prev[j].dx; dy[i] = prev[j].dy; }
         }
     }
+    /* A figure (sprites touching each other) moves as one: by the move most of its matched
+     * pixels agree on. A new step of an animation brings pieces found elsewhere in the
+     * frame before (a pipe's repeated tiles, a foot) and pieces not found at all, which
+     * glided from wrong places on their own: legs twice, a pipe's end apart (issue #5). */
+    int group[SPRITES_MAX];
+    for (int i = 0; i < SPRITES_MAX; i++) group[i] = i;
+    for (int i = 0; i < SPRITES_MAX; i++) {
+        const HdSprite *a = &f->sprites[i];
+        if (!a->drawn) continue;
+        for (int j = i + 1; j < SPRITES_MAX; j++) {
+            const HdSprite *b = &f->sprites[j];
+            if (!b->drawn || a->x > b->x + b->w + 1 || b->x > a->x + a->w + 1 || a->y > b->y + b->h + 1 || b->y > a->y + a->h + 1) continue;
+            int ri = i, rj = j;
+            while (group[ri] != ri) ri = group[ri];
+            while (group[rj] != rj) rj = group[rj];
+            if (ri != rj) group[ri > rj ? ri : rj] = ri < rj ? ri : rj;
+        }
+    }
+    for (int i = 0; i < SPRITES_MAX; i++) {
+        int r = i;
+        while (group[r] != r) r = group[r];
+        group[i] = r;
+    }
+    for (int g = 0; g < SPRITES_MAX; g++) {
+        if (group[g] != g || !f->sprites[g].drawn) continue;
+        int votes = 0, total = 0, best = 0, bx = 0, by = 0, members = 0;
+        for (int i = g; i < SPRITES_MAX; i++) {
+            if (group[i] != g || !f->sprites[i].drawn) continue;
+            members++;
+            if (!matched[i]) continue;
+            int w = f->sprites[i].w * f->sprites[i].h, same = 0;
+            total += w;
+            for (int k = g; k < SPRITES_MAX; k++)
+                if (group[k] == g && matched[k] && dx[k] == dx[i] && dy[k] == dy[i]) same += f->sprites[k].w * f->sprites[k].h;
+            if (same > best) { best = same; bx = dx[i]; by = dy[i]; }
+            votes++;
+        }
+        if (members < 2 || !votes || best * 2 < total) continue;
+        for (int i = g; i < SPRITES_MAX; i++)
+            if (group[i] == g && f->sprites[i].drawn) { dx[i] = bx; dy[i] = by; }
+    }
     for (int i = 0; i < SPRITES_MAX; i++) {
         const HdSprite *c = &f->sprites[i];
         prev[i].drawn = c->drawn;
