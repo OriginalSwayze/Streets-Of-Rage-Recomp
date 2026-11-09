@@ -693,7 +693,9 @@ int main(int argc, char **argv) {
         FILE *hf = hash_log ? fopen(hash_log, "w") : NULL;
         for (int f = 0; f < headless_frames; f++) {
             if (profile_frames && f == headless_frames - profile_frames) pc_profile = calloc(ROM_SIZE / 2, 4);
-            pad_state[0] = autoplay && f >= autoplay ? ai_pilot_pad() : scripted_pad(f, 0);
+            /* A --press for player 1 takes over from --autoplay while it is held. */
+            uint16_t scripted = scripted_pad(f, 0);
+            pad_state[0] = autoplay && f >= autoplay && !scripted ? ai_pilot_pad() : scripted;
             pad_state[1] = settings.player2 ? ai_pad() : scripted_pad(f, 1);
             third_pad = scripted_pad(f, 2);
             if (virtual_pads) {
