@@ -65,7 +65,7 @@ jobs:
             cat <<'NOTES'
           **Download `${{ env.SETUP }}`** below and run it.
 
-          Setup asks where to install (your user's Programs folder by default, no administrator rights needed), then for your own ROMs: Streets of Rage (World), Streets of Rage 2 (USA) and Streets of Rage 3 (USA) or Bare Knuckle III (Japan). Each is checked as you pick it; skip any you do not have and add it later by running Setup again (Settings > Apps > Streets of Rage Collection > Modify).
+          Setup asks where to install (your user's Programs folder by default, no administrator rights needed), then for your own ROMs: Streets of Rage (World), Streets of Rage 2 (USA) and Streets of Rage 3 (USA), with optional rows under it for Bare Knuckle III (Japan) and its English patch (Bare Knuckle III is built on the USA ROM, so pick that one too). Each is checked as you pick it; skip any you do not have and add it later by running Setup again (Settings > Apps > Streets of Rage Collection > Modify).
 
           It then downloads the build tools it needs (Node.js, CMake, Ninja and LLVM-MinGW, about 260 MB, from their publishers, checked against pinned SHA-256s) into the install folder, builds each game from its ROM (a few minutes), and adds the collection to the Start menu.
 
