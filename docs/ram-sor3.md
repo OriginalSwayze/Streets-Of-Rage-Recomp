@@ -65,8 +65,19 @@ section (set by each round's script), not the map's end, except in an area's las
 the map ends where the camera stops, limit + 320 (round 3's bar is two blocks with the camera
 held at 96: its art ends at 416).
 
-The HUD is plane B's top 40 lines (5 strips of the 8-line scroll, scrolled 0; no window
-plane), which stay put as the view slides (`vdp_opts.hud_b_lines`).
+Each plane has its own camera: `$FF8880` for plane B, `$FF8890` for plane A. The map is the
+plane whose camera is the game's (`$FFF710`), mostly plane A. In round 3's bar plane B is the
+bar (7 blocks, the camera stopping at 1472) and plane A a foreground going by half as fast
+again, its table one pattern repeated over all 16 blocks; in round 5's rooms (each an area of
+its own, `$FFFB03`) plane A's table is empty and the room is plane B's two blocks. The round is
+`$FFFB05` (from 0), the area in it `$FFFB03`.
+
+The HUD is the top 40 lines (5 strips of the 8-line scroll, scrolled 0; no window plane) of
+the plane that is not the map: plane B's mostly, plane A's in the bar and round 5's rooms. They
+stay put as the view slides (`vdp_opts.hud_b_lines`, `hud_plane`).
+
+Bare Knuckle III's talks (in a round, and between rounds) are drawn 256 pixels wide (H32): the
+renderer centres them in the wide picture (`vdp_side_width`) and masks the sides.
 
 Plane B scrolls in 8-line strips, each at its own speed. On round 1's ship deck the strips at
 the deck's edge (lines 112-151) hold still: a picture drawn for 320 columns, with the boat's

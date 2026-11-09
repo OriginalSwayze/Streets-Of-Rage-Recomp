@@ -33,6 +33,7 @@ extern int patch_sprite_cap;                       /* Streets of Rage 3: sprite 
 extern int patch_sor_wide;                         /* Streets of Rage: widescreen pixels per side (sorWide) */
 extern int patch_sor_reach;                        /* how far past the original edges the players may walk */
 extern int patch_sor_reach_right;                  /* and past the right one (less where the map ends: SoR2, SoR3) */
+extern int patch_sor_reach_left;                   /* SoR3: past the left one (0 where the view keeps to 4:3) */
 extern int patch_sor_cull_left, patch_sor_cull_right; /* sprites drawn this far past the original edges (sorCullList) */
 extern int patch_sor_x_cap;                        /* and never at hardware X this or more ($200, or more: sprite_x_wide) */
 extern int patch_no_damage;             /* infinite health cheat (cheats.c) */

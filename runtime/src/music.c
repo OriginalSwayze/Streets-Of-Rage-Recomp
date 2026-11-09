@@ -1,8 +1,11 @@
 /* Replacement music: see music.h.
  *
  * The song requests (docs/ram*.md, ost.c):
- *   Streets of Rage 3  jsr $1A8004 with d0 = $01xx; 0 stops everything (no request past the
- *                      last song is silent: they are ignored, the song plays on)
+ *   Streets of Rage 3  jsr $1A8004 with d0 = $01xx; 0 pauses the driver (bit 0 of $FF9F18:
+ *                      its channels go quiet and hold), 2 resumes it. The game pauses with
+ *                      them ($002666, Start in play; $FFF505 bit 0 is set while paused). A
+ *                      song with a file is asked for as 0 (no request past the last song is
+ *                      silent: they are ignored, the song plays on)
  *   Streets of Rage 2  jsr $040008 with d0 = $01xx; $010C is a silent song
  *   Streets of Rage    a byte in the queue at $FFF00A ($81-$91), read by the update at
  *                      $072914; $E1 stops the music, $E0 fades it
@@ -167,6 +170,7 @@ static Track *now;                      /* the playing file, or NULL */
 static int now_song = -1;
 static double pos;                      /* in the file's frames */
 static float fade = 1, fade_step;       /* a fade-out: per output frame */
+static bool paused;                     /* the game is paused: the file holds its place */
 
 static void ensure_lock(void) { if (!lock) lock = SDL_CreateMutex(); }
 
@@ -174,6 +178,7 @@ static void play_locked(int song, double at) {
     if (now) { SDL_AtomicSet(&now->cancel, 1); track_release(now); now = NULL; }
     now_song = -1;
     fade = 1; fade_step = 0;
+    paused = false;
     if (song < 0 || !paths[song][0]) return;
     Track *t = calloc(1, sizeof *t);
     if (!t) return;
@@ -220,7 +225,7 @@ static uint16_t on_request(uint16_t request, uint16_t silent) {
 }
 
 void music_mix(int16_t *out, int frames, int rate, float gain) {
-    if (!now || !lock) return;
+    if (!now || !lock || paused) return;
     SDL_LockMutex(lock);
     Track *t = now;
     if (t && t->rate) {
@@ -267,7 +272,21 @@ static uint32_t run_original(uint32_t pc) {
 static uint32_t request_hook(uint32_t pc) {
     uint16_t req = (uint16_t)D(0);
     if ((req >> 8) == 1) setw(&D(0), on_request(req, GAME_SOR == 2 ? 0x010C : 0x0000));
+#if GAME_SOR == 3
+    else if (req == 0 || req == 2) {
+        /* The game's pause (0) and its end (2): the file holds and goes on with it. While a
+         * file plays the driver stays paused (its song was asked for as 0), so the resume is
+         * not passed on: it would bring back the song the driver had before. */
+        ensure_lock();
+        SDL_LockMutex(lock);
+        paused = req == 0 && now;
+        bool keep_quiet = req == 2 && replaced;
+        SDL_UnlockMutex(lock);
+        if (keep_quiet) setw(&D(0), 0x0007);    /* a request the driver ignores */
+    }
+#else
     else if (!req) music_stop();        /* stops everything */
+#endif
     return run_original(pc);
 }
 #elif defined(UPDATE_PC)
@@ -305,5 +324,8 @@ void music_state(StateIO *s) {
     ensure_lock();
     SDL_LockMutex(lock);
     if (song != now_song) play_locked(song >= 0 && song < OST_SONGS ? song : -1, at);
+#if GAME_SOR == 3
+    paused = now && (bus.ram[0xF505] & 1);   /* saved while the game was paused (RAM is loaded first) */
+#endif
     SDL_UnlockMutex(lock);
 }

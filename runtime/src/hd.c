@@ -1200,7 +1200,7 @@ static void compose_between(int scale, float tp, float ts) {
         for (int p = 0; p < 2; p++) {
             /* A sliding view moves the planes on the picture too. */
             int dh = still ? 0 : scroll_delta(hd_frame.hscroll[p][line], before.hscroll[p][line]) +
-                                 (p == 1 && line < hd_frame.hud_b_lines ? 0 : hd_frame.extra - before.extra);
+                                 (p == hd_frame.hud_plane && line < hd_frame.hud_b_lines ? 0 : hd_frame.extra - before.extra);
             int dv = still ? 0 : scroll_delta(hd_frame.vscroll[p][line], before.vscroll[p][line]);
             if (abs(dh) > 24 || abs(dv) > 24) dh = dv = 0;    /* a cut, not a scroll */
             ox[p][line] = (int)lroundf(back * dh * scale);

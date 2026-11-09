@@ -38,7 +38,8 @@ typedef struct {
     int w, h;                           /* line width (with widescreen) and line count */
     int extra;                          /* where the game's picture starts: the widescreen columns on
                                            the left (more or fewer as the view slides, widescreen.c) */
-    int hud_b_lines;                    /* plane B's top lines are the HUD: not moved by the slide */
+    int hud_b_lines;                    /* a plane's top lines are the HUD: not moved by the slide */
+    int hud_plane;                      /* which plane's (0 = A, 1 = B) */
     bool mask_sides;
     int mask_left;                      /* left columns drawn black (vdp_opts.mask_left) */
     int mask_right;                     /* right columns drawn black (vdp_opts.mask_right) */

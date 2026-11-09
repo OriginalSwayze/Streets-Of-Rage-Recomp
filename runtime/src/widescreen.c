@@ -27,7 +27,7 @@
 static int pad;                         /* extra columns kept valid on each side */
 uint32_t patch_cull_left, patch_cull_widen;
 uint32_t patch_sor_x_lo = 0x60, patch_sor_x_hi = 0x1E0;
-int patch_sor_wide, patch_sor_reach, patch_sor_reach_right;
+int patch_sor_wide, patch_sor_reach, patch_sor_reach_right, patch_sor_reach_left;
 int patch_sor_cull_left, patch_sor_cull_right, patch_sor_x_cap = 0x200;
 int patch_sprite_cap = 0x50;
 int patch_cam_margin;
@@ -214,9 +214,30 @@ static uint32_t redraw_rect(uint32_t pc) {
  * far as the view goes (patch_sor_cull_left/right); past hardware X $1FF (sliding right) the
  * VDP reads a 10th bit of X, which the games write whole. The players still stop at the
  * map's end. */
+/* Streets of Rage 3: places drawn for 320 pixels only, which keep to them in widescreen (the
+ * sides masked, the players inside the original edges). Things wait just past the original
+ * edges there, or the planes hold other graphics beside the picture. By round ($FFFB05, from 0),
+ * area ($FFFB03) and camera X ($FFF710). */
+static const struct { uint8_t round, area; int16_t cam_lo, cam_hi; } sor3_narrow[] = {
+    { 0, 1, 640, 0x7FFF },  /* round 1, the deck at sunset: the boat's other end, its hull beside */
+    { 2, 1, 0, 0x7FFF },    /* round 3, the bulldozer: its back waits on the left */
+    { 2, 2, 0, 0x7FFF },    /* round 3, the lift up the girders, and the roof it stops at */
+    { 3, 0, 0, 0x7FFF },    /* round 4, the subway: the carts wait beside the screen */
+    { 3, 1, 0, 0x7FFF },    /* round 4, the room with the cart */
+    { 3, 2, 0, 0x7FFF },    /* round 4, the shrine: Yamato runs off past the original edge */
+};
+
+static bool sor3_keeps_narrow(int cam) {
+    int r = rd8(0xFFFB05), a = rd8(0xFFFB03);
+    for (size_t k = 0; k < sizeof sor3_narrow / sizeof *sor3_narrow; k++)
+        if (sor3_narrow[k].round == r && sor3_narrow[k].area == a && cam >= sor3_narrow[k].cam_lo && cam <= sor3_narrow[k].cam_hi)
+            return true;
+    return false;
+}
+
 static void slide_view(int before, int after) {
     int extra = vdp_opts.extra_width;
-    patch_sor_cull_left = patch_sor_cull_right = extra;
+    patch_sor_cull_left = patch_sor_cull_right = patch_sor_reach_left = extra;
     patch_sor_x_cap = 0x200;
     patch_sor_reach_right = extra - (after < 0 ? 0 : after < extra ? after : extra);
     vdp_opts.view_slide = 0;
@@ -261,13 +282,31 @@ void widescreen_frame(void) {
          * game mode ($FFFB01) is $0E in play; the round's title, the bonus tally and the
          * story scenes between rounds are other modes, drawn for 320 pixels. */
         uint16_t s = rd16(0xFFDF00);
-        bool round = s && s != 0x5C && s != 0x5E && s != 0x5A && !rd8(0xFFFB13) && rd8(0xFFFB01) == 0x0E;
+        bool round = s && s != 0x5C && s != 0x5E && s != 0x5A && !rd8(0xFFFB13) && rd8(0xFFFB01) == 0x0E
+                     && vdp_screen_width() == 320;   /* Bare Knuckle III's talks in a round are 256 wide */
         int cam = (int16_t)rd16(0xFFF710), extra = vdp_opts.extra_width;
-        int blocks = 0;
-        for (int row = 0; row < 16 && round; row++)
-            for (int k = 15; k >= blocks; k--)
-                if (rd16(0xFF8C00 + (uint32_t)(row * 32 + k * 2))) { blocks = k + 1; break; }
+        /* The map is the plane that moves with the camera: each plane's camera is at $FF8890
+         * (A) and $FF8880 (B). Mostly plane A; in round 3's bar plane A is a foreground going by
+         * faster, its table a pattern repeated 16 blocks, and the bar is plane B's 7 blocks; in
+         * round 5's rooms plane A's table is empty and each room is plane B's two blocks.
+         * Reading plane A's there showed the round's start again past the bar's end, and had
+         * the rooms masked at their start and slid at a 256-pixel end. */
+        int blocks = 0, blocks_a = 0;
+        bool moves[2] = { false, false };
+        for (int table = 0; table < 2; table++) {
+            int n = 0, pcam = (int16_t)rd16(table ? 0xFF8880 : 0xFF8890);
+            for (int row = 0; row < 16 && round; row++)
+                for (int k = 15; k >= n; k--)
+                    if (rd16((table ? 0xFF8A00 : 0xFF8C00) + (uint32_t)(row * 32 + k * 2))) { n = k + 1; break; }
+            if (!table) blocks_a = n;
+            moves[table] = pcam - cam <= 8 && cam - pcam <= 8;
+            if (moves[table] && n > blocks) blocks = n;
+        }
+        if (!blocks) blocks = blocks_a;     /* neither moves with it: as before */
+        /* The HUD is the top 40 lines of the plane that is not the map: plane B's mostly, plane
+         * A's where plane B is the map (the bar, round 5's rooms). */
         vdp_opts.hud_b_lines = 40;
+        vdp_opts.hud_plane = moves[1] && !moves[0] ? 0 : 1;
         /* Strips that hold still while the camera moves are 320-wide pictures (the ship
          * deck's edge, the boat's graphics beside it): vdp.c mirrors or clears their sides. */
         vdp_opts.still_planes = round;
@@ -277,7 +316,10 @@ void widescreen_frame(void) {
          * room is (round 3's bar: two blocks, the camera held at 96, the art ending at 416). */
         int end = (blocks ? blocks : 1) * 256, limit = (int16_t)rd16(0xFF8864);
         if (limit >= 0 && limit + 320 > end - 256 && limit + 320 < end) end = limit + 320;
-        if (round) slide_view(extra - cam, cam + 320 + extra - end);
+        if (round && sor3_keeps_narrow(cam)) {
+            slide_view(extra, extra);       /* both sides masked */
+            patch_sor_reach_left = 0;
+        } else if (round) slide_view(extra - cam, cam + 320 + extra - end);
         else slide_view(-extra, -extra);
     }
     if (GAME_SOR == 2) {
@@ -326,6 +368,7 @@ void widescreen_frame(void) {
             playing |= GAME_SOR == 3 ? s && s != 0x5A && s != 0x5C && s != 0x5E : s && s != 0x32 && s != 0x34 && s != 0x36;
         }
         if (GAME_SOR == 3 && rd8(0xFFFB01) != 0x0E) playing = false;
+        if (vdp_screen_width() == 256) playing = false;    /* a scene drawn 256 wide (H32) */
         if (GAME_SOR == 2 && (rd8(0xFFFC12) & 0x20)) playing = false;   /* the bonus tally */
         vdp_opts.mask_sides = GAME_SOR >= 2 && !playing;
         return;
@@ -359,7 +402,7 @@ void widescreen_patches(int extra_width) {
         patch_sor_x_hi = (uint32_t)(hi > 0x200 ? 0x200 : hi);
         /* The players walk to the new edges, enemies walk in from beyond them and count as
          * on screen across the whole width. */
-        patch_sor_wide = patch_sor_reach = patch_sor_reach_right = extra_width;
+        patch_sor_wide = patch_sor_reach = patch_sor_reach_right = patch_sor_reach_left = extra_width;
         patch_sor_cull_left = patch_sor_cull_right = extra_width;
         return;
     }

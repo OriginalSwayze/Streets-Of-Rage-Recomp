@@ -136,7 +136,7 @@ static void load_sram(void) {
     if (f) { if (fread(bus.sram, 1, SRAM_SIZE, f) != SRAM_SIZE) { /* keep what was read */ } fclose(f); }
 }
 
-static int frame_width(void) { return vdp_screen_width() + vdp_opts.extra_width * 2; }
+static int frame_width(void) { return vdp_screen_width() + vdp_side_width() * 2; }
 
 static int save_bmp(const char *path) {
     SDL_Surface *s = SDL_CreateRGBSurfaceWithFormatFrom(framebuffer, frame_width(), vdp_screen_height(), 32,

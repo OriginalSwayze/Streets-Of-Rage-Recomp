@@ -82,8 +82,9 @@ typedef struct {
     int  view_slide;                    /* the game's picture moved this far right in the wide one (left
                                            if negative): at a map's end the view stops there, taking its
                                            width from the other side. The window plane (the HUD) stays. */
-    int  hud_b_lines;                   /* the top lines of plane B are the HUD (Streets of Rage 3's 40):
+    int  hud_b_lines;                   /* the top lines of a plane are the HUD (Streets of Rage 3's 40):
                                            they stay as the view slides */
+    int  hud_plane;                     /* which plane's: 1 = B (mostly), 0 = A */
     bool still_planes;                  /* strips scrolled 0 are 320-wide pictures: plane B's
                                            widescreen columns mirror them, plane A's are clear */
     int  still_cam;                     /* the game's camera X, for telling a still strip from one
@@ -136,8 +137,9 @@ void     vdp_write16(uint32_t a, uint16_t v);
 uint8_t  vdp_read8(uint32_t a);
 void     vdp_write8(uint32_t a, uint8_t v);
 int      vdp_screen_width(void);        /* 256 or 320, before widescreen */
+int      vdp_side_width(void);          /* widescreen pixels on each side of it (+32 for 256) */
 int      vdp_screen_height(void);       /* 224 or 240 */
-/* Renders one active line into dst (0x00RRGGBB), width = screen width + 2*extra_width. */
+/* Renders one active line into dst (0x00RRGGBB), width = screen width + 2*vdp_side_width(). */
 void     vdp_render_line(int line, uint32_t *dst);
 /* Final colour of one pixel from its plane A, plane B and sprite layer pixels (hd.h). */
 uint32_t vdp_compose(uint32_t a, uint32_t b, uint32_t s, uint16_t backdrop, bool sh);

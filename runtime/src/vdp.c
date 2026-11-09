@@ -44,6 +44,12 @@ void vdp_reset(void) {
 }
 
 int vdp_screen_width(void)  { return (vdp.reg[12] & 0x81) ? 320 : 256; }
+/* A 256-pixel picture (H32: Bare Knuckle III's story scenes and bonus tally) is centred in the
+ * wide frame, which stays as wide as for 320 pixels: 32 more on each side. */
+int vdp_side_width(void) {
+    int w = vdp_opts.extra_width;
+    return w && vdp_screen_width() == 256 ? w + 32 : w;
+}
 int vdp_screen_height(void) { return (vdp.reg[1] & 0x08) ? 240 : 224; }
 
 int vdp_irq_level(void) {
@@ -574,7 +580,7 @@ static bool still_strip(int plane, int line, int hs) {
 }
 
 void vdp_render_line(int line, uint32_t *dst) {
-    int wide = vdp_opts.extra_width;
+    int wide = vdp_side_width();
     int w = vdp_screen_width() + wide * 2;
     /* Where the game's picture starts in the wide one: the window plane (the HUD) stays at
      * the middle, the planes and sprites move with the view. */
@@ -589,6 +595,7 @@ void vdp_render_line(int line, uint32_t *dst) {
         if (line == 0) {
             hd_frame.w = w; hd_frame.extra = extra; hd_frame.mask_sides = vdp_opts.mask_sides;
             hd_frame.hud_b_lines = extra != wide ? vdp_opts.hud_b_lines : 0;
+            hd_frame.hud_plane = vdp_opts.hud_plane;
             hd_frame.mask_left = vdp_opts.mask_sides ? wide : vdp_opts.mask_left < wide ? vdp_opts.mask_left : wide;
             hd_frame.mask_right = vdp_opts.mask_sides ? wide : vdp_opts.mask_right < wide ? vdp_opts.mask_right : wide;
             hd_serial++;
@@ -615,11 +622,12 @@ void vdp_render_line(int line, uint32_t *dst) {
     static uint8_t a[320 + MAX_EXTRA_WIDTH * 2], b[320 + MAX_EXTRA_WIDTH * 2], s[320 + MAX_EXTRA_WIDTH * 2];
     memset(s, 0, (size_t)w);
     if (vdp_opts.tile_refs) memset(ref_s, 0, (size_t)w * sizeof *ref_s);
-    bool hud_line = line < vdp_opts.hud_b_lines;
+    bool hud_line = line < vdp_opts.hud_b_lines, hud_a = hud_line && vdp_opts.hud_plane == 0;
+    hud_line = hud_line && vdp_opts.hud_plane == 1;     /* plane B's */
     draw_plane(b, w, hud_line ? wide : extra, line, (vdp.reg[4] & 7) << 13, 1);
-    /* The HUD's lines of plane B hold nothing of the street beside the HUD: while the view
-     * slides, the slid street (plane A) shows there instead. */
-    if (hud_line && extra != wide) {
+    /* The HUD's lines of that plane are a picture 320 wide: beside it the plane holds other
+     * things (copies of the HUD on round 1's deck), so the street (the other plane) shows there. */
+    if (hud_line && wide) {
         memset(b, 0, (size_t)wide);
         memset(b + wide + vdp_screen_width(), 0, (size_t)(w - wide - vdp_screen_width()));
     }
@@ -642,8 +650,12 @@ void vdp_render_line(int line, uint32_t *dst) {
             }
         }
     }
-    draw_plane(a, w, extra, line, (vdp.reg[2] & 0x38) << 10, 0);
-    if (vdp_opts.still_planes && wide && still_strip(0, line, vram16(hs_base + hs_line * 4) & 0x3FF)) {
+    draw_plane(a, w, hud_a ? wide : extra, line, (vdp.reg[2] & 0x38) << 10, 0);
+    if (hud_a && wide) {       /* the HUD on plane A (where plane B is the map) */
+        memset(a, 0, (size_t)wide);
+        memset(a + wide + vdp_screen_width(), 0, (size_t)(w - wide - vdp_screen_width()));
+    }
+    if (!hud_a && vdp_opts.still_planes && wide && still_strip(0, line, vram16(hs_base + hs_line * 4) & 0x3FF)) {
         {
             memset(a, 0, (size_t)(still_l > 0 ? still_l : 0));
             if (still_r < w) memset(a + still_r, 0, (size_t)(w - still_r));
