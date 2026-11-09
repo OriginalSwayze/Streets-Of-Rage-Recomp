@@ -455,6 +455,7 @@ void fighters_draw(int f, float cx, float bottom, float scale, float alpha, doub
 
 /* ---- The page: the game's HUD, a yellow frame on charcoal, red bars ------------------ */
 #include "theme.h"
+#include "neon.h"
 #define HEAD     "Impact"
 
 #define PANEL_X 120
@@ -652,8 +653,7 @@ static void frame_rect(float x, float y, float w, float h, float t, Rgb c, float
 }
 
 static void shadow_text(const char *s, float px, float x, float y, Rgb c) {
-    ui_draw_text(s, HEAD, px, 400, 3, x + px / 16, y + px / 16, C_DEEP, C_DEEP, .9f);
-    ui_draw_text(s, HEAD, px, 400, 3, x, y, c, mix(c, C_AMBER, .35f), 1);
+    neon_text(s, HEAD, px, 400, 3, x, y, c, 1);
 }
 
 static void draw_bars(float x, float y, int c) {
@@ -664,18 +664,21 @@ static void draw_bars(float x, float y, int c) {
         float bx = x + k * 96;
         bool on = channel == k;
         Rgb lc = on ? rgb(1, 1, 1) : C_DIM;
-        ui_draw_text(names[k], "Segoe UI Semibold", 14, 600, 0, bx, y - 9, lc, lc, 1);
+        ui_draw_text(names[k], FONT_VALUE, 14, 600, 0, bx, y - 9, lc, lc, 1);
         for (int s = 0; s < 7; s++)
             ui_fill_rect(bx + 16 + s * 10, y - 6, 7, 12, s < ch[k] ? rgb_hex(tints[k]) : rgb_hex(0x34343C), on ? 1 : .6f);
-        if (on) ui_fill_rect(bx - 4, y + 10, 92, 2, C_YELLOW, .9f);
+        if (on) neon_bar(bx - 4, y + 10, 92, 2, C_YELLOW, 1);
     }
 }
 
 static void button(float x, float y, float w, float h, const char *label, bool primary, bool focus, float t) {
-    ui_fill_rect(x, y, w, h, primary ? C_RED : rgb_hex(0x23232A), .96f);
-    frame_rect(x, y, w, h, focus ? 4 : 2, focus ? C_YELLOW : primary ? C_AMBER : rgb_hex(0x56565E), focus ? .75f + .25f * sinf(t * 6) : .9f);
-    float tw = ui_text_width(label, HEAD, 22, 400, 3);
-    shadow_text(label, 22, x + w / 2 - tw / 2, y + h / 2 - 14, focus ? C_YELLOW : rgb(1, 1, 1));
+    Rgb c = focus || primary ? C_YELLOW : mix(C_TEXT, C_DIM, .4f);
+    ui_fill_rect(x, y, w, h, C_INK, .94f);
+    if (focus || primary) ui_fill_rect(x, y, w, h, c, .07f);
+    neon_tube(x, y, w, h, c, focus ? .85f + .15f * sinf(t * 6) : primary ? .7f : .45f);
+    float tw = ui_text_width(label, FONT_SIGN, 24, 600, 4);
+    if (focus || primary) neon_text(label, FONT_SIGN, 24, 600, 4, x + w / 2 - tw / 2, y + h / 2 - 15, c, 1);
+    else ui_draw_text(label, FONT_SIGN, 24, 600, 4, x + w / 2 - tw / 2, y + h / 2 - 15, c, c, 1);
 }
 
 static const char *colour_label(int c) {
@@ -690,45 +693,45 @@ void fighters_render(double time_s) {
     float t = (float)time_s;
     ui_fill_rect(0, 0, UI_BASE_W, UI_BASE_H, rgb(0, 0, 0), .65f);
     ui_fill_rect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, C_INK, .97f);
-    frame_rect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 4, C_YELLOW, 1);
+    neon_tube(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, C_RED, .75f);
     shadow_text("FIGHTERS' COLOURS", 40, PANEL_X + 36, PANEL_Y + 24, C_YELLOW);
-    ui_fill_rect(PANEL_X + 38, PANEL_Y + 72, 140, 3, C_RED, .9f);
+    neon_bar(PANEL_X + 38, PANEL_Y + 72, 140, 3, C_RED, 1);
 
     /* The fighters, as tabs. */
     for (int k = 0; k < FIGHTERS; k++) {
         float x = TAB_X + k * (TAB_W + 8);
         bool on = k == fighter;
-        ui_fill_rect(x, TAB_Y, TAB_W, 40, on ? C_YELLOW : rgb_hex(0x24242B), on ? 1 : .9f);
-        if (on) ui_fill_rect(x, TAB_Y + 36, TAB_W, 4, C_RED, 1);
-        else frame_rect(x, TAB_Y, TAB_W, 40, 1, rgb_hex(0x4A4A52), 1);
         char up[16];
         snprintf(up, sizeof up, "%s", fighter_name(k));
         for (char *p = up; *p; p++) if (*p >= 'a' && *p <= 'z') *p -= 32;
-        float tw = ui_text_width(up, HEAD, 20, 400, 2);
-        ui_draw_text(up, HEAD, 20, 400, 2, x + TAB_W / 2 - tw / 2, TAB_Y + 8, on ? C_INK : C_DIM, on ? C_INK : C_DIM, 1);
+        float tw = ui_text_width(up, FONT_SIGN, 23, 600, 2);
+        if (on) {
+            neon_bar(x + TAB_W / 2 - tw / 2 - 4, TAB_Y + 36, tw + 8, 3, C_RED, 1);
+            neon_text(up, FONT_SIGN, 23, 600, 2, x + TAB_W / 2 - tw / 2, TAB_Y + 6, C_YELLOW, 1);
+        } else ui_draw_text(up, FONT_SIGN, 23, 600, 2, x + TAB_W / 2 - tw / 2, TAB_Y + 6, C_DIM, C_DIM, 1);
     }
 
     /* The preview: the fighter in the draft colours, under a street lamp's pool of light. */
-    ui_fill_rect(BOX_X, BOX_Y, BOX_W, BOX_H, rgb_hex(0x0C0C10), 1);
-    frame_rect(BOX_X, BOX_Y, BOX_W, BOX_H, 2, C_AMBER, .8f);
+    ui_fill_rect(BOX_X, BOX_Y, BOX_W, BOX_H, rgb_hex(0x07081A), 1);
+    neon_tube(BOX_X, BOX_Y, BOX_W, BOX_H, C_YELLOW, .5f);
     float cx = BOX_X + BOX_W / 2.f, floor_y = BOX_Y + BOX_H - 30;
     for (int k = 0; k < 16; k++) {
         float w = 200 - k * 10, h = 24 - k * 1.2f;
         ui_fill_rect(cx - w / 2, floor_y - h / 2 + 4, w, h, rgb_hex(0xF0B060), .02f);
     }
-    ui_draw_text("PREVIEW", "Segoe UI Semibold", 11.5f, 600, 3.5f, BOX_X + 18, BOX_Y + 14, C_RED, C_RED, 1);
+    ui_draw_text("PREVIEW", FONT_VALUE, 11.5f, 600, 3.5f, BOX_X + 18, BOX_Y + 14, C_RED, C_RED, 1);
     if (fighters_have_preview(fighter)) {
         float scale = floorf(fminf((BOX_W - 60) / (float)prev_w[fighter], (BOX_H - 70) / (float)prev_h[fighter]));
         scale = clampf(scale, 2, 5);
         draw_with(fighter, draft[fighter], draft_anim[fighter], cx, floor_y, scale, 1, time_s);
         /* As they are now, for comparison. */
-        ui_draw_text("NOW", "Segoe UI Semibold", 11.5f, 600, 3.5f, BOX_X + 4, BOX_Y + BOX_H + 20, C_DIM, C_DIM, 1);
+        ui_draw_text("NOW", FONT_VALUE, 11.5f, 600, 3.5f, BOX_X + 4, BOX_Y + BOX_H + 20, C_DIM, C_DIM, 1);
         fighters_draw(fighter, BOX_X + 90, BOX_Y + BOX_H + 12 + prev_h[fighter] * .9f, .9f, 1, time_s);
     } else {
         const char *l1 = "Start the game once from the launcher", *l2 = "to see the fighters here.";
-        float w1 = ui_text_width(l1, "Segoe UI", 15, 400, 0), w2 = ui_text_width(l2, "Segoe UI", 15, 400, 0);
-        ui_draw_text(l1, "Segoe UI", 15, 400, 0, cx - w1 / 2, BOX_Y + BOX_H / 2 - 22, C_DIM, C_DIM, 1);
-        ui_draw_text(l2, "Segoe UI", 15, 400, 0, cx - w2 / 2, BOX_Y + BOX_H / 2, C_DIM, C_DIM, 1);
+        float w1 = ui_text_width(l1, FONT_UI, 15, 400, 0), w2 = ui_text_width(l2, FONT_UI, 15, 400, 0);
+        ui_draw_text(l1, FONT_UI, 15, 400, 0, cx - w1 / 2, BOX_Y + BOX_H / 2 - 22, C_DIM, C_DIM, 1);
+        ui_draw_text(l2, FONT_UI, 15, 400, 0, cx - w2 / 2, BOX_Y + BOX_H / 2, C_DIM, C_DIM, 1);
     }
 
     /* The parts. */
@@ -736,12 +739,12 @@ void fighters_render(double time_s) {
         float y = row_y(r);
         bool focus = selected == r;
         if (focus) {
-            ui_fill_rect(LIST_X - 14, y + 4, LIST_R - LIST_X + 24, ROW_H - 8, C_RED, .22f);
-            ui_fill_rect(LIST_X - 14, y + 4, 5, ROW_H - 8, C_YELLOW, 1);
+            ui_fill_rect(LIST_X - 14, y + 4, LIST_R - LIST_X + 24, ROW_H - 8, C_RED, .08f);
+            neon_tube(LIST_X - 14, y + 4, LIST_R - LIST_X + 24, ROW_H - 8, C_RED, .8f);
         }
         Rgb lc = focus ? rgb(1, 1, 1) : C_TEXT, vc = focus ? C_YELLOW : C_VALUE;
         float ty = y + ROW_H / 2.f - 11;
-        ui_draw_text(parts[fighter][r].name, "Segoe UI", 17.5f, 400, 0, LIST_X, ty, lc, lc, 1);
+        ui_draw_text(parts[fighter][r].name, FONT_UI, 17.5f, 400, 0, LIST_X, ty, lc, lc, 1);
         int c = draft[fighter][r] < 0 ? parts[fighter][r].top : draft[fighter][r];
         Rgb sw = colour_rgb((uint16_t)c);
         ui_fill_rect(SWATCH_X, y + ROW_H / 2.f - 13, 26, 26, sw, 1);
@@ -751,13 +754,13 @@ void fighters_render(double time_s) {
             continue;
         }
         int a = draft_anim[fighter][r];
-        if (a) ui_draw_text(anim_names[anim_slot(a)], "Segoe UI Semibold", 13, 600, 1, SWATCH_X + 38, y + ROW_H / 2.f - 8, C_AMBER, C_AMBER, 1);
+        if (a) ui_draw_text(anim_names[anim_slot(a)], FONT_VALUE, 13, 600, 1, SWATCH_X + 38, y + ROW_H / 2.f - 8, C_AMBER, C_AMBER, 1);
         const char *v = colour_label(draft[fighter][r]);
-        float vw = ui_text_width(v, "Segoe UI Semibold", 17.5f, 600, 0);
-        ui_draw_text(v, "Segoe UI Semibold", 17.5f, 600, 0, LIST_R - 22 - vw, ty, vc, vc, 1);
-        Rgb ac = focus ? C_YELLOW : rgb_hex(0x5E5A52);
-        ui_draw_text("\xE2\x80\xB9", "Segoe UI Semibold", 20, 600, 0, LIST_R - 22 - vw - 18, ty - 3, ac, ac, 1);
-        ui_draw_text("\xE2\x80\xBA", "Segoe UI Semibold", 20, 600, 0, LIST_R - 10, ty - 3, ac, ac, 1);
+        float vw = ui_text_width(v, FONT_VALUE, 17.5f, 600, 0);
+        ui_draw_text(v, FONT_VALUE, 17.5f, 600, 0, LIST_R - 22 - vw, ty, vc, vc, 1);
+        Rgb ac = focus ? C_YELLOW : C_DIM;
+        ui_draw_text("\xE2\x80\xB9", FONT_VALUE, 20, 600, 0, LIST_R - 22 - vw - 18, ty - 3, ac, ac, 1);
+        ui_draw_text("\xE2\x80\xBA", FONT_VALUE, 20, 600, 0, LIST_R - 10, ty - 3, ac, ac, 1);
     }
 
     /* What the row does, or how to mix. */
@@ -766,7 +769,7 @@ void fighters_render(double time_s) {
                                             : parts[fighter][selected].about) :
                         selected == ITEM_APPLY ? "Use these colours in the game, for whoever plays them." :
                         selected == ITEM_RESET ? "Back to this fighter's own colours (Apply to keep it)." : "Leave without changing anything.";
-    ui_draw_text(about, "Segoe UI", 14, 400, 0, LIST_X, ay, rgb_hex(0xBDB7AA), rgb_hex(0xBDB7AA), 1);
+    ui_draw_text(about, "Segoe UI", 14, 400, 0, LIST_X, ay, rgb_hex(0xBDBFD2), rgb_hex(0xBDBFD2), 1);
     if (on_part() && !mixing)
         ui_draw_text("\xE2\x86\x90\xE2\x86\x92 colours    Space  animation    Enter  mix any of 512", "Segoe UI", 13, 400, 1, LIST_X, ay + 24,
                      C_DIM, C_DIM, 1);
@@ -774,5 +777,5 @@ void fighters_render(double time_s) {
     static const char *const labels[3] = { "APPLY", "RESET", "CANCEL" };
     for (int b = ITEM_APPLY; b < ITEMS; b++) button(btn_x(b), BTN_Y, 150, BTN_H, labels[b - ITEM_APPLY], b == ITEM_APPLY, selected == b, t);
     ui_draw_text("\xE2\x86\x91\xE2\x86\x93 select    \xE2\x86\x90\xE2\x86\x92 change    Q E  fighter    Space  animate    Enter  mix / choose    Esc  back",
-                 "Segoe UI", 12, 400, 1, LIST_X, PANEL_Y + PANEL_H - 36, rgb_hex(0x77736A), rgb_hex(0x77736A), 1);
+                 "Segoe UI", 12, 400, 1, LIST_X, PANEL_Y + PANEL_H - 36, C_DIM, C_DIM, 1);
 }

@@ -63,6 +63,7 @@ void  ui_draw_text(const char *s, const char *face, float px, int weight, float 
 /* A volume-style slider: a track from x to x + w centred on y, filled to value (0-1)
  * in gold with a round knob. ui_slider_value() turns a layout x into a value. */
 void  ui_slider(float x, float y, float w, float value, bool focus);
+extern Rgb ui_slider_fill;              /* the track up to the knob (gold unless a theme sets it) */
 float ui_slider_value(float x, float w, float mouse_x);
 
 /* A button; `primary` ones are gold foil with a sheen that follows the light (lx, ly). */

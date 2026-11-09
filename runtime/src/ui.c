@@ -51,13 +51,15 @@ float ui_rrect_dist(float px, float py, float x, float y, float w, float h, floa
     return sqrtf(ox * ox + oy * oy) + fminf(fmaxf(qx, qy), 0) - r;
 }
 
+Rgb ui_slider_fill = { .851f, .71f, .404f };
+
 void ui_slider(float x, float y, float w, float value, bool focus) {
     value = clampf(value, 0, 1);
     const float th = 4, kr = focus ? 7 : 6;   /* track height, knob radius */
     float fx = x + w * value;
     int px0 = (int)ui_x(x - kr), px1 = (int)ui_x(x + w + kr) + 1;
     int py0 = (int)ui_y(y - kr), py1 = (int)ui_y(y + kr) + 1;
-    Rgb track = rgb_hex(0x2A2F3B), fill = rgb_hex(0xD9B567), knob = focus ? rgb_hex(0xFBEBB8) : rgb_hex(0xE6E9EF);
+    Rgb track = rgb_hex(0x2A2F3B), fill = ui_slider_fill, knob = focus ? mix(ui_slider_fill, rgb(1, 1, 1), .7f) : rgb_hex(0xE6E9EF);
     for (int py = py0; py < py1; py++)
         for (int px = px0; px < px1; px++) {
             float lx = (px + .5f - ui_ox) / ui_s, ly = (py + .5f - ui_oy) / ui_s;

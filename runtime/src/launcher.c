@@ -833,6 +833,7 @@ static const int tab_count[TABS] = { 9, 5, 8, 7, 3, 6 };
 #endif
 
 /* ---- Look: the game's HUD, a yellow frame on charcoal, red bars ---------------------- */
+#include "neon.h"
 #include "theme.h"
 #define HEAD     "Impact"                /* the game's lettering is a heavy condensed face */
 
@@ -853,8 +854,8 @@ static const int tab_count[TABS] = { 9, 5, 8, 7, 3, 6 };
 #define TAB_W   ((BOX_W - 52) / TABS)
 #define ROWS_Y  (TAB_Y + TAB_H + 24)
 #define ROW_H   40
-#define CARD_Y  (ROWS_Y + 5 * ROW_H + 14)
-#define CARD_H  160
+#define CARD_Y  (ROWS_Y + 7 * ROW_H + 10)   /* under the Music tab's seven rows */
+#define CARD_H  140
 #define BTN_Y   (BOX_Y + BOX_H - 118)
 #define BTN_H   54
 #define PLAY_X  PANEL_X
@@ -979,26 +980,18 @@ static void fill_tri(float ax, float ay, float bx, float by, float cx, float cy,
 }
 
 /* A rectangular frame of `thick` units inside (x, y, w, h). */
-static void frame_rect(float x, float y, float w, float h, float thick, Rgb c, float a) {
-    ui_fill_rect(x, y, w, thick, c, a);
-    ui_fill_rect(x, y + h - thick, w, thick, c, a);
-    ui_fill_rect(x, y + thick, thick, h - 2 * thick, c, a);
-    ui_fill_rect(x + w - thick, y + thick, thick, h - 2 * thick, c, a);
-}
 
-/* The HUD box: charcoal with a yellow frame and a dark line inside it. */
+/* A panel: navy glass in a tube of the second neon colour (`glow` brightens it). */
 static void hud_box(float x, float y, float w, float h, float alpha, float glow) {
-    ui_fill_rect(x, y, w, h, C_INK, .9f * alpha);
-    frame_rect(x, y, w, h, 4, mix(C_YELLOW, rgb(1, 1, 1), glow * .5f), alpha);
-    frame_rect(x + 4, y + 4, w - 8, h - 8, 2, rgb(0, 0, 0), .8f * alpha);
+    ui_fill_rect(x, y, w, h, C_INK, .88f * alpha);
+    neon_tube(x, y, w, h, mix(C_RED, rgb(1, 1, 1), glow * .4f), .7f * alpha);
 }
 
-/* Text with the game's hard drop shadow. */
+/* Sign lettering (the shade is the glow's colour no more: neon.h glows in the letters'). */
 static void shadow_text(const char *s, const char *face, float px, int weight, float tracking, float x, float y,
                         Rgb c, Rgb shade, float alpha) {
-    float d = px / 16;
-    ui_draw_text(s, face, px, weight, tracking, x + d, y + d, shade, shade, alpha * .9f);
-    ui_draw_text(s, face, px, weight, tracking, x, y, c, mix(c, C_AMBER, .35f), alpha);
+    (void)shade;
+    neon_text(s, face, px, weight, tracking, x, y, c, alpha);
 }
 
 /* An Art scaled to (x, y, w, h) in layout units, nearest pixel, from its columns
@@ -1026,15 +1019,15 @@ static void draw_art(const Art *a, float x, float y, float w, float h, float src
     }
 }
 
-/* Behind everything: the street at night, panning slowly to and fro, with a red haze
- * rising from the bottom and faint scanlines. */
+/* Behind everything: the street at night, panning slowly to and fro, dimmed to navy, with
+ * the glow of the signs rising from the bottom and faint scanlines. */
 static void draw_backdrop(float t) {
     for (size_t i = 0; i < (size_t)ui_w * ui_h; i++) ui_px[i] = 0x07060A;
     if (pano.w) {
         float view = pano.h * (float)UI_BASE_W / UI_BASE_H;          /* street pixels across */
         float span = pano.w - view;
         float at = span > 0 ? (.5f - .5f * cosf(t * 6.2831853f / 120)) * span : 0;
-        draw_art(&pano, 0, 0, UI_BASE_W, UI_BASE_H, at, span > 0 ? view : (float)pano.w, .42f);
+        draw_art(&pano, 0, 0, UI_BASE_W, UI_BASE_H, at, span > 0 ? view : (float)pano.w, .36f);
     }
     for (int y = 0; y < ui_h; y++) {
         float v = (float)y / ui_h;
@@ -1045,7 +1038,7 @@ static void draw_backdrop(float t) {
             Rgb c = unpack(out[x]);
             float edge = fabsf((float)x / ui_w - .5f) * 2;
             c = scale(c, (1 - dark) * (1 - edge * edge * .45f) * (line ? .9f : 1));
-            c = add(c, rgb(.85f, .12f, .06f), haze);
+            c = add(mix(c, rgb(c.r * .5f, c.g * .6f, c.b * 1.2f + .03f), .55f), C_RED, haze * .7f);
             out[x] = pack(c);
         }
     }
@@ -1055,17 +1048,14 @@ static void draw_tabs(void) {
     for (int k = 0; k < TABS; k++) {
         float x = TAB_X0 + k * TAB_W + 4, w = TAB_W - 8, cx = x + w / 2.f;
         bool open = ui.tab == k, focus = ui.selected == ITEM_TABS && open;
+        float tw = ui_text_width(tab_names[k], FONT_SIGN, 24, 600, 2);
         if (open) {
-            ui_fill_rect(x, TAB_Y, w, TAB_H, C_YELLOW, 1);
-            ui_fill_rect(x, TAB_Y + TAB_H - 4, w, 4, C_RED, 1);
-            if (focus) frame_rect(x - 3, TAB_Y - 3, w + 6, TAB_H + 6, 2, rgb(1, 1, 1), .5f + .3f * sinf(ui.t * 6));
+            neon_bar(cx - tw / 2 - 4, TAB_Y + TAB_H - 7, tw + 8, 3, C_RED, 1);
+            if (focus) neon_rect_frame(x, TAB_Y, w, TAB_H, 1, C_YELLOW, .35f + .25f * sinf(ui.t * 6));
+            neon_text(tab_names[k], FONT_SIGN, 24, 600, 2, cx - tw / 2, TAB_Y + 8, C_YELLOW, 1);
         } else {
-            ui_fill_rect(x, TAB_Y, w, TAB_H, rgb_hex(0x24242B), .9f);
-            frame_rect(x, TAB_Y, w, TAB_H, 1, rgb_hex(0x4A4A52), 1);
+            ui_draw_text(tab_names[k], FONT_SIGN, 24, 600, 2, cx - tw / 2, TAB_Y + 8, C_DIM, C_DIM, 1);
         }
-        Rgb tc = open ? C_INK : C_DIM;
-        float tw = ui_text_width(tab_names[k], HEAD, 21, 400, 2);
-        ui_draw_text(tab_names[k], HEAD, 21, 400, 2, cx - tw / 2, TAB_Y + 10, tc, tc, 1);
     }
 }
 
@@ -1073,7 +1063,7 @@ static void draw_row(int r, const Row *row, float dx, float alpha, const PlayerV
     float y = row_y(r);
     bool focus = ui.selected == r;
     Rgb lc = focus ? rgb(1, 1, 1) : C_TEXT;
-    ui_draw_text(row->kind == ROW_FIGHTER ? fighter_name(row->id) : row->label, "Segoe UI", 17.5f, 400, 0, PANEL_X + 4 + dx, y + 10, lc, lc, alpha);
+    ui_draw_text(row->kind == ROW_FIGHTER ? fighter_name(row->id) : row->label, FONT_UI, 17.5f, 400, 0, PANEL_X + 4 + dx, y + 10, lc, lc, alpha);
     char value[96];
     Rgb vc = focus ? C_YELLOW : C_VALUE;
     const char *hint = NULL;
@@ -1108,44 +1098,44 @@ static void draw_row(int r, const Row *row, float dx, float alpha, const PlayerV
     float pulse = ui.changed_item == r ? 1 - ease_out((ui.t - ui.changed_t0) / .35f) : 0;
     if (pulse > 0) vc = mix(vc, rgb(1, 1, 1), pulse * .8f);
     float px = 17.5f + pulse * 1.5f;
-    float vw = ui_text_width(value, "Segoe UI Semibold", px, 600, 0);
+    float vw = ui_text_width(value, FONT_VALUE, px, 600, 0);
     float vx = PANEL_R - vw;
     bool arrows = row->kind == ROW_OPTION || row->kind == ROW_TRACK;
     if (row->kind == ROW_OPTION && row->id == OPT_VOLUME) {
-        vw = ui_text_width("100%", "Segoe UI Semibold", px, 600, 0);
+        vw = ui_text_width("100%", FONT_VALUE, px, 600, 0);
         vx = PANEL_R - 22 - vw;
         ui_slider(VOLUME_X + dx, y + ROW_H / 2.f, VOLUME_W, settings.volume / 100.f, focus);
     } else if (arrows) {
         vx -= 22;
     }
     if (focus && hint) {
-        float hw = ui_text_width(hint, "Segoe UI", 13, 400, 0);
-        ui_draw_text(hint, "Segoe UI", 13, 400, 0, vx - hw - (arrows ? 34 : 16) + dx, y + 13, C_DIM, C_DIM, alpha);
+        float hw = ui_text_width(hint, FONT_UI, 13, 400, 0);
+        ui_draw_text(hint, FONT_UI, 13, 400, 0, vx - hw - (arrows ? 34 : 16) + dx, y + 13, C_DIM, C_DIM, alpha);
     }
     if (arrows) {
-        Rgb ac = focus ? C_YELLOW : rgb_hex(0x5E5A52);
+        Rgb ac = focus ? C_YELLOW : C_DIM;
         float nudge = pulse * 3;
         fill_tri(vx - 18 - nudge + dx, y + ROW_H / 2.f, vx - 10 - nudge + dx, y + ROW_H / 2.f - 6, vx - 10 - nudge + dx, y + ROW_H / 2.f + 6, ac, alpha);
         fill_tri(PANEL_R + 4 + nudge + dx, y + ROW_H / 2.f, PANEL_R - 4 + nudge + dx, y + ROW_H / 2.f - 6, PANEL_R - 4 + nudge + dx, y + ROW_H / 2.f + 6, ac, alpha);
         vx -= 0;
     }
-    ui_draw_text(value, "Segoe UI Semibold", px, 600, 0, vx - (arrows ? 6 : 0) + dx, y + 10 - pulse * .8f, vc, vc, alpha);
+    ui_draw_text(value, FONT_VALUE, px, 600, 0, vx - (arrows ? 6 : 0) + dx, y + 10 - pulse * .8f, vc, vc, alpha);
 }
 
 /* The soundtrack player: the song, its time, a level meter and the transport buttons. */
 static void draw_player(const PlayerView *pv, float dx, float alpha) {
     float x = PANEL_X - 6 + dx, w = PANEL_R - PANEL_X + 12, y = CARD_Y;
-    ui_fill_rect(x, y, w, CARD_H, rgb_hex(0x0C0C10), .85f * alpha);
-    frame_rect(x, y, w, CARD_H, 2, C_RED, .8f * alpha);
+    ui_fill_rect(x, y, w, CARD_H, C_INK, .85f * alpha);
+    neon_tube(x, y, w, CARD_H, C_RED, .7f * alpha);
     char name[64], time[48];
     int song = pv->ready ? pv->song : (settings.ost_track >= 0 ? settings.ost_track : title_song >= 0 ? title_song : 0);
     song_name(song, name, sizeof name);
-    ui_draw_text(pv->on ? "NOW PLAYING" : "STOPPED", "Segoe UI Semibold", 11, 600, 3, x + 20, y + 16, C_RED, C_RED, alpha);
+    ui_draw_text(pv->on ? "NOW PLAYING" : "STOPPED", FONT_VALUE, 11, 600, 3, x + 20, y + 16, C_RED, C_RED, alpha);
     shadow_text(name, HEAD, 30, 400, 1, x + 20, y + 30, C_YELLOW, C_DEEP, alpha);
     char count[32];
     snprintf(count, sizeof count, "%d / %d", (song < 0 ? 0 : song) + 1, OST_SONGS);
-    float cw = ui_text_width(count, "Segoe UI", 14, 400, 0);
-    ui_draw_text(count, "Segoe UI", 14, 400, 0, x + w - 20 - cw, y + 20, C_DIM, C_DIM, alpha);
+    float cw = ui_text_width(count, FONT_UI, 14, 400, 0);
+    ui_draw_text(count, FONT_UI, 14, 400, 0, x + w - 20 - cw, y + 20, C_DIM, C_DIM, alpha);
     /* Level meter, right of the name: red at rest, yellow at the peaks. */
     float mx0 = x + w - 20 - METER_BARS * 7, my = y + 72;
     for (int b = 0; b < METER_BARS; b++) {
@@ -1160,7 +1150,7 @@ static void draw_player(const PlayerView *pv, float dx, float alpha) {
     float prog = clampf(pv->frames / (PLAY_FOR * 60.f), 0, 1);
     ui_fill_rect(bar_x, bar_y, bar_w, 4, rgb_hex(0x34343C), alpha);
     ui_fill_rect(bar_x, bar_y, bar_w * prog, 4, C_YELLOW, alpha);
-    ui_draw_text(time, "Segoe UI", 12, 400, 0, bar_x, bar_y + 9, C_DIM, C_DIM, alpha);
+    ui_draw_text(time, FONT_UI, 12, 400, 0, bar_x, bar_y + 9, C_DIM, C_DIM, alpha);
     /* Previous, play/stop, next. */
     float cx = (PANEL_X + PANEL_R) / 2.f + dx, by = PLAYER_BTN_Y;
     Rgb bc = C_TEXT;
@@ -1176,16 +1166,17 @@ static void draw_player(const PlayerView *pv, float dx, float alpha) {
     }
 }
 
-/* PLAY in red with a yellow frame (like the HUD's health bar), QUIT in charcoal. */
+/* PLAY: a lit sign in the main neon; QUIT: a dimmer one, lit when chosen. */
 static void hud_button(float x, float y, float w, float h, const char *label, bool primary, bool focus, bool enabled, float t) {
-    Rgb fill = primary ? (enabled ? C_RED : rgb_hex(0x4A2622)) : rgb_hex(0x23232A);
-    ui_fill_rect(x, y, w, h, fill, .96f);
-    if (primary && enabled) ui_fill_rect(x, y, w, h * .45f, rgb(1, 1, 1), .10f);
-    Rgb border = focus ? C_YELLOW : primary ? C_AMBER : rgb_hex(0x56565E);
-    frame_rect(x, y, w, h, focus ? 4 : 2, border, focus ? .75f + .25f * sinf(t * 6) : .9f);
-    float tw = ui_text_width(label, HEAD, 28, 400, 3);
-    Rgb tc = enabled ? (focus ? C_YELLOW : rgb(1, 1, 1)) : C_DIM;
-    shadow_text(label, HEAD, 28, 400, 3, x + w / 2 - tw / 2, y + h / 2 - 17, tc, rgb(0, 0, 0), 1);
+    Rgb c = !enabled ? C_DIM : primary || focus ? C_YELLOW : mix(C_TEXT, C_DIM, .4f);
+    float lit = !enabled ? .35f : focus ? .85f + .15f * sinf(t * 6) : primary ? .8f : .45f;
+    if (primary && enabled) lit *= neon_flicker(t, 1);
+    ui_fill_rect(x, y, w, h, C_INK, .92f);
+    if (enabled && (primary || focus)) ui_fill_rect(x, y, w, h, c, .08f * lit);
+    neon_tube(x, y, w, h, c, lit);
+    float tw = ui_text_width(label, FONT_SIGN, 32, 600, 5);
+    if (enabled && (primary || focus)) neon_text(label, FONT_SIGN, 32, 600, 5, x + w / 2 - tw / 2, y + h / 2 - 20, c, lit);
+    else ui_draw_text(label, FONT_SIGN, 32, 600, 5, x + w / 2 - tw / 2, y + h / 2 - 20, c, c, 1);
 }
 
 static void draw_ui(float t) {
@@ -1195,27 +1186,27 @@ static void draw_ui(float t) {
     float k = ease_out((t - ui.tab_t0) / .32f);
     int dir = ui.tab > ui.tab_from ? 1 : -1;
     float dx = (1 - k) * 36 * dir, alpha = k;
-    /* The highlight glides to the selected row: a red bar, like the health bar. */
+    /* The highlight glides to the selected row: a neon tube round it. */
     bool on_row = ui.selected >= 0 && ui.selected < tab_count[ui.tab];
     if (on_row) {
         float y = ui.hl_y;
-        ui_fill_rect(PANEL_X - 14, y + 3, PANEL_R - PANEL_X + 26, ROW_H - 6, C_RED, .22f);
-        ui_fill_rect(PANEL_X - 14, y + 3, 5, ROW_H - 6, C_YELLOW, 1);
+        ui_fill_rect(PANEL_X - 14, y + 3, PANEL_R - PANEL_X + 26, ROW_H - 6, C_RED, .08f);
+        neon_tube(PANEL_X - 14, y + 3, PANEL_R - PANEL_X + 26, ROW_H - 6, C_RED, .8f);
     }
     for (int r = 0; r < tab_count[ui.tab]; r++) draw_row(r, &tab_rows[ui.tab][r], dx, alpha, &pv);
     if (ui.tab == 3) draw_player(&pv, dx, alpha);
     else if (on_row && tab_rows[ui.tab][ui.selected].about) {
         /* What the selected option does, under a short red rule. */
         float y = row_y(tab_count[ui.tab]) + 22;
-        ui_fill_rect(PANEL_X, y, 46, 3, C_RED, .9f * alpha);
-        ui_draw_text(tab_rows[ui.tab][ui.selected].about, "Segoe UI", 14.5f, 400, 0, PANEL_X + dx, y + 14,
-                     rgb_hex(0xBDB7AA), rgb_hex(0xBDB7AA), alpha);
+        neon_bar(PANEL_X, y, 46, 3, C_RED, alpha);
+        ui_draw_text(tab_rows[ui.tab][ui.selected].about, FONT_UI, 14.5f, 400, 0, PANEL_X + dx, y + 14,
+                     rgb_hex(0xBDBFD2), rgb_hex(0xBDBFD2), alpha);
     }
 
     hud_button(PLAY_X, BTN_Y, PLAY_W, BTN_H, "PLAY", true, ui.selected == ITEM_PLAY, play_enabled(), t);
     hud_button(QUIT_X, BTN_Y, QUIT_W, BTN_H, launcher_in_collection ? "BACK" : "QUIT", false, ui.selected == ITEM_QUIT, true, t);
     const char *keys = "\xE2\x86\x91\xE2\x86\x93 select    \xE2\x86\x90\xE2\x86\x92 change    Q E  tabs    [ ]  track    M  music    Esc  quit";
-    ui_draw_text(keys, "Segoe UI", 12, 400, 1, PANEL_X, BOX_Y + BOX_H - 44, rgb_hex(0x77736A), rgb_hex(0x77736A), 1);
+    ui_draw_text(keys, "Segoe UI", 12, 400, 1, PANEL_X, BOX_Y + BOX_H - 44, C_DIM, C_DIM, 1);
 
     /* A picture option: its before/after on the last frame the game saved, over the cover. */
     if (on_row && tab_rows[ui.tab][ui.selected].kind == ROW_OPTION && preview_supported(tab_rows[ui.tab][ui.selected].id) &&
@@ -1224,7 +1215,7 @@ static void draw_ui(float t) {
         float px = 40, py = 226, pw = 480, ph = pw * 9 / 16.f;
         ui_fill_rect(0, 0, BOX_X - 16, UI_BASE_H, rgb(0, 0, 0), .55f * a);
         hud_box(px - 16, py - 48, pw + 32, ph + 70, a, 0);
-        ui_draw_text("PREVIEW  \xC2\xB7  YOUR LAST GAME FRAME", "Segoe UI Semibold", 12, 600, 3, px, py - 30, C_YELLOW, C_YELLOW, a);
+        ui_draw_text("PREVIEW  \xC2\xB7  YOUR LAST GAME FRAME", FONT_VALUE, 12, 600, 3, px, py - 30, C_YELLOW, C_YELLOW, a);
         if (a > .05f) preview_draw(tab_rows[ui.tab][ui.selected].id, px, py, pw, ph, t);
     }
 
@@ -1240,8 +1231,8 @@ static void draw_ui(float t) {
         char name[64], line[96];
         song_name(pv.song, name, sizeof name);
         snprintf(line, sizeof line, "\xE2\x99\xAA  %s", name);
-        float w = ui_text_width(line, "Segoe UI Semibold", 15, 600, 1);
-        ui_draw_text(line, "Segoe UI Semibold", 15, 600, 1, CASE_X + CASE_W / 2.f - w / 2, 640, C_YELLOW, C_AMBER, .9f);
+        float w = ui_text_width(line, FONT_VALUE, 15, 600, 1);
+        ui_draw_text(line, FONT_VALUE, 15, 600, 1, CASE_X + CASE_W / 2.f - w / 2, 640, C_YELLOW, C_AMBER, .9f);
     }
 }
 
@@ -1261,26 +1252,24 @@ static void animate(float dt) {
 /* The left side: the title screen in a HUD frame, the name in the game's lettering. */
 static void draw_cover(float t) {
     float x = CASE_X, y = CASE_Y, w = CASE_W, h = CASE_H;
-    ui_fill_rect(x + 10, y + 12, w + 8, h + 8, rgb(0, 0, 0), .5f);       /* shadow */
-    hud_box(x - 8, y - 8, w + 16, h + 16, 1, ui.flash * .6f);
+    ui_fill_rect(x - 8, y - 8, w + 16, h + 16, C_INK, .9f);
+    neon_tube(x - 8, y - 8, w + 16, h + 16, mix(C_YELLOW, rgb(1, 1, 1), ui.flash * .4f), .9f * neon_flicker(t, 3));
     if (cover.w) draw_art(&cover, x, y, w, h, 0, (float)cover.w, 1);
     else ui_fill_rect(x, y, w, h, rgb_hex(0x101018), 1);
     float ty = y + h + 34;
     const char *name = game && game->title ? game->title : GAME_NAME;   /* the edition's, as sold */
     float size = GAME_SOR >= 2 ? 46 : 54;
     float nw = ui_text_width(name, HEAD, size, 400, 2);
-    shadow_text(name, HEAD, size, 400, 2, x + w / 2 - nw / 2, ty + (54 - size) / 2, C_YELLOW, C_DEEP, 1);
-    ui_fill_rect(x + 60, ty + 78, w - 120, 3, C_RED, .9f);
+    neon_text(name, HEAD, size, 400, 2, x + w / 2 - nw / 2, ty + (54 - size) / 2, C_YELLOW, neon_flicker(t, 5));
+    neon_bar(x + 60, ty + 78, w - 120, 3, C_RED, neon_flicker(t, 7));
     const char *sub = "NATIVE PC EDITION";
-    float sw = ui_text_width(sub, "Segoe UI Semibold", 14, 600, 6);
-    ui_draw_text(sub, "Segoe UI Semibold", 14, 600, 6, x + w / 2 - sw / 2, ty + 92, C_TEXT, C_DIM, .9f);
-    /* A neon flicker along the red rule, now and then. */
-    float flick = sinf(t * 1.7f) > .97f ? .5f : 0;
-    if (flick > 0) ui_fill_rect(x + 60, ty + 78, w - 120, 3, rgb(1, .6f, .4f), flick);
+    float sw = ui_text_width(sub, FONT_SIGN, 17, 600, 7);
+    ui_draw_text(sub, FONT_SIGN, 17, 600, 7, x + w / 2 - sw / 2, ty + 92, C_TEXT, C_DIM, .9f);
 }
 
 static void render(float t) {
     ui.t = t;
+    ui_slider_fill = C_YELLOW;
     draw_backdrop(t);
     draw_cover(t);
     hud_box(BOX_X, BOX_Y, BOX_W, BOX_H, 1, ui.flash * .4f);

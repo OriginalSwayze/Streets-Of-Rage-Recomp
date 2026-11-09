@@ -16,6 +16,17 @@
 
 #include "png.h"
 #include "ui.h"
+/* The collection is not one game: its own night-street colours, then the neon drawing
+   (theme.h, which is per game, is skipped). */
+#define THEME_H
+#define C_INK  rgb_hex(0x0A0C1A)
+#define C_LINE rgb_hex(0x262B52)
+#define C_TEXT rgb_hex(0xE6E8F4)
+#define C_DIM  rgb_hex(0x7178A0)
+#define FONT_SIGN  "Bahnschrift SemiBold Condensed"
+#define FONT_UI    "Bahnschrift"
+#define FONT_VALUE "Bahnschrift SemiBold"
+#include "neon.h"
 
 typedef struct {
     const char *dir, *exe, *title, *number, *tag, *year;
@@ -27,11 +38,11 @@ typedef struct {
 
 static Game games[3] = {
     { "sor1", "StreetsOfRage.exe", "STREETS OF RAGE", "", "Axel, Adam and Blaze take back the city.", "1991",
-      0xF8D838, 0x8A1E12, false, NULL, 0, 0 },
+      0xFF4FB0, 0x4A0A2A, false, NULL, 0, 0 },
     { "sor2", "StreetsOfRage2.exe", "STREETS OF RAGE", "2", "Max and Skate join the fight to rescue Adam.", "1992",
-      0x4AA8F0, 0x10306A, false, NULL, 0, 0 },
+      0x5CD8FF, 0x0A2A50, false, NULL, 0, 0 },
     { "sor3", "StreetsOfRage3.exe", "STREETS OF RAGE", "3", "Zan and the robots of Mr. X's syndicate.", "1994",
-      0xF07A28, 0x5A1406, false, NULL, 0, 0 },
+      0xFFA23C, 0x3A1406, false, NULL, 0, 0 },
 };
 #define GAMES 3
 
@@ -65,15 +76,7 @@ static void find_games(void) {
 #define GAP    40
 static float card_x(int g) { return (UI_BASE_W - (GAMES * CARD_W + (GAMES - 1) * GAP)) / 2.f + g * (CARD_W + GAP); }
 
-static void frame_rect(float x, float y, float w, float h, float t, Rgb c, float a) {
-    ui_fill_rect(x, y, w, t, c, a); ui_fill_rect(x, y + h - t, w, t, c, a);
-    ui_fill_rect(x, y, t, h, c, a); ui_fill_rect(x + w - t, y, t, h, c, a);
-}
 
-static void shadow_text(const char *s, const char *face, float px, int weight, float tr, float x, float y, Rgb top, Rgb bottom, float a) {
-    ui_draw_text(s, face, px, weight, tr, x + 3, y + 3, rgb_hex(0x000000), rgb_hex(0x000000), a * .7f);
-    ui_draw_text(s, face, px, weight, tr, x, y, top, bottom, a);
-}
 
 /* An image scaled to cover the box (cropping its sides), in layout units. */
 static void draw_image(const uint32_t *img, int iw, int ih, float x, float y, float w, float h, float bright) {
@@ -98,7 +101,8 @@ static void draw_card(int g, float t) {
     bool on = g == selected;
     float x = card_x(g), y = CARD_Y - (on ? 10 : 0);
     Rgb accent = rgb_hex(gm->accent), deep = rgb_hex(gm->deep);
-    ui_panel(x, y, CARD_W, CARD_H, 6, mix(deep, rgb_hex(0x101014), .35f), rgb_hex(0x0C0C10), 1, accent, on ? .9f : .25f);
+    ui_fill_rect(x, y, CARD_W, CARD_H, mix(deep, C_INK, .7f), .95f);
+    neon_tube(x, y, CARD_W, CARD_H, accent, on ? .9f * neon_flicker(t, g) : .28f);
     /* The cover, or the game's colours. */
     float ix = x + 14, iy = y + 14, iw = CARD_W - 28, ih = 250;
     if (gm->card) draw_image(gm->card, gm->card_w, gm->card_h, ix, iy, iw, ih, gm->installed ? (on ? 1 : .7f) : .3f);
@@ -109,30 +113,38 @@ static void draw_card(int g, float t) {
         ui_draw_text(gm->number[0] ? gm->number : "I", "Impact", 170, 400, 0, ix + iw / 2 - ui_text_width(gm->number[0] ? gm->number : "I", "Impact", 170, 400, 0) / 2,
                      iy + 20, mix(accent, rgb_hex(0xFFFFFF), pulse * .3f), scale(accent, .55f), gm->installed ? .85f : .3f);
     }
-    frame_rect(ix, iy, iw, ih, 2, accent, on ? .9f : .35f);
-    /* Title and number. */
-    float ty = iy + ih + 22;
-    shadow_text(gm->title, "Impact", 34, 400, 2, x + 22, ty, rgb_hex(0xFFFFFF), mix(accent, rgb_hex(0xFFFFFF), .3f), gm->installed ? 1 : .45f);
-    if (gm->number[0]) {
-        float tw = ui_text_width(gm->title, "Impact", 34, 400, 2);
-        shadow_text(gm->number, "Impact", 44, 400, 0, x + 30 + tw, ty - 9, accent, scale(accent, .7f), gm->installed ? 1 : .45f);
+    neon_rect_frame(ix, iy, iw, ih, 1.5f, accent, on ? .7f : .25f);
+    /* Title and number, lit on the card chosen. */
+    float ty = iy + ih + 22, fade = gm->installed ? 1 : .45f;
+    float tw = ui_text_width(gm->title, "Impact", 34, 400, 2);
+    if (on && gm->installed) {
+        neon_text(gm->title, "Impact", 34, 400, 2, x + 22, ty, rgb_hex(0xF2F0FF), 1);
+        if (gm->number[0]) neon_text(gm->number, "Impact", 44, 400, 0, x + 30 + tw, ty - 9, accent, 1);
+    } else {
+        ui_draw_text(gm->title, "Impact", 34, 400, 2, x + 22, ty, C_TEXT, C_DIM, fade * .8f);
+        if (gm->number[0]) ui_draw_text(gm->number, "Impact", 44, 400, 0, x + 30 + tw, ty - 9, accent, scale(accent, .7f), fade * .8f);
     }
-    ui_fill_rect(x + 22, ty + 46, 60, 3, accent, .9f);
-    ui_draw_text(gm->tag, "Segoe UI", 16, 400, 0, x + 22, ty + 60, rgb_hex(0xD8D4CC), rgb_hex(0xD8D4CC), gm->installed ? .9f : .45f);
+    neon_bar(x + 22, ty + 46, 60, 3, accent, on ? 1 : .4f);
+    ui_draw_text(gm->tag, FONT_UI, 16, 400, 0, x + 22, ty + 60, C_TEXT, C_TEXT, gm->installed ? .9f : .45f);
     const char *state = gm->installed ? (on ? "PLAY" : gm->year) : "NOT INSTALLED";
-    Rgb sc = gm->installed ? (on ? rgb_hex(0x15151A) : rgb_hex(0x8E8A82)) : rgb_hex(0xE0381C);
-    if (gm->installed && on) ui_panel(x + 22, y + CARD_H - 62, CARD_W - 44, 42, 4, accent, scale(accent, .8f), 1, accent, 0);
-    float sw = ui_text_width(state, "Impact", 22, 400, 3);
-    ui_draw_text(state, "Impact", 22, 400, 3, x + CARD_W / 2 - sw / 2, y + CARD_H - 54, sc, sc, 1);
+    float bx = x + 22, by = y + CARD_H - 62, bw = CARD_W - 44, bh = 42;
+    float sw = ui_text_width(state, FONT_SIGN, 26, 600, 5);
+    if (gm->installed && on) {
+        ui_fill_rect(bx, by, bw, bh, accent, .08f);
+        neon_tube(bx, by, bw, bh, accent, .9f);
+        neon_text(state, FONT_SIGN, 26, 600, 5, x + CARD_W / 2 - sw / 2, by + 5, accent, 1);
+    } else {
+        Rgb sc = gm->installed ? C_DIM : rgb_hex(0xFF5A6E);
+        ui_draw_text(state, FONT_SIGN, 26, 600, 5, x + CARD_W / 2 - sw / 2, by + 5, sc, sc, 1);
+    }
     if (!gm->installed && on)
-        ui_draw_text("Run Setup again with its ROM to add it.", "Segoe UI", 14, 400, 0, x + 22, y + CARD_H - 92,
-                     rgb_hex(0x8E8A82), rgb_hex(0x8E8A82), 1);
+        ui_draw_text("Run Setup again with its ROM to add it.", FONT_UI, 14, 400, 0, x + 22, y + CARD_H - 92, C_DIM, C_DIM, 1);
 }
 
 static void render(int w, int h, float t) {
     ui_begin(w, h);
     for (int y = 0; y < ui_h; y++) {    /* night sky to street */
-        Rgb c = mix(rgb_hex(0x14101C), rgb_hex(0x07070A), (float)y / ui_h);
+        Rgb c = mix(rgb_hex(0x10122A), rgb_hex(0x05060C), (float)y / ui_h);
         uint32_t v = pack(c);
         for (int x = 0; x < ui_w; x++) ui_px[y * ui_w + x] = v;
     }
@@ -144,15 +156,15 @@ static void render(int w, int h, float t) {
         float r = 360 - k * 14;
         ui_panel(hl_x - r, CARD_Y + CARD_H / 2.f - r * .7f, r * 2, r * 1.4f, r * .7f, glow, glow, .012f, glow, 0);
     }
-    shadow_text("STREETS OF RAGE", "Impact", 58, 400, 6, 70, 38, rgb_hex(0xFFE36A), rgb_hex(0xF0A030), 1);
-    ui_fill_rect(72, 108, 200, 4, rgb_hex(0xE0381C), 1);
-    ui_draw_text("COLLECTION", "Impact", 26, 400, 14, 290, 98, rgb_hex(0xE9E5DC), rgb_hex(0xB8B2A8), 1);
+    neon_text("STREETS OF RAGE", "Impact", 58, 400, 6, 70, 38, rgb_hex(0xFF4FB0), neon_flicker(t, 9));
+    neon_bar(72, 108, 200, 4, rgb_hex(0x5CD8FF), 1);
+    neon_text("COLLECTION", FONT_SIGN, 30, 600, 14, 290, 94, rgb_hex(0x5CD8FF), 1);
     for (int g = 0; g < GAMES; g++) draw_card(g, t);
     const char *help = "\xE2\x86\x90 \xE2\x86\x92  choose      Enter  play      Esc  quit";
     ui_draw_text(help, "Segoe UI Semibold", 15, 600, 1, UI_BASE_W / 2.f - ui_text_width(help, "Segoe UI Semibold", 15, 600, 1) / 2, 668,
-                 rgb_hex(0x8E8A82), rgb_hex(0x8E8A82), 1);
+                 C_DIM, C_DIM, 1);
     if (status[0] && SDL_GetTicks64() < status_until)
-        ui_draw_text(status, "Segoe UI Semibold", 16, 600, 0, 70, 640, rgb_hex(0xF8D838), rgb_hex(0xF8D838), 1);
+        ui_draw_text(status, FONT_VALUE, 16, 600, 0, 70, 640, rgb_hex(0xFF4FB0), rgb_hex(0xFF4FB0), 1);
 }
 
 /* ---- Playing ------------------------------------------------------------------------ */
