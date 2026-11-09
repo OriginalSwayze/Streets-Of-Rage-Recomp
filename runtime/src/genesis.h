@@ -41,6 +41,9 @@ extern Bus bus;
 /* Returns NULL on success, else a message describing why the ROM was rejected. Any edition
  * this build has loads, and becomes `game` (game.h). */
 const char *bus_load_rom(const char *path);
+/* After a ROM was looked at: the name of the edition it is, when this build has not got that
+ * edition (it is added by running Setup again); NULL otherwise. */
+extern const char *bus_unbuilt_edition;
 const GameEdition *bus_rom_edition(const char *path);   /* which edition a file is, or NULL; loads nothing */
 uint8_t  bus_read8(uint32_t a);
 uint16_t bus_read16(uint32_t a);

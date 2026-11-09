@@ -69,4 +69,7 @@ for (const e of EDITIONS) {
 writeIfChanged(join(GEN_DIR, 'editions.c'), header + '#include "game.h"\n\n' +
   EDITIONS.filter((e) => built.has(e.id)).map((e) => `extern const GameEdition game_edition_${e.id};`).join('\n') +
   `\n\nconst GameEdition *const game_editions[GAME_EDITION_COUNT] = {\n` +
-  EDITIONS.map((e) => `    ${built.has(e.id) ? `&game_edition_${e.id}` : 'NULL'},`).join('\n') + '\n};\n');
+  EDITIONS.map((e) => `    ${built.has(e.id) ? `&game_edition_${e.id}` : 'NULL'},`).join('\n') + '\n};\n' +
+  '\n/* Every edition\'s cartridge, built or not: one not built is recognised and named. */\n' +
+  `const char *const game_edition_sha1s[GAME_EDITION_COUNT] = {\n` + EDITIONS.map((e) => `    ${JSON.stringify(e.sha1)},`).join('\n') + '\n};\n' +
+  `const char *const game_edition_names[GAME_EDITION_COUNT] = {\n` + EDITIONS.map((e) => `    ${JSON.stringify(e.name)},`).join('\n') + '\n};\n');

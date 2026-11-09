@@ -46,8 +46,23 @@ typedef struct {
 static Game games[3] = {
     { "sor1", "Streets of Rage", "Streets of Rage (World)", "StreetsOfRage.exe", 0xF8D838, "", false },
     { "sor2", "Streets of Rage 2", "Streets of Rage 2 (USA)", "StreetsOfRage2.exe", 0x7CCBFF, "", false },
-    { "sor3", "Streets of Rage 3", "Streets of Rage 3 (USA) or Bare Knuckle III", "StreetsOfRage3.exe", 0xFFB848, "", false },
+    { "sor3", "Streets of Rage 3", "Streets of Rage 3 (USA)", "StreetsOfRage3.exe", 0xFFB848, "", false },
 };
+
+/* The games page's rows: one per game, and under Streets of Rage 3 its two optional
+ * editions, each picked on its own row (Bare Knuckle III is built on top of the USA ROM). */
+enum { ROW_SOR1, ROW_SOR2, ROW_SOR3, ROW_BK3, ROW_EN, ROW_COUNT };
+static const int row_game[ROW_COUNT] = { 0, 1, 2, 2, 2 };
+static const char *const row_title[ROW_COUNT] = { "Streets of Rage", "Streets of Rage 2", "Streets of Rage 3", "Bare Knuckle III", "Bare Knuckle III in English" };
+static const char *const row_about[ROW_COUNT] = {
+    "Streets of Rage (World), also sold as Bare Knuckle.",
+    "Streets of Rage 2 (USA).",
+    "Streets of Rage 3 (USA). Needed for the two optional rows below.",
+    "Bare Knuckle III (Japan): the Japanese original, played as an edition of Streets of Rage 3.",
+    "Twilight Translations' patch, bk3_100.ips or its .zip. Setup applies it to Bare Knuckle III.",
+};
+static char row_problem[ROW_COUNT][200];   /* why the last pick on that row was not taken */
+static bool row_installed[ROW_COUNT];
 
 /* Every cartridge a game builds from (games/<name>/game.json: its own, then its other
  * editions, each built into the same game). A game may have several picked. */
@@ -76,10 +91,32 @@ static bool game_picked(int g) {
 /* The patch picked for the English Bare Knuckle III (see make_english). */
 static char ips_file[MAX_PATH], ips_shown[MAX_PATH];
 
-static void game_skip(int g) {
-    for (int r = 0; r < ROMS; r++) if (roms[r].game == g) roms[r].picked[0] = roms[r].shown[0] = 0;
-    if (g == 2) ips_file[0] = 0;
-    games[g].problem[0] = 0;
+static int rom_index(const char *id);
+
+/* Skip on a row: its own pick (Streets of Rage 3's row keeps the optional editions). */
+static void row_skip(int row) {
+    if (row < ROW_SOR3) {
+        for (int r = 0; r < ROMS; r++) if (roms[r].game == row) roms[r].picked[0] = roms[r].shown[0] = 0;
+    } else if (row == ROW_SOR3) {
+        roms[rom_index("us")].picked[0] = roms[rom_index("us")].shown[0] = 0;
+    } else {
+        roms[rom_index("en")].picked[0] = roms[rom_index("en")].shown[0] = 0;
+        if (row == ROW_BK3) roms[rom_index("jp")].picked[0] = roms[rom_index("jp")].shown[0] = 0;
+        else ips_file[0] = 0;
+    }
+    row_problem[row][0] = 0;
+}
+
+/* The row a cartridge is shown on. */
+static int row_of_rom(int r) {
+    if (roms[r].game < 2) return roms[r].game;
+    return !strcmp(roms[r].id, "jp") ? ROW_BK3 : !strcmp(roms[r].id, "en") ? ROW_EN : ROW_SOR3;
+}
+
+/* Bare Knuckle III picked, but no Streets of Rage 3 (USA) to build it on. */
+static bool bk3_needs_us(void) {
+    bool bk3 = roms[rom_index("jp")].picked[0] || roms[rom_index("en")].picked[0] || ips_file[0];
+    return bk3 && !roms[rom_index("us")].picked[0] && !games[2].installed;
 }
 
 static bool sha1_file(const char *path, char out[41]) {
@@ -173,7 +210,7 @@ static void make_english(void) {
     int jp = rom_index("jp"), en = rom_index("en");
     if (!ips_file[0]) return;
     if (!roms[jp].picked[0]) {
-        snprintf(games[2].problem, sizeof games[2].problem, "Patch taken: now pick Bare Knuckle III (Japan) for it to be applied to.");
+        snprintf(row_problem[ROW_EN], sizeof row_problem[ROW_EN], "Patch taken. Now pick Bare Knuckle III (Japan) on the row above.");
         return;
     }
     size_t n, plen;
@@ -191,9 +228,9 @@ static void make_english(void) {
     if (ok && sha1_file(tmp, sum) && !strcmp(sum, roms[en].sha1)) {
         snprintf(roms[en].picked, MAX_PATH, "%s", tmp);
         snprintf(roms[en].shown, MAX_PATH, "%s", ips_shown);
-        games[2].problem[0] = 0;
+        row_problem[ROW_EN][0] = 0;
     } else {
-        snprintf(games[2].problem, sizeof games[2].problem, "That patch does not make Bare Knuckle III in English: it takes Twilight Translations' 1.00 (bk3_100.ips).");
+        snprintf(row_problem[ROW_EN], sizeof row_problem[ROW_EN], "Not the patch this takes: Twilight Translations' 1.00, bk3_100.ips.");
         ips_file[0] = 0;
     }
 }
@@ -257,21 +294,23 @@ static void take_rom(int slot, const char *path) {
                 if (ips_file[0]) { snprintf(ips_shown, sizeof ips_shown, "%s", path); make_english(); return; }
             }
         }
-        if (!file[0]) { snprintf(games[slot].problem, sizeof games[slot].problem, "No ROM (.md, .bin or .gen) in that zip."); return; }
+        if (!file[0]) { snprintf(row_problem[slot], sizeof row_problem[slot], "No ROM or patch in that zip."); return; }
     }
-    if (!sha1_file(file, sum)) { snprintf(games[slot].problem, sizeof games[slot].problem, "Could not read that file."); return; }
+    if (!sha1_file(file, sum)) { snprintf(row_problem[slot], sizeof row_problem[slot], "Could not read that file."); return; }
     for (int r = 0; r < ROMS; r++)
         if (!strcmp(sum, roms[r].sha1)) {
-            int g = roms[r].game;
             snprintf(roms[r].picked, MAX_PATH, "%s", file);
             snprintf(roms[r].shown, MAX_PATH, "%s", path);
-            games[g].problem[0] = 0;
-            if (g != slot) games[slot].problem[0] = 0;
+            row_problem[row_of_rom(r)][0] = 0;
+            row_problem[slot][0] = 0;
             if (!strcmp(roms[r].id, "jp")) make_english();   /* a patch waiting for it */
             return;
         }
-    snprintf(games[slot].problem, sizeof games[slot].problem,
-             "Not a ROM this needs: it takes %s, unchanged (no hacks, other regions or headers).", games[slot].rom_name);
+    static const char *const wants[ROW_COUNT] = {
+        "Streets of Rage (World)", "Streets of Rage 2 (USA)", "Streets of Rage 3 (USA)", "Bare Knuckle III (Japan)",
+        "bk3_100.ips or bk3_100.zip",
+    };
+    snprintf(row_problem[slot], sizeof row_problem[slot], "Not the right file: this takes %s, unchanged.", wants[slot]);
 }
 
 /* ---- Pages ---------------------------------------------------------------------------- */
@@ -350,11 +389,11 @@ static void checkbox(float x, float y, const char *label, bool on, int id) {
     ui_draw_text(label, BODY, 17, 400, 0, x + 32, y + 2, C_TEXT, C_TEXT, 1);
 }
 
-enum { B_NEXT = 1, B_BACK, B_CANCEL, B_BROWSE_DIR, B_ROM0, B_SKIP0 = B_ROM0 + 3, B_DESKTOP = B_SKIP0 + 3, B_LAUNCH, B_KEEP, B_FINISH, B_REMOVE };
+enum { B_NEXT = 1, B_BACK, B_CANCEL, B_BROWSE_DIR, B_ROM0, B_SKIP0 = B_ROM0 + ROW_COUNT, B_DESKTOP = B_SKIP0 + ROW_COUNT, B_LAUNCH, B_KEEP, B_FINISH, B_REMOVE };
 
 static const char *steps[4] = { "WELCOME", "FOLDER", "GAMES", "INSTALL" };
 
-static int games_ready(void) { int n = 0; for (int g = 0; g < 3; g++) n += game_picked(g); return n; }
+static int games_ready(void) { int n = 0; for (int g = 0; g < 3; g++) n += game_picked(g); return bk3_needs_us() ? 0 : n; }
 
 static void draw_frame(void) {
     for (int y = 0; y < ui_h; y++) {
@@ -387,7 +426,7 @@ static void draw_page(float t) {
                  ? "The collection is installed. Setup can add a game you skipped, or build them again from your ROMs. Your settings, saves and save states stay as they are."
                  : "This installs Streets of Rage 1, 2 and 3 as native Windows programs, with widescreen, higher resolutions and frame rates, an AI partner, cheats, fighter colours and more, in one collection.",
                  x, y + 62, w, 19, C_TEXT, 1);
-        y = wrap("No part of any game comes with it. You pick your own ROMs of the cartridges (Streets of Rage (World), Streets of Rage 2 (USA), Streets of Rage 3 (USA)): each one is translated into a PC program on this computer. You can skip a game you do not have and add it later by running Setup again.",
+        y = wrap("No part of any game comes with it. You pick your own ROMs of the cartridges (Streets of Rage (World), Streets of Rage 2 (USA), Streets of Rage 3 (USA), and if you have it Bare Knuckle III (Japan)): each one is translated into a PC program on this computer. You can skip a game you do not have and add it later by running Setup again.",
                  x, y + 14, w, 19, C_TEXT, 1);
         wrap("Setup downloads the build tools it needs from their publishers (Node.js, CMake, Ninja and LLVM-MinGW, about 260 MB, checked against pinned SHA-256s) into the install folder, unless they are already on this PC. Nothing is installed into Windows itself, and no administrator rights are needed.",
              x, y + 14, w, 17, C_DIM, 1);
@@ -405,36 +444,47 @@ static void draw_page(float t) {
         break;
     case PAGE_GAMES: {
         shadow_text("YOUR GAMES", HEAD, 34, 3, x, y, C_YELLOW, rgb_hex(0x8A140A));
-        wrap("Pick each game's ROM (.md, .bin, .gen or a .zip); each is checked as you pick it. Streets of Rage 3 also takes Bare Knuckle III.", x, y + 58, w, 18, C_TEXT, 1);
-        for (int g = 0; g < 3; g++) {
-            Game *gm = &games[g];
-            float cy = 262 + g * 104;
+        wrap("Pick a ROM for each game you have (.md, .bin, .gen or .zip): each is checked as you pick it. Skip any you do not have.", x, y + 50, w, 17, C_TEXT, 1);
+        static const float row_y[ROW_COUNT] = { 232, 306, 380, 458, 522 };
+        for (int row = 0; row < ROW_COUNT; row++) {
+            Game *gm = &games[row_game[row]];
+            bool sub = row >= ROW_BK3;    /* Streets of Rage 3's optional editions, indented under it */
+            float rx = sub ? x + 48 : x, rw = sub ? w - 48 : w, cy = row_y[row], rh = sub ? 58 : 68;
+            int rom = row == ROW_SOR3 ? rom_index("us") : row == ROW_BK3 ? rom_index("jp") : row == ROW_EN ? rom_index("en") : row;
+            bool picked = roms[rom].picked[0] || (row == ROW_EN && ips_file[0]);
             Rgb accent = rgb_hex(gm->accent);
-            ui_panel(x, cy, w, 92, 5, rgb_hex(0x1C1C23), rgb_hex(0x141418), 1, game_picked(g) ? accent : rgb_hex(0x3A3A42), game_picked(g) ? .8f : 1);
-            ui_fill_rect(x, cy, 6, 92, accent, 1);
-            shadow_text(gm->title, HEAD, 28, 2, x + 24, cy + 12, rgb_hex(0xFFFFFF), mix(accent, rgb_hex(0xFFFFFF), .3f));
+            if (sub) {                    /* a bracket from Streets of Rage 3's row */
+                ui_fill_rect(x + 22, cy - 8, 3, rh / 2 + 8, mix(accent, rgb_hex(0x000000), .35f), 1);
+                ui_fill_rect(x + 22, cy + rh / 2, 26, 3, mix(accent, rgb_hex(0x000000), .35f), 1);
+            }
+            ui_panel(rx, cy, rw, rh, 5, rgb_hex(0x1C1C23), rgb_hex(0x141418), 1, picked ? accent : rgb_hex(0x3A3A42), picked ? .8f : 1);
+            ui_fill_rect(rx, cy, 6, rh, sub ? mix(accent, rgb_hex(0x000000), .35f) : accent, 1);
+            shadow_text(row_title[row], HEAD, sub ? 20 : 26, 2, rx + 22, cy + (sub ? 7 : 8), rgb_hex(0xFFFFFF), mix(accent, rgb_hex(0xFFFFFF), .3f));
+            if (sub) {
+                float tw = ui_text_width(row_title[row], HEAD, 20, 400, 2);
+                ui_draw_text("OPTIONAL", HEAD, 13, 400, 3, rx + 36 + tw, cy + 13, C_DIM, C_DIM, 1);
+            }
             const char *state;
             Rgb sc;
-            char buf[3 * MAX_PATH + 40];
-            if (gm->problem[0]) { state = gm->problem; sc = rgb_hex(0xF09A86); }
-            else if (game_picked(g)) {      /* each edition picked, by its file's name */
-                int n = snprintf(buf, sizeof buf, "\xE2\x9C\x93 ");
-                for (int r = 0; r < ROMS; r++) {
-                    if (roms[r].game != g || !roms[r].picked[0]) continue;
-                    const char *base = strrchr(roms[r].shown, '\\');
-                    if (!base) base = strrchr(roms[r].shown, '/');
-                    n += snprintf(buf + n, sizeof buf - n, "%s %s", n > 4 ? "  +" : "", base ? base + 1 : roms[r].shown);
-                }
+            char buf[2 * MAX_PATH + 40];
+            if (row_problem[row][0]) { state = row_problem[row]; sc = rgb_hex(0xF09A86); }
+            else if (row == ROW_SOR3 && bk3_needs_us()) { state = "Pick Streets of Rage 3 (USA) here too: Bare Knuckle III is built on top of it."; sc = rgb_hex(0xF09A86); }
+            else if (picked) {
+                const char *shown = roms[rom].picked[0] ? roms[rom].shown : ips_shown;
+                const char *base = strrchr(shown, '\\');
+                if (!base) base = strrchr(shown, '/');
+                snprintf(buf, sizeof buf, "\xE2\x9C\x93 %s", base ? base + 1 : shown);
                 state = buf; sc = rgb_hex(0x9FDCA6);
             }
-            else if (gm->installed) { state = "Installed. Pick its ROM again to rebuild it, or leave it as it is."; sc = C_DIM; }
-            else { state = "Skipped: not installed."; sc = C_DIM; }
-            ui_draw_text(state, BODY, 16, 400, 0, x + 24, cy + 56, sc, sc, 1);
-            button(x + w - 360, cy + 20, 170, 52, "BROWSE", 0, B_ROM0 + g);
-            button(x + w - 180, cy + 20, 160, 52, "SKIP", game_picked(g) || (g == 2 && ips_file[0]) ? 0 : 2, B_SKIP0 + g);
+            else if (row_installed[row]) { state = "Installed. Pick it again to rebuild, or leave it as it is."; sc = C_DIM; }
+            else { state = row_about[row]; sc = C_DIM; }
+            ui_draw_text(state, BODY, sub ? 14.5f : 15.5f, 400, 0, rx + 22, cy + (sub ? 34 : 40), sc, sc, 1);
+            float bh = sub ? 38 : 44, by = cy + (rh - bh) / 2;
+            button(x + w - 320, by, 150, bh, "BROWSE", 0, B_ROM0 + row);
+            button(x + w - 160, by, 140, bh, "SKIP", picked ? 0 : 2, B_SKIP0 + row);
         }
         int ready = games_ready();
-        button(1010, 596, 170, 52, "INSTALL", ready || reinstall ? 1 : 2, B_NEXT);
+        button(1010, 596, 170, 52, "INSTALL", (ready || reinstall) && !bk3_needs_us() ? 1 : 2, B_NEXT);
         button(820, 596, 170, 52, "BACK", 0, B_BACK);
         break;
     }
@@ -514,8 +564,11 @@ static void browse_rom(int g) {
     of.lpstrFile = file;
     of.nMaxFile = MAX_PATH;
     char title[96];
-    snprintf(title, sizeof title, "Your %s ROM", games[g].rom_name);
+    static const char *const what[ROW_COUNT] = { "Your Streets of Rage (World) ROM", "Your Streets of Rage 2 (USA) ROM",
+        "Your Streets of Rage 3 (USA) ROM", "Your Bare Knuckle III (Japan) ROM", "Twilight Translations' patch: bk3_100.ips or bk3_100.zip" };
+    snprintf(title, sizeof title, "%s", what[g]);
     of.lpstrTitle = title;
+    if (g == ROW_EN) of.lpstrFilter = "The English patch (*.ips;*.zip)\0*.ips;*.zip\0All files (*.*)\0*.*\0";
     of.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
     if (GetOpenFileNameA(&of)) take_rom(g, file);
 }
@@ -739,8 +792,8 @@ static bool act(int id, SDL_Window *win) {
         if (page == PAGE_FAILED) page = PAGE_GAMES;
         else if (page > PAGE_WELCOME) page--;
     } else if (id == B_BROWSE_DIR) browse_folder(win);
-    else if (id >= B_ROM0 && id < B_ROM0 + 3) browse_rom(id - B_ROM0);
-    else if (id >= B_SKIP0 && id < B_SKIP0 + 3) game_skip(id - B_SKIP0);
+    else if (id >= B_ROM0 && id < B_ROM0 + ROW_COUNT) browse_rom(id - B_ROM0);
+    else if (id >= B_SKIP0 && id < B_SKIP0 + ROW_COUNT) row_skip(id - B_SKIP0);
     else if (id == B_DESKTOP) desktop_icon = !desktop_icon;
     else if (id == B_LAUNCH) launch_after = !launch_after;
     else if (id == B_KEEP) keep_saves = !keep_saves;
@@ -767,6 +820,14 @@ static void find_installed(void) {
         char p[MAX_PATH];
         snprintf(p, sizeof p, "%s\\games\\%s\\%s", folder, games[g].name, games[g].exe);
         games[g].installed = GetFileAttributesA(p) != INVALID_FILE_ATTRIBUTES;
+        row_installed[g] = games[g].installed;
+    }
+    /* The optional editions: their ROMs, kept in the folder's roms\ (copy_rom). */
+    static const char *const kept[2] = { "roms\\sor3-jp.md", "roms\\sor3-en.md" };
+    for (int k = 0; k < 2; k++) {
+        char p[MAX_PATH];
+        snprintf(p, sizeof p, "%s\\%s", folder, kept[k]);
+        row_installed[ROW_BK3 + k] = games[2].installed && GetFileAttributesA(p) != INVALID_FILE_ATTRIBUTES;
     }
 }
 
@@ -780,7 +841,7 @@ int main(int argc, char **argv) {
         if (!strcmp(argv[i], "--uninstall")) page = PAGE_UNINSTALL;
         else if (!strcmp(argv[i], "--source") && i + 1 < argc) snprintf(source_dir, sizeof source_dir, "%s", argv[++i]);
         else if (!strcmp(argv[i], "--folder") && i + 1 < argc) snprintf(folder, sizeof folder, "%s", argv[++i]);
-        else if (!strcmp(argv[i], "--rom") && i + 2 < argc) { int g = atoi(argv[++i]) - 1; if (g >= 0 && g < 3) take_rom(g, argv[++i]); }
+        else if (!strcmp(argv[i], "--rom") && i + 2 < argc) { int g = atoi(argv[++i]) - 1; if (g >= 0 && g < ROW_COUNT) take_rom(g, argv[++i]); else i++; }
         else if (!strcmp(argv[i], "--shot") && i + 2 < argc) { page = atoi(argv[++i]); shot = argv[++i]; }
         else if (!strcmp(argv[i], "--install-test")) install_test = true;
     }

@@ -37,6 +37,8 @@ typedef struct GameEdition {
 } GameEdition;
 
 extern const GameEdition *const game_editions[GAME_EDITION_COUNT];   /* game.json order; NULL: not built */
+extern const char *const game_edition_sha1s[GAME_EDITION_COUNT];     /* each one's cartridge, built or not */
+extern const char *const game_edition_names[GAME_EDITION_COUNT];
 extern const GameEdition *game;                                       /* the one loaded */
 
 const GameEdition *game_edition_by_id(const char *id);

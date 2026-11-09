@@ -59,8 +59,11 @@ void game_file_name(char *out, size_t n, const char *name) {
 
 /* Reads a ROM file into buf and finds which of this build's editions it is; NULL with *why
  * set if it is none of them. */
+const char *bus_unbuilt_edition;
+
 static const GameEdition *read_rom(const char *path, uint8_t *buf, const char **why) {
     static char msg[256];
+    bus_unbuilt_edition = NULL;
     FILE *f = fopen(path, "rb");
     if (!f) {
         snprintf(msg, sizeof msg, "cannot open %s", path);
@@ -75,6 +78,13 @@ static const GameEdition *read_rom(const char *path, uint8_t *buf, const char **
     sha1_hex(buf, ROM_SIZE, hex);
     for (int i = 0; i < GAME_EDITION_COUNT; i++)
         if (game_editions[i] && !strcmp(hex, game_editions[i]->sha1)) return game_editions[i];
+    for (int i = 0; i < GAME_EDITION_COUNT; i++)
+        if (!game_editions[i] && !strcmp(hex, game_edition_sha1s[i])) {
+            bus_unbuilt_edition = game_edition_names[i];
+            snprintf(msg, sizeof msg, "%s is not installed: run Setup again and pick it to add it", game_edition_names[i]);
+            *why = msg;
+            return NULL;
+        }
     if (strcmp(hex, ROM_SHA1) && GAME_EDITION_COUNT > 1) snprintf(msg, sizeof msg, "SHA-1 %s is not an edition of " GAME_TITLE " this build has", hex);
     else snprintf(msg, sizeof msg, "SHA-1 %s does not match " GAME_ROM_NAME, hex);
     *why = msg;

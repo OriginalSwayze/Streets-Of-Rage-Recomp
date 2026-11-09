@@ -774,7 +774,7 @@ static const Row tab_rows[TABS][9] = {
       { ROW_OPTION, "Widescreen sides", OPT_SIDES, "Story scenes and the street's ends: the picture's edge blurred, or black." },
       { ROW_OPTION, "Rumble", OPT_RUMBLE, GAME_SOR == 1 ? "The controller rumbles on your hits, knockouts, when you are hit and on the police car."
                                                          : "The controller rumbles on your hits, knockouts and when you are hit." } },
-    { { ROW_ROM, "ROM", 0, GAME_SOR == 3 ? "Your Streets of Rage 3 (USA) or Bare Knuckle III cartridge file. Add another to play that edition."
+    { { ROW_ROM, "ROM", 0, GAME_SOR == 3 ? "Your Streets of Rage 3 (USA) cartridge file, or a Bare Knuckle III one installed with it. To add Bare Knuckle III, run Setup again (Settings > Apps > Streets of Rage Collection > Modify)."
                          : GAME_SOR == 2 ? "Your Streets of Rage 2 (USA) cartridge file." : "Your Streets of Rage cartridge file." },
 #if GAME_EDITION_COUNT > 1
       { ROW_OPTION, "Edition", OPT_EDITION, GAME_SOR == 3 ? "Streets of Rage 3, or Bare Knuckle III: the Japanese original, with its story and colours."
@@ -883,6 +883,10 @@ static struct {
 
 static bool play_enabled(void) { return rom_ok; }
 static char rom_status[96];
+/* A cartridge the build knows but has not got (an edition Setup did not install): the ROM
+ * row says so, and the one played stays. Cleared by the next pick. */
+static char rom_note[96];
+
 
 static float row_y(int r) { return ROWS_Y + r * ROW_H; }
 
@@ -1076,7 +1080,7 @@ static void draw_row(int r, const Row *row, float dx, float alpha, const PlayerV
     switch (row->kind) {
     case ROW_ROM:
         snprintf(value, sizeof value, "%s", rom_status);
-        vc = rom_ok ? rgb_hex(0x9FDCA6) : rgb_hex(0xF09A86);
+        vc = rom_ok && !rom_note[0] ? rgb_hex(0x9FDCA6) : rgb_hex(0xF09A86);
         hint = "Enter to choose\xE2\x80\xA6";
         break;
     case ROW_CONTROLS:
@@ -1284,7 +1288,8 @@ static void render(float t) {
 }
 
 static void update_rom_status(void) {
-    if (rom_ok) snprintf(rom_status, sizeof rom_status, "Verified \xE2\x9C\x93");
+    if (rom_note[0]) snprintf(rom_status, sizeof rom_status, "%s", rom_note);
+    else if (rom_ok) snprintf(rom_status, sizeof rom_status, "Verified \xE2\x9C\x93");
     else if (!settings.rom_path[0]) snprintf(rom_status, sizeof rom_status, "Not selected");
     else snprintf(rom_status, sizeof rom_status, GAME_EDITION_COUNT > 1 ? "Not an edition of the game" : "Not " GAME_ROM_NAME);
 }
@@ -1349,9 +1354,14 @@ static void choose_rom(SDL_Window *win) {
     char path[1024];
     WideCharToMultiByte(CP_UTF8, 0, file, -1, path, sizeof path, NULL, NULL);
     for (char *p = path; *p; p++) if (*p == '\\') *p = '/';
-    /* An edition this build has becomes the one played; any other file is kept as picked,
-     * so the row says what is wrong with it. */
-    if (!settings_use_rom(path)) snprintf(settings.rom_path, sizeof settings.rom_path, "%s", path);
+    /* An edition this build has becomes the one played; one it has not got leaves the game
+     * as it is and says how to add it; any other file is kept as picked, so the row says
+     * what is wrong with it. */
+    rom_note[0] = 0;
+    if (!settings_use_rom(path)) {
+        if (bus_unbuilt_edition) { snprintf(rom_note, sizeof rom_note, "Not installed: run Setup to add it"); update_rom_status(); return; }
+        snprintf(settings.rom_path, sizeof settings.rom_path, "%s", path);
+    }
     reload_rom();
 #else
     (void)win;
