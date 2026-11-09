@@ -14,11 +14,11 @@ included in this repository: every tool reads your ROM and checks its SHA-1.
 
 **Bare Knuckle III** is the Japanese original of Streets of Rage 3, with its story, its own
 difficulty and the fighters' original colours. It plays as an edition of Streets of Rage 3:
-give Setup its ROM as well (Browse again on Streets of Rage 3), and pick it under Edition in
+give Setup its ROM as well (its own row under Streets of Rage 3), and pick it under Edition in
 the launcher's Game tab or the pause menu's More tab. Each edition has its own saves, save
 states and launcher art. For it in English, give Setup Twilight Translations' patch too
-(`bk3_100.zip` or `bk3_100.ips`, from its translators): Setup applies it to your Japanese ROM
-and keeps both editions. The Europe and Asia cartridges are not editions here (Europe's
+(`bk3_100.zip` or `bk3_100.ips`, from its translators) on the row below: Setup applies it to
+your Japanese ROM and keeps both editions. The Europe and Asia cartridges are not editions here (Europe's
 runs at 50 Hz).
 
 They are static recompilations, not decompilations: at build time each game's 68000 machine
@@ -43,7 +43,9 @@ to C, so it can only be made on your PC from your copy. Setup does that for you:
    rights needed).
 3. Pick your ROMs: `.md`, `.bin`, `.gen` or a `.zip` with one inside. Each is checked as you
    pick it (a ROM picked for the wrong game moves to the right one). Skip any game you do not
-   have; run Setup again later to add it.
+   have; run Setup again later to add it. Streets of Rage 3 has two optional rows under it:
+   Bare Knuckle III (Japan) and its English patch. Bare Knuckle III is built on the USA ROM,
+   so pick that one too.
 4. Setup downloads the build tools it needs into the install folder, unless they are already
    on your PC: [Node.js](https://nodejs.org/), [CMake](https://cmake.org/),
    [Ninja](https://ninja-build.org/) and [LLVM-MinGW](https://github.com/mstorsjo/llvm-mingw)
@@ -64,7 +66,8 @@ In all three games:
 * **Widescreen** (16:9 and other shapes), with the play area widened to match: the players walk
   to the new edges and enemies walk in from beyond them. At either end of a street the view
   stops at the street's end and takes its width from the other side, so the picture is the
-  game's own scenery edge to edge; scenes drawn for 4:3 get blurred sides (or black)
+  game's own scenery edge to edge; scenes and rooms drawn for 4:3 keep to it, with blurred
+  sides (or black)
 * **High frame rate**: drawn at your screen's refresh rate (120, 144 Hz or more), the scrolling
   and every sprite gliding between the game's 60 updates
 * **Internal resolution** up to 6x with dither-aware scalers (Edge, Smooth/xBR, Sharp),
@@ -84,7 +87,8 @@ In all three games:
   launcher's Track number (`07.flac`, or `07 - Go Straight.mp3`), and the game plays them
   instead of its songs, looping where the songs loop, with its sound effects on top. MP3,
   FLAC, WAV, M4A/AAC or WMA (Windows decodes them); the Music files setting turns them off
-* A launcher and pause menu in each game's own colours, with its own music and sounds
+* A launcher and pause menu in a neon night-street style, in each game's own pair of neon
+  colours, with its own music and sounds
 
 In Streets of Rage 2:
 
