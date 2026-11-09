@@ -19,7 +19,7 @@ writeIfChanged(join(dir, 'game_config.h'), [
   `#define GAME_TITLE      ${str(GAME_INFO.title)}`,
   `#define GAME_ROM_NAME   ${str(GAME_INFO.rom.name)}`,
   `#define GAME_ROM_SHA1   ${str(GAME_INFO.rom.sha1)}`,
-  `#define GAME_ROM_SIZE   0x${GAME_INFO.rom.size.toString(16).toUpperCase()}`,
+  `#define GAME_ROM_SIZE   0x${Math.max(...EDITIONS.map((e) => e.size)).toString(16).toUpperCase()}   /* the largest edition's */`,
   `#define GAME_KNOWS_RAM  ${f.ram ? 1 : 0}`,
   `#define GAME_WIDESCREEN ${f.widescreen ? 1 : 0}`,
   `#define GAME_LAUNCHER   ${f.launcher ? 1 : 0}`,
@@ -32,6 +32,7 @@ writeIfChanged(join(dir, 'game_config.h'), [
   `#define GAME_EDITION_IDS { ${EDITIONS.map((e) => str(e.id)).join(', ')} }`,
   '',
 ].join('\n'));
-if (EDITIONS.some((e) => e.size !== GAME_INFO.rom.size)) throw new Error(`games/${GAME}/game.json: every edition's ROM must be ${GAME_INFO.rom.size} bytes, as the main one`);
+// A 4 MB edition (Bare Knuckle III DX) must still leave SPRITES_EXTRA_ADDR ($3FF000) empty.
+if (EDITIONS.some((e) => e.size > 0x400000)) throw new Error(`games/${GAME}/game.json: an edition's ROM is over 4 MB`);
 writeIfChanged(join(dir, 'game.cmake'), `set(GAME_EXE ${GAME_INFO.exe})\nset(GAME_EDITIONS ${EDITIONS.map((e) => e.id).join(' ')})\n`);
 console.log(`${GAME}: ${GAME_INFO.title} (${GAME_INFO.exe}.exe)`);

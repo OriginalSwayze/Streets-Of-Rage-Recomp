@@ -61,6 +61,8 @@ void game_file_name(char *out, size_t n, const char *name) {
  * set if it is none of them. */
 const char *bus_unbuilt_edition;
 
+static size_t rom_read;                 /* the size read_rom found */
+
 static const GameEdition *read_rom(const char *path, uint8_t *buf, const char **why) {
     static char msg[256];
     bus_unbuilt_edition = NULL;
@@ -73,9 +75,10 @@ static const GameEdition *read_rom(const char *path, uint8_t *buf, const char **
     size_t n = fread(buf, 1, ROM_SIZE, f);
     int extra = fgetc(f);
     fclose(f);
-    if (n != ROM_SIZE || extra != EOF) { *why = "wrong file size: this is not " GAME_ROM_NAME; return NULL; }
+    if (n < 0x10000 || (n & 0xFFFF) || extra != EOF) { *why = "wrong file size: this is not " GAME_ROM_NAME; return NULL; }
+    rom_read = n;
     char hex[41];
-    sha1_hex(buf, ROM_SIZE, hex);
+    sha1_hex(buf, n, hex);
     for (int i = 0; i < GAME_EDITION_COUNT; i++)
         if (game_editions[i] && !strcmp(hex, game_editions[i]->sha1)) return game_editions[i];
     for (int i = 0; i < GAME_EDITION_COUNT; i++)
@@ -99,7 +102,9 @@ const char *bus_load_rom(const char *path) {
     const char *why = NULL;
     const GameEdition *e = read_rom(path, rom_buf, &why);
     if (!e) return why;
-    memcpy(bus.rom, rom_buf, ROM_SIZE);
+    memcpy(bus.rom, rom_buf, rom_read);
+    memset(bus.rom + rom_read, 0xFF, ROM_SIZE - rom_read);
+    bus.rom_size = (uint32_t)rom_read;
     game = e;
     return NULL;
 }
@@ -123,7 +128,7 @@ uint8_t bus_read8(uint32_t a) {
 #if GAME_SOR == 3
         if (in_extra(a)) return bus.sprites_extra[a - SPRITES_EXTRA_ADDR];
 #endif
-        return a < ROM_SIZE ? bus.rom[a] : 0xFF;
+        return a < bus.rom_size ? bus.rom[a] : 0xFF;
     }
     if (a >= 0xE00000) return bus.ram[a & 0xFFFF];
     if (a >= 0xC00000 && a < 0xC00020) return vdp_read8(a);
@@ -143,7 +148,7 @@ uint8_t bus_read8(uint32_t a) {
 
 uint16_t bus_read16(uint32_t a) {
     a &= 0xFFFFFE;
-    if (a < ROM_SIZE && !in_sram(a)) return (uint16_t)(bus.rom[a] << 8 | bus.rom[a + 1]);
+    if (a < bus.rom_size && !in_sram(a)) return (uint16_t)(bus.rom[a] << 8 | bus.rom[a + 1]);
     if (a >= 0xE00000) return (uint16_t)(bus.ram[a & 0xFFFF] << 8 | bus.ram[(a & 0xFFFF) + 1]);
     if (a >= 0xC00000 && a < 0xC00020) return vdp_read16(a);
     if (a >= 0xA00000 && a < 0xA10000) {

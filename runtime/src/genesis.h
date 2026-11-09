@@ -8,7 +8,7 @@
 
 #include "game.h"
 
-#define ROM_SIZE        GAME_ROM_SIZE
+#define ROM_SIZE        GAME_ROM_SIZE   /* room for the largest edition; bus.rom_size is the loaded one's */
 #define SRAM_SIZE       0x4000          /* bytes on the odd addresses $200001-$203FFF */
 #define LINES_NTSC      262
 /* The sprite list: the VDP's 80 entries, and in Streets of Rage 3 up to 48 more that the
@@ -25,6 +25,7 @@
 /* ---- Bus (bus.c) ---------------------------------------------------------- */
 typedef struct {
     uint8_t rom[ROM_SIZE];
+    uint32_t rom_size;                  /* the loaded edition's (Bare Knuckle III DX is 4 MB) */
     uint8_t ram[0x10000];
     uint8_t sram[SRAM_SIZE];
     bool sram_mapped;                   /* $A130F1 bit 0 */

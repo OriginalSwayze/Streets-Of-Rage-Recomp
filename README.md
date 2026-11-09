@@ -11,6 +11,7 @@ included in this repository: every tool reads your ROM and checks its SHA-1.
 | Streets of Rage 3 | Streets of Rage 3 (USA) | `40a33dd6f9dab0aff26c7525c9b8f342482c7af6` |
 | Streets of Rage 3: Bare Knuckle III edition | Bare Knuckle III (Japan) | `b9b2b4a98a9d8f4c49aa1e5395e2279339517fdb` |
 | Streets of Rage 3: Bare Knuckle III, in English | Bare Knuckle III (Japan) with Twilight Translations' English patch 1.00 (`bk3_100.ips`) applied | `d1dc85abe0889ff8e880edcaf908a6b195b75952` |
+| Streets of Rage 3: Bare Knuckle III DX | Bare Knuckle III (Japan) with the Bare Knuckle III DX 1.5 patch (`BKIII 1.5.ips`) applied: a 4 MB ROM | `e8e19ece9ad6966e9e635516d8bb851a2b74b36a` |
 
 **Bare Knuckle III** is the Japanese original of Streets of Rage 3, with its story, its own
 difficulty and the fighters' original colours. It plays as an edition of Streets of Rage 3:
@@ -20,6 +21,13 @@ states and launcher art. For it in English, give Setup Twilight Translations' pa
 (`bk3_100.zip` or `bk3_100.ips`, from its translators) on the row below: Setup applies it to
 your Japanese ROM and keeps both editions. The Europe and Asia cartridges are not editions here (Europe's
 runs at 50 Hz).
+
+**Bare Knuckle III DX** is a fan hack of Bare Knuckle III, the Director's Cut 1.5. It puts back areas cut
+from the cartridge (round 6's extra rooms, the motorbike stages), has Red Comet's English translation, and
+gives Shiva new moves. For it, give Setup the hack's patch (`BKIII 1.5.ips`, or a zip with it) on the last
+row: Setup applies it to your Japanese ROM, and it is another edition. It plays as the hack was left, with its
+own unfinished parts (bosses picking up weapons, a few sprite mix-ups, round 6 ending once the general is
+saved).
 
 They are static recompilations, not decompilations: at build time each game's 68000 machine
 code is translated into C from your ROM, and anything not yet covered runs on an
@@ -43,8 +51,8 @@ to C, so it can only be made on your PC from your copy. Setup does that for you:
    rights needed).
 3. Pick your ROMs: `.md`, `.bin`, `.gen` or a `.zip` with one inside. Each is checked as you
    pick it (a ROM picked for the wrong game moves to the right one). Skip any game you do not
-   have; run Setup again later to add it. Streets of Rage 3 has two optional rows under it:
-   Bare Knuckle III (Japan) and its English patch. Bare Knuckle III is built on the USA ROM,
+   have; run Setup again later to add it. Streets of Rage 3 has three optional rows under it:
+   Bare Knuckle III (Japan), its English patch and the DX patch. Bare Knuckle III is built on the USA ROM,
    so pick that one too.
 4. Setup downloads the build tools it needs into the install folder, unless they are already
    on your PC: [Node.js](https://nodejs.org/), [CMake](https://cmake.org/),
@@ -98,7 +106,8 @@ In Streets of Rage 2:
 In Streets of Rage 3:
 
 * **Bare Knuckle III**, the Japanese original with its story, as an edition (also in English
-  with Twilight Translations' patch, which Setup applies): see [above](#streets-of-rage-collection)
+  with Twilight Translations' patch, and as the DX hack, which Setup applies): see
+  [above](#streets-of-rage-collection)
 * A **six-button pad**, as the game reads on a Mega Drive: Z for the back attack, X for the
   full-strength blitz moves
 

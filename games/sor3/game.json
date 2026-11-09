@@ -31,6 +31,18 @@
       "region": "jp",
       "sha1": "d1dc85abe0889ff8e880edcaf908a6b195b75952",
       "sameCodeAs": "jp"
+    },
+    {
+      "id": "dx",
+      "name": "Bare Knuckle III DX 1.5 (Bare Knuckle III (Japan) with the Director's Cut patch)",
+      "edition": "Bare Knuckle III DX",
+      "title": "BARE KNUCKLE III DX",
+      "region": "jp",
+      "size": 4194304,
+      "sha1": "e8e19ece9ad6966e9e635516d8bb851a2b74b36a",
+      "absent": ["026B00"],
+      "placed": { "023628": "0235BC", "03167A": "03250A", "03167E": "03250E", "03171A": "03259E", "0318D8": "032722", "0318DC": "032726", "031978": "0327B6", "1A8106": "0BBFCC" },
+      "patches": { "sor3Hit": { "pcs": { "0101FA": "d0", "010750": "d0" } } }
     }
   ],
   "features": {

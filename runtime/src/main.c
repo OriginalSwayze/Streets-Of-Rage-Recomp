@@ -111,9 +111,9 @@ static void save_coverage(void) {
     /* Merge with earlier runs so coverage accumulates across play sessions. */
     FILE *f = fopen(p, "rb");
     if (f) {
-        uint8_t old[sizeof coverage];
-        if (fread(old, 1, sizeof old, f) == sizeof old)
-            for (size_t i = 0; i < sizeof old; i++) coverage[i] |= old[i];
+        uint8_t old[sizeof coverage];   /* shorter when the game has a larger edition since */
+        size_t n = fread(old, 1, sizeof old, f);
+        for (size_t i = 0; i < n; i++) coverage[i] |= old[i];
         fclose(f);
     }
     f = fopen(p, "wb");

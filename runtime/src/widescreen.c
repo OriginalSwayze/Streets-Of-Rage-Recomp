@@ -17,6 +17,7 @@
  * same work as the original, then returns to the caller. Registers the original leaves
  * in a known state (the VDP port pointers) are set the same way; the others were
  * scratch for the original too. */
+#include <string.h>
 #include "genesis.h"
 #include "recomp_rt.h"
 
@@ -325,8 +326,13 @@ void widescreen_frame(void) {
         if (!round) seen_area = -1;
         else if (here != seen_area) { seen_area = here; cam_at_start = cam; cam_moved = false; }
         else if (cam - cam_at_start > 128 || cam_at_start - cam > 128) cam_moved = true;   /* settling in is not moving */
-        bool narrow = round && sor3_keeps_narrow(cam);
-        if (round && !narrow) {
+        /* Bare Knuckle III DX's motorbike stages (7A's and 7B's first scenes: round $FFFB05 6
+         * and 7, area 0): the road scrolls by itself and has no end to stop at. The map and its
+         * limit there are not the street's, and the view slid, blacking out the HUD's strip. */
+        bool bike = round && !strcmp(game->id, "dx") && rd8(0xFFFB05) >= 6 && rd8(0xFFFB03) == 0;
+        bool narrow = round && !bike && sor3_keeps_narrow(cam);
+        if (bike) slide_view(-extra, -extra);
+        else if (round && !narrow) {
             slide_view(extra - cam, cam + 320 + extra - end);
             narrow = !cam_moved && cam == limit && (vdp_opts.mask_left > 0 || vdp_opts.mask_right > 0);
         }

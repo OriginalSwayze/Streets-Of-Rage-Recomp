@@ -276,7 +276,7 @@ void cheats_hooks(void) {
      * ways meet. */
     static const uint8_t code[] = { 0x0C, 0x78, 0x00, 0x1C, 0xFB, 0x00, 0x66, 0x22, 0x08, 0x38, 0x00, 0x04, 0xF7, 0x04,
                                     0x67, 0x1A, 0x08, 0x38, 0x00, 0x00, 0xF7, 0x04, 0x67, 0x12, 0x11, 0xFC, 0x00, 0x01 };
-    for (uint32_t a = 0; a + 42 <= ROM_SIZE; a += 2)
+    for (uint32_t a = 0; a + 42 <= bus.rom_size; a += 2)
         if (!memcmp(bus.rom + a, code, sizeof code)) {
             unlock_flag = (uint16_t)(bus.rom[a + 28] << 8 | bus.rom[a + 29]);
             machine_override(a + 42, unlock_hook);

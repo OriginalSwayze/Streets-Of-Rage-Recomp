@@ -777,7 +777,7 @@ static const Row tab_rows[TABS][9] = {
     { { ROW_ROM, "ROM", 0, GAME_SOR == 3 ? "Your Streets of Rage 3 (USA) cartridge file, or a Bare Knuckle III one installed with it. To add Bare Knuckle III, run Setup again (Settings > Apps > Streets of Rage Collection > Modify)."
                          : GAME_SOR == 2 ? "Your Streets of Rage 2 (USA) cartridge file." : "Your Streets of Rage cartridge file." },
 #if GAME_EDITION_COUNT > 1
-      { ROW_OPTION, "Edition", OPT_EDITION, GAME_SOR == 3 ? "Streets of Rage 3, or Bare Knuckle III: the Japanese original, with its story and colours."
+      { ROW_OPTION, "Edition", OPT_EDITION, GAME_SOR == 3 ? "Streets of Rage 3, Bare Knuckle III (the Japanese original), or the DX fan hack of it."
                                                           : "The edition of the game played: each cartridge has its own code." },
 #endif
       { ROW_OPTION, "Player 2", OPT_PLAYER2, GAME_SOR == 2 ? "In a 2 PLAYERS game: a friend on a second controller, or the AI partner beside you."

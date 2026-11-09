@@ -49,17 +49,19 @@ static Game games[3] = {
     { "sor3", "Streets of Rage 3", "Streets of Rage 3 (USA)", "StreetsOfRage3.exe", 0xFFB848, "", false },
 };
 
-/* The games page's rows: one per game, and under Streets of Rage 3 its two optional
- * editions, each picked on its own row (Bare Knuckle III is built on top of the USA ROM). */
-enum { ROW_SOR1, ROW_SOR2, ROW_SOR3, ROW_BK3, ROW_EN, ROW_COUNT };
-static const int row_game[ROW_COUNT] = { 0, 1, 2, 2, 2 };
-static const char *const row_title[ROW_COUNT] = { "Streets of Rage", "Streets of Rage 2", "Streets of Rage 3", "Bare Knuckle III", "Bare Knuckle III in English" };
+/* The games page's rows: one per game, and under Streets of Rage 3 its optional editions,
+ * each picked on its own row (Bare Knuckle III is built on top of the USA ROM, and the two
+ * patches on top of Bare Knuckle III). */
+enum { ROW_SOR1, ROW_SOR2, ROW_SOR3, ROW_BK3, ROW_EN, ROW_DX, ROW_COUNT };
+static const int row_game[ROW_COUNT] = { 0, 1, 2, 2, 2, 2 };
+static const char *const row_title[ROW_COUNT] = { "Streets of Rage", "Streets of Rage 2", "Streets of Rage 3", "Bare Knuckle III", "Bare Knuckle III in English", "Bare Knuckle III DX" };
 static const char *const row_about[ROW_COUNT] = {
     "Streets of Rage (World), also sold as Bare Knuckle.",
     "Streets of Rage 2 (USA).",
     "Streets of Rage 3 (USA). Needed for the two optional rows below.",
     "Bare Knuckle III (Japan): the Japanese original, played as an edition of Streets of Rage 3.",
     "Twilight Translations' patch, bk3_100.ips or its .zip. Setup applies it to Bare Knuckle III.",
+    "The Director's Cut hack 1.5, BKIII 1.5.ips or its .zip. Setup applies it to Bare Knuckle III.",
 };
 static char row_problem[ROW_COUNT][200];   /* why the last pick on that row was not taken */
 static bool row_installed[ROW_COUNT];
@@ -80,6 +82,7 @@ static Rom roms[] = {
     { 2, "us", "40a33dd6f9dab0aff26c7525c9b8f342482c7af6", true, "", "" },
     { 2, "jp", "b9b2b4a98a9d8f4c49aa1e5395e2279339517fdb", false, "", "" },   /* Bare Knuckle III (Japan) */
     { 2, "en", "d1dc85abe0889ff8e880edcaf908a6b195b75952", false, "", "" },   /* with Twilight Translations' English patch 1.00 */
+    { 2, "dx", "e8e19ece9ad6966e9e635516d8bb851a2b74b36a", false, "", "" },   /* with the Bare Knuckle III DX 1.5 patch (4 MB) */
 };
 #define ROMS ((int)(sizeof roms / sizeof *roms))
 
@@ -88,8 +91,14 @@ static bool game_picked(int g) {
     return false;
 }
 
-/* The patch picked for the English Bare Knuckle III (see make_english). */
-static char ips_file[MAX_PATH], ips_shown[MAX_PATH];
+/* The patches for Bare Knuckle III (see make_patched): each makes one edition from the
+ * Japanese ROM, and is picked on that edition's row. */
+enum { PATCH_EN, PATCH_DX, PATCHES };
+static const int patch_row[PATCHES] = { ROW_EN, ROW_DX };
+static const char *const patch_rom[PATCHES] = { "en", "dx" };
+static const char *const patch_wanted[PATCHES] = { "Twilight Translations' 1.00, bk3_100.ips", "Bare Knuckle III DX 1.5, BKIII 1.5.ips" };
+static char ips_file[PATCHES][MAX_PATH], ips_shown[PATCHES][MAX_PATH];
+static int patch_of_row(int row) { return row == ROW_DX ? PATCH_DX : row == ROW_EN ? PATCH_EN : -1; }
 
 static int rom_index(const char *id);
 
@@ -99,10 +108,13 @@ static void row_skip(int row) {
         for (int r = 0; r < ROMS; r++) if (roms[r].game == row) roms[r].picked[0] = roms[r].shown[0] = 0;
     } else if (row == ROW_SOR3) {
         roms[rom_index("us")].picked[0] = roms[rom_index("us")].shown[0] = 0;
+    } else if (row == ROW_BK3) {          /* the patched editions are made from it */
+        for (int k = 0; k < PATCHES; k++) roms[rom_index(patch_rom[k])].picked[0] = roms[rom_index(patch_rom[k])].shown[0] = 0;
+        roms[rom_index("jp")].picked[0] = roms[rom_index("jp")].shown[0] = 0;
     } else {
-        roms[rom_index("en")].picked[0] = roms[rom_index("en")].shown[0] = 0;
-        if (row == ROW_BK3) roms[rom_index("jp")].picked[0] = roms[rom_index("jp")].shown[0] = 0;
-        else ips_file[0] = 0;
+        int k = patch_of_row(row);
+        roms[rom_index(patch_rom[k])].picked[0] = roms[rom_index(patch_rom[k])].shown[0] = 0;
+        ips_file[k][0] = 0;
     }
     row_problem[row][0] = 0;
 }
@@ -110,12 +122,13 @@ static void row_skip(int row) {
 /* The row a cartridge is shown on. */
 static int row_of_rom(int r) {
     if (roms[r].game < 2) return roms[r].game;
-    return !strcmp(roms[r].id, "jp") ? ROW_BK3 : !strcmp(roms[r].id, "en") ? ROW_EN : ROW_SOR3;
+    return !strcmp(roms[r].id, "jp") ? ROW_BK3 : !strcmp(roms[r].id, "en") ? ROW_EN : !strcmp(roms[r].id, "dx") ? ROW_DX : ROW_SOR3;
 }
 
 /* Bare Knuckle III picked, but no Streets of Rage 3 (USA) to build it on. */
 static bool bk3_needs_us(void) {
-    bool bk3 = roms[rom_index("jp")].picked[0] || roms[rom_index("en")].picked[0] || ips_file[0];
+    bool bk3 = roms[rom_index("jp")].picked[0] || roms[rom_index("en")].picked[0] || roms[rom_index("dx")].picked[0] ||
+               ips_file[PATCH_EN][0] || ips_file[PATCH_DX][0];
     return bk3 && !roms[rom_index("us")].picked[0] && !games[2].installed;
 }
 
@@ -164,8 +177,9 @@ static int rom_index(const char *id) {
     return -1;
 }
 
-/* Bare Knuckle III in English: Twilight Translations' patch (bk3_100.ips, or its zip), which
- * Setup applies to the Japanese ROM once it has both, in either order (make_english). */
+/* Bare Knuckle III in English (Twilight Translations' bk3_100.ips) and Bare Knuckle III DX
+ * (BKIII 1.5.ips), each as the patch or its zip, which Setup applies to the Japanese ROM once
+ * it has both, in either order (make_patched). */
 
 /* Applies an IPS patch to `rom` (n bytes, grown up to cap); the new size, or 0 if it is not one. */
 static size_t ips_apply(uint8_t *rom, size_t n, size_t cap, const uint8_t *p, size_t len) {
@@ -205,34 +219,43 @@ static uint8_t *read_all(const char *path, size_t *n, size_t extra) {
     return buf;
 }
 
-/* With the patch and the Japanese ROM both picked: the English ROM, made in the temp folder. */
-static void make_english(void) {
-    int jp = rom_index("jp"), en = rom_index("en");
-    if (!ips_file[0]) return;
+/* With patch k and the Japanese ROM both picked: its edition's ROM, made in the temp folder. */
+static void make_patched(int k) {
+    int jp = rom_index("jp"), en = rom_index(patch_rom[k]), row = patch_row[k];
+    if (!ips_file[k][0]) return;
     if (!roms[jp].picked[0]) {
-        snprintf(row_problem[ROW_EN], sizeof row_problem[ROW_EN], "Patch taken. Now pick Bare Knuckle III (Japan) on the row above.");
+        snprintf(row_problem[row], sizeof row_problem[row], "Patch taken. Now pick Bare Knuckle III (Japan) on its row above.");
         return;
     }
     size_t n, plen;
     const size_t cap = 8u << 20;
-    uint8_t *rom = read_all(roms[jp].picked, &n, cap), *patch = read_all(ips_file, &plen, 0);
+    uint8_t *rom = read_all(roms[jp].picked, &n, cap), *patch = read_all(ips_file[k], &plen, 0);
     if (rom && n > cap) n = 0;
     size_t out = rom && patch && n ? ips_apply(rom, n, cap, patch, plen) : 0;
     char tmp[MAX_PATH], sum[41] = "";
     GetTempPathA(MAX_PATH, tmp);
-    snprintf(tmp + strlen(tmp), MAX_PATH - strlen(tmp), "sor_setup_bk3_en.md");
+    snprintf(tmp + strlen(tmp), MAX_PATH - strlen(tmp), "sor_setup_bk3_%s.md", patch_rom[k]);
     FILE *f = out ? fopen(tmp, "wb") : NULL;
     bool ok = f && fwrite(rom, 1, out, f) == out;
     if (f) fclose(f);
     free(rom); free(patch);
     if (ok && sha1_file(tmp, sum) && !strcmp(sum, roms[en].sha1)) {
         snprintf(roms[en].picked, MAX_PATH, "%s", tmp);
-        snprintf(roms[en].shown, MAX_PATH, "%s", ips_shown);
-        row_problem[ROW_EN][0] = 0;
+        snprintf(roms[en].shown, MAX_PATH, "%s", ips_shown[k]);
+        row_problem[row][0] = 0;
     } else {
-        snprintf(row_problem[ROW_EN], sizeof row_problem[ROW_EN], "Not the patch this takes: Twilight Translations' 1.00, bk3_100.ips.");
-        ips_file[0] = 0;
+        snprintf(row_problem[row], sizeof row_problem[row], "Not the patch this takes: %s.", patch_wanted[k]);
+        ips_file[k][0] = 0;
     }
+}
+
+/* Which patch a file picked on `slot` is: that row's, or on another row by its size
+ * (Bare Knuckle III DX's is over 3 MB, the English one under 1 MB). */
+static int patch_for(int slot, const char *path) {
+    int k = patch_of_row(slot);
+    if (k >= 0) return k;
+    WIN32_FILE_ATTRIBUTE_DATA a;
+    return GetFileAttributesExA(path, GetFileExInfoStandard, &a) && (a.nFileSizeHigh || a.nFileSizeLow > (1u << 20)) ? PATCH_DX : PATCH_EN;
 }
 
 /* A ROM picked for slot `slot`: checked, unpacked from a zip if need be, and put in the
@@ -243,9 +266,10 @@ static void take_rom(int slot, const char *path) {
     snprintf(file, sizeof file, "%s", path);
     const char *dot = strrchr(path, '.');
     if (dot && !_stricmp(dot, ".ips")) {
-        snprintf(ips_file, sizeof ips_file, "%s", path);
-        snprintf(ips_shown, sizeof ips_shown, "%s", path);
-        make_english();
+        int k = patch_for(slot, path);
+        snprintf(ips_file[k], MAX_PATH, "%s", path);
+        snprintf(ips_shown[k], MAX_PATH, "%s", path);
+        make_patched(k);
         return;
     }
     if (dot && !_stricmp(dot, ".zip")) {
@@ -266,11 +290,11 @@ static void take_rom(int slot, const char *path) {
                 if (fh != INVALID_HANDLE_VALUE) { snprintf(file, sizeof file, "%s\\%s", tmp, fd.cFileName); FindClose(fh); }
             }
             if (!file[0]) {             /* a patch's zip (bk3_100.zip keeps it in a folder) */
-                ips_file[0] = 0;
+                char ips[MAX_PATH] = "";
                 char pat[MAX_PATH];
                 WIN32_FIND_DATAA fd;
                 const char *where[2] = { "%s\\*.ips", "%s\\*\\*.ips" };
-                for (int k = 0; k < 2 && !ips_file[0]; k++) {
+                for (int k = 0; k < 2 && !ips[0]; k++) {
                     snprintf(pat, sizeof pat, where[k], tmp);
                     if (k) {            /* one folder down: find the folder first */
                         char dir[MAX_PATH];
@@ -283,15 +307,21 @@ static void take_rom(int slot, const char *path) {
                             WIN32_FIND_DATAA fi;
                             snprintf(sub, sizeof sub, "%s\\%s\\*.ips", tmp, fd.cFileName);
                             HANDLE fh = FindFirstFileA(sub, &fi);
-                            if (fh != INVALID_HANDLE_VALUE) { snprintf(ips_file, sizeof ips_file, "%s\\%s\\%s", tmp, fd.cFileName, fi.cFileName); FindClose(fh); }
-                        } while (!ips_file[0] && FindNextFileA(dh, &fd));
+                            if (fh != INVALID_HANDLE_VALUE) { snprintf(ips, sizeof ips, "%s\\%s\\%s", tmp, fd.cFileName, fi.cFileName); FindClose(fh); }
+                        } while (!ips[0] && FindNextFileA(dh, &fd));
                         FindClose(dh);
                     } else {
                         HANDLE fh = FindFirstFileA(pat, &fd);
-                        if (fh != INVALID_HANDLE_VALUE) { snprintf(ips_file, sizeof ips_file, "%s\\%s", tmp, fd.cFileName); FindClose(fh); }
+                        if (fh != INVALID_HANDLE_VALUE) { snprintf(ips, sizeof ips, "%s\\%s", tmp, fd.cFileName); FindClose(fh); }
                     }
                 }
-                if (ips_file[0]) { snprintf(ips_shown, sizeof ips_shown, "%s", path); make_english(); return; }
+                if (ips[0]) {
+                    int k = patch_for(slot, ips);
+                    snprintf(ips_file[k], MAX_PATH, "%s", ips);
+                    snprintf(ips_shown[k], MAX_PATH, "%s", path);
+                    make_patched(k);
+                    return;
+                }
             }
         }
         if (!file[0]) { snprintf(row_problem[slot], sizeof row_problem[slot], "No ROM or patch in that zip."); return; }
@@ -303,12 +333,12 @@ static void take_rom(int slot, const char *path) {
             snprintf(roms[r].shown, MAX_PATH, "%s", path);
             row_problem[row_of_rom(r)][0] = 0;
             row_problem[slot][0] = 0;
-            if (!strcmp(roms[r].id, "jp")) make_english();   /* a patch waiting for it */
+            if (!strcmp(roms[r].id, "jp")) for (int k = 0; k < PATCHES; k++) make_patched(k);   /* a patch waiting for it */
             return;
         }
     static const char *const wants[ROW_COUNT] = {
         "Streets of Rage (World)", "Streets of Rage 2 (USA)", "Streets of Rage 3 (USA)", "Bare Knuckle III (Japan)",
-        "bk3_100.ips or bk3_100.zip",
+        "bk3_100.ips or bk3_100.zip", "BKIII 1.5.ips or its .zip",
     };
     snprintf(row_problem[slot], sizeof row_problem[slot], "Not the right file: this takes %s, unchanged.", wants[slot]);
 }
@@ -444,14 +474,15 @@ static void draw_page(float t) {
         break;
     case PAGE_GAMES: {
         shadow_text("YOUR GAMES", HEAD, 34, 3, x, y, C_YELLOW, rgb_hex(0x8A140A));
-        wrap("Pick a ROM for each game you have (.md, .bin, .gen or .zip): each is checked as you pick it. Skip any you do not have.", x, y + 50, w, 17, C_TEXT, 1);
-        static const float row_y[ROW_COUNT] = { 232, 306, 380, 458, 522 };
+        wrap("Pick a ROM for each game you have (.md, .bin, .gen or .zip): each is checked as you pick it. Skip any you do not have.", x, y + 44, w, 17, C_TEXT, 1);
+        static const float row_y[ROW_COUNT] = { 230, 298, 366, 436, 486, 536 };
         for (int row = 0; row < ROW_COUNT; row++) {
             Game *gm = &games[row_game[row]];
             bool sub = row >= ROW_BK3;    /* Streets of Rage 3's optional editions, indented under it */
-            float rx = sub ? x + 48 : x, rw = sub ? w - 48 : w, cy = row_y[row], rh = sub ? 58 : 68;
-            int rom = row == ROW_SOR3 ? rom_index("us") : row == ROW_BK3 ? rom_index("jp") : row == ROW_EN ? rom_index("en") : row;
-            bool picked = roms[rom].picked[0] || (row == ROW_EN && ips_file[0]);
+            float rx = sub ? x + 48 : x, rw = sub ? w - 48 : w, cy = row_y[row], rh = sub ? 46 : 62;
+            int pk = patch_of_row(row);
+            int rom = row == ROW_SOR3 ? rom_index("us") : row == ROW_BK3 ? rom_index("jp") : pk >= 0 ? rom_index(patch_rom[pk]) : row;
+            bool picked = roms[rom].picked[0] || (pk >= 0 && ips_file[pk][0]);
             Rgb accent = rgb_hex(gm->accent);
             if (sub) {                    /* a bracket from Streets of Rage 3's row */
                 ui_fill_rect(x + 22, cy - 8, 3, rh / 2 + 8, mix(accent, rgb_hex(0x000000), .35f), 1);
@@ -459,10 +490,10 @@ static void draw_page(float t) {
             }
             ui_panel(rx, cy, rw, rh, 5, rgb_hex(0x1C1C23), rgb_hex(0x141418), 1, picked ? accent : rgb_hex(0x3A3A42), picked ? .8f : 1);
             ui_fill_rect(rx, cy, 6, rh, sub ? mix(accent, rgb_hex(0x000000), .35f) : accent, 1);
-            shadow_text(row_title[row], HEAD, sub ? 20 : 26, 2, rx + 22, cy + (sub ? 7 : 8), rgb_hex(0xFFFFFF), mix(accent, rgb_hex(0xFFFFFF), .3f));
+            shadow_text(row_title[row], HEAD, sub ? 17 : 25, 2, rx + 22, cy + (sub ? 4 : 6), rgb_hex(0xFFFFFF), mix(accent, rgb_hex(0xFFFFFF), .3f));
             if (sub) {
-                float tw = ui_text_width(row_title[row], HEAD, 20, 400, 2);
-                ui_draw_text("OPTIONAL", HEAD, 13, 400, 3, rx + 36 + tw, cy + 13, C_DIM, C_DIM, 1);
+                float tw = ui_text_width(row_title[row], HEAD, 17, 400, 2);
+                ui_draw_text("OPTIONAL", HEAD, 12, 400, 3, rx + 34 + tw, cy + 8, C_DIM, C_DIM, 1);
             }
             const char *state;
             Rgb sc;
@@ -470,7 +501,7 @@ static void draw_page(float t) {
             if (row_problem[row][0]) { state = row_problem[row]; sc = rgb_hex(0xF09A86); }
             else if (row == ROW_SOR3 && bk3_needs_us()) { state = "Pick Streets of Rage 3 (USA) here too: Bare Knuckle III is built on top of it."; sc = rgb_hex(0xF09A86); }
             else if (picked) {
-                const char *shown = roms[rom].picked[0] ? roms[rom].shown : ips_shown;
+                const char *shown = roms[rom].picked[0] ? roms[rom].shown : ips_shown[pk];
                 const char *base = strrchr(shown, '\\');
                 if (!base) base = strrchr(shown, '/');
                 snprintf(buf, sizeof buf, "\xE2\x9C\x93 %s", base ? base + 1 : shown);
@@ -478,8 +509,8 @@ static void draw_page(float t) {
             }
             else if (row_installed[row]) { state = "Installed. Pick it again to rebuild, or leave it as it is."; sc = C_DIM; }
             else { state = row_about[row]; sc = C_DIM; }
-            ui_draw_text(state, BODY, sub ? 14.5f : 15.5f, 400, 0, rx + 22, cy + (sub ? 34 : 40), sc, sc, 1);
-            float bh = sub ? 38 : 44, by = cy + (rh - bh) / 2;
+            ui_draw_text(state, BODY, sub ? 13.5f : 15.5f, 400, 0, rx + 22, cy + (sub ? 26 : 37), sc, sc, 1);
+            float bh = sub ? 34 : 42, by = cy + (rh - bh) / 2;
             button(x + w - 320, by, 150, bh, "BROWSE", 0, B_ROM0 + row);
             button(x + w - 160, by, 140, bh, "SKIP", picked ? 0 : 2, B_SKIP0 + row);
         }
@@ -565,10 +596,12 @@ static void browse_rom(int g) {
     of.nMaxFile = MAX_PATH;
     char title[96];
     static const char *const what[ROW_COUNT] = { "Your Streets of Rage (World) ROM", "Your Streets of Rage 2 (USA) ROM",
-        "Your Streets of Rage 3 (USA) ROM", "Your Bare Knuckle III (Japan) ROM", "Twilight Translations' patch: bk3_100.ips or bk3_100.zip" };
+        "Your Streets of Rage 3 (USA) ROM", "Your Bare Knuckle III (Japan) ROM", "Twilight Translations' patch: bk3_100.ips or bk3_100.zip",
+        "The Bare Knuckle III DX 1.5 patch: BKIII 1.5.ips or its .zip" };
     snprintf(title, sizeof title, "%s", what[g]);
     of.lpstrTitle = title;
     if (g == ROW_EN) of.lpstrFilter = "The English patch (*.ips;*.zip)\0*.ips;*.zip\0All files (*.*)\0*.*\0";
+    if (g == ROW_DX) of.lpstrFilter = "The DX patch (*.ips;*.zip)\0*.ips;*.zip\0All files (*.*)\0*.*\0";
     of.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
     if (GetOpenFileNameA(&of)) take_rom(g, file);
 }
@@ -823,8 +856,8 @@ static void find_installed(void) {
         row_installed[g] = games[g].installed;
     }
     /* The optional editions: their ROMs, kept in the folder's roms\ (copy_rom). */
-    static const char *const kept[2] = { "roms\\sor3-jp.md", "roms\\sor3-en.md" };
-    for (int k = 0; k < 2; k++) {
+    static const char *const kept[3] = { "roms\\sor3-jp.md", "roms\\sor3-en.md", "roms\\sor3-dx.md" };
+    for (int k = 0; k < 3; k++) {
         char p[MAX_PATH];
         snprintf(p, sizeof p, "%s\\%s", folder, kept[k]);
         row_installed[ROW_BK3 + k] = games[2].installed && GetFileAttributesA(p) != INVALID_FILE_ATTRIBUTES;
