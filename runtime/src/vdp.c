@@ -625,9 +625,9 @@ void vdp_render_line(int line, uint32_t *dst) {
     bool hud_line = line < vdp_opts.hud_b_lines, hud_a = hud_line && vdp_opts.hud_plane == 0;
     hud_line = hud_line && vdp_opts.hud_plane == 1;     /* plane B's */
     draw_plane(b, w, hud_line ? wide : extra, line, (vdp.reg[4] & 7) << 13, 1);
-    /* The HUD's lines of that plane are a picture 320 wide: beside it the plane holds other
-     * things (copies of the HUD on round 1's deck), so the street (the other plane) shows there. */
-    if (hud_line && wide) {
+    /* The HUD's lines of that plane hold nothing of the street beside the HUD: while the view
+     * slides, the slid street (the other plane) shows there instead. */
+    if (hud_line && extra != wide) {
         memset(b, 0, (size_t)wide);
         memset(b + wide + vdp_screen_width(), 0, (size_t)(w - wide - vdp_screen_width()));
     }
@@ -651,7 +651,7 @@ void vdp_render_line(int line, uint32_t *dst) {
         }
     }
     draw_plane(a, w, hud_a ? wide : extra, line, (vdp.reg[2] & 0x38) << 10, 0);
-    if (hud_a && wide) {       /* the HUD on plane A (where plane B is the map) */
+    if (hud_a && extra != wide) {       /* the HUD on plane A (where plane B is the map) */
         memset(a, 0, (size_t)wide);
         memset(a + wide + vdp_screen_width(), 0, (size_t)(w - wide - vdp_screen_width()));
     }

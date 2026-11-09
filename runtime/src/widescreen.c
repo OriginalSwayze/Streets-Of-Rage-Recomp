@@ -300,7 +300,7 @@ void widescreen_frame(void) {
                     if (rd16((table ? 0xFF8A00 : 0xFF8C00) + (uint32_t)(row * 32 + k * 2))) { n = k + 1; break; }
             if (!table) blocks_a = n;
             moves[table] = pcam - cam <= 8 && cam - pcam <= 8;
-            if (moves[table] && n > blocks) blocks = n;
+            if (moves[table] && n && !blocks) blocks = n;     /* plane A first: round 2's bar has both, B's a repeated aquarium */
         }
         if (!blocks) blocks = blocks_a;     /* neither moves with it: as before */
         /* The HUD is the top 40 lines of the plane that is not the map: plane B's mostly, plane
@@ -316,11 +316,24 @@ void widescreen_frame(void) {
          * room is (round 3's bar: two blocks, the camera held at 96, the art ending at 416). */
         int end = (blocks ? blocks : 1) * 256, limit = (int16_t)rd16(0xFF8864);
         if (limit >= 0 && limit + 320 > end - 256 && limit + 320 < end) end = limit + 320;
-        if (round && sor3_keeps_narrow(cam)) {
+        /* A room of one screen (the camera held near where the area began, at its limit) whose art
+         * the wide view cannot fill without a black side (round 7's 205): it keeps to 4:3,
+         * even on both sides. */
+        static int seen_area = -1, cam_at_start;
+        static bool cam_moved;
+        int here = rd8(0xFFFB05) << 8 | rd8(0xFFFB03);
+        if (!round) seen_area = -1;
+        else if (here != seen_area) { seen_area = here; cam_at_start = cam; cam_moved = false; }
+        else if (cam - cam_at_start > 128 || cam_at_start - cam > 128) cam_moved = true;   /* settling in is not moving */
+        bool narrow = round && sor3_keeps_narrow(cam);
+        if (round && !narrow) {
+            slide_view(extra - cam, cam + 320 + extra - end);
+            narrow = !cam_moved && cam == limit && (vdp_opts.mask_left > 0 || vdp_opts.mask_right > 0);
+        }
+        if (narrow) {
             slide_view(extra, extra);       /* both sides masked */
             patch_sor_reach_left = 0;
-        } else if (round) slide_view(extra - cam, cam + 320 + extra - end);
-        else slide_view(-extra, -extra);
+        } else if (!round) slide_view(-extra, -extra);
     }
     if (GAME_SOR == 2) {
         /* Streets of Rage 2: each area of a stage scrolls to a limit per section (the table at
@@ -380,7 +393,12 @@ void widescreen_frame(void) {
          * city or the next room beside them). The round is $FFFF02, from 0. */
         uint8_t mode = rd8(0xFFFF01);
         bool game = (rd8(0xFFFF18) & 3) && !rd8(0xFFFF2A);
-        vdp_opts.mask_sides = !game || mode == 0x28 || mode == 0x2A || rd16(0xFFFF02) >= 6;
+        /* The title's words are still on their way out for about 70 frames after play begins:
+         * "UND" and "STA" stood in the sides. */
+        static int since_title = 1000;
+        if (mode == 0x28 || mode == 0x2A) since_title = 0;
+        else if (since_title < 1000) since_title++;
+        vdp_opts.mask_sides = !game || since_title < 80 || rd16(0xFFFF02) >= 6;
         /* Behind black sides the players keep to the original 320 pixels. */
         patch_sor_reach = vdp_opts.mask_sides ? 0 : patch_sor_wide;
         /* The HUD is the window plane, 320 pixels wide: the street goes on beside it. */
