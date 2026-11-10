@@ -609,7 +609,9 @@ void vdp_render_line(int line, uint32_t *dst) {
             hd_frame.mask_left = vdp_opts.mask_sides ? wide : vdp_opts.mask_left < wide ? vdp_opts.mask_left : wide;
             hd_frame.mask_right = vdp_opts.mask_sides ? wide : vdp_opts.mask_right < wide ? vdp_opts.mask_right : wide;
             hd_serial++;
-            for (int k = 0; k < 80; k++) hd_frame.sprites[k].drawn = false;
+            /* Every entry, the long list's past 80 too: one left drawn stayed in the HD
+             * picture for the rest of the session (issue #24). */
+            for (int k = 0; k < SPRITES_MAX; k++) hd_frame.sprites[k].drawn = false;
             hd_frame.sprite_count = 0;
             hd_frame.sprite_mask = false;
         }

@@ -13,11 +13,12 @@
 #define LINES_NTSC      262
 /* The sprite list: the VDP's 80 entries, and in Streets of Rage 3 up to 48 more that the
  * game (patched, sor3SpriteList) writes past its own cap of 80 into a window at
- * SPRITES_EXTRA_ADDR, where no cartridge has anything. The VDP keeps a copy of them taken
- * when the game sends its list to the sprite table, and draws them after the 80. */
+ * SPRITES_EXTRA_ADDR, past the 4 MB any cartridge has (Bare Knuckle III DX fills all 4).
+ * The VDP keeps a copy of them taken when the game sends its list to the sprite table,
+ * and draws them after the 80. */
 #define SPRITES_MAX     128
 #define SPRITES_EXTRA   (SPRITES_MAX - 80)
-#define SPRITES_EXTRA_ADDR 0x3FF000u
+#define SPRITES_EXTRA_ADDR 0x480000u
 #define CYCLES_PER_LINE 488             /* 68000 clocks per scanline (53.693175 MHz / 7 / 15.7 kHz) */
 #define MAX_EXTRA_WIDTH 80              /* widescreen pixels per side, at most: the game streams 41 of the
                                            plane's 64 columns, leaving room for 11 more on each side */

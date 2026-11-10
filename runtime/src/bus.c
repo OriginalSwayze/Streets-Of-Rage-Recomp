@@ -123,11 +123,11 @@ static bool in_sram(uint32_t a) { return bus.sram_mapped && a >= 0x200000 && a <
 
 uint8_t bus_read8(uint32_t a) {
     a &= 0xFFFFFF;
+#if GAME_SOR == 3
+    if (in_extra(a)) return bus.sprites_extra[a - SPRITES_EXTRA_ADDR];
+#endif
     if (a < 0x400000) {
         if (in_sram(a)) return (a & 1) ? bus.sram[(a - 0x200000) >> 1] : 0xFF;
-#if GAME_SOR == 3
-        if (in_extra(a)) return bus.sprites_extra[a - SPRITES_EXTRA_ADDR];
-#endif
         return a < bus.rom_size ? bus.rom[a] : 0xFF;
     }
     if (a >= 0xE00000) return bus.ram[a & 0xFFFF];
