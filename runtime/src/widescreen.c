@@ -32,6 +32,7 @@ int patch_sor_wide, patch_sor_reach, patch_sor_reach_right, patch_sor_reach_left
 int patch_sor_cull_left, patch_sor_cull_right, patch_sor_x_cap = 0x200;
 int patch_sprite_cap = 0x50;
 int patch_cam_margin;
+static int sor_wide_full;                /* patch_sor_wide outside Bare Knuckle III DX's bike stages */
 
 static int16_t L16(uint32_t layer, int off) { return (int16_t)rd16(layer + off); }
 
@@ -253,6 +254,31 @@ static bool sor3_talk(void) {
     return true;
 }
 
+/* Bare Knuckle III DX's trucks (7B) are drawn on plane B, only as far as the 4:3 view goes: the
+ * plane is empty past the original right edge where one stands across it. Whether a truck's
+ * cells end there on any of the road's lines (plane B's lines 112-215): a cell with pixels just
+ * inside the edge, an empty one just past it. */
+static uint16_t vram16_at(uint32_t a) { a &= 0xFFFE; return (uint16_t)(vdp.vram[a] << 8 | vdp.vram[a + 1]); }
+static bool empty_tile(uint16_t cell) {
+    const uint8_t *t = vdp.vram + (cell & 0x7FF) * 32;
+    for (int i = 0; i < 32; i++) if (t[i]) return false;
+    return true;
+}
+static bool plane_b_ends_at_right(void) {
+    static const int widths[4] = { 32, 64, 64, 128 };
+    int pw = widths[vdp.reg[16] & 3], ph = widths[(vdp.reg[16] >> 4) & 3];
+    uint32_t nt = (uint32_t)(vdp.reg[4] & 7) << 13, hs_base = (uint32_t)(vdp.reg[13] & 0x3F) << 10;
+    int mode = vdp.reg[11] & 3, vs = vdp.vsram[1] & 0x3FF;
+    for (int y = 112; y < 216; y += 4) {
+        int hl = mode == 2 ? y & ~7 : mode == 3 ? y : 0, hs = vram16_at(hs_base + (uint32_t)hl * 4 + 2) & 0x3FF;
+        uint32_t row = (uint32_t)(((y + vs) >> 3) & (ph - 1)) * (uint32_t)pw;
+        uint16_t in = vram16_at(nt + (row + (uint32_t)(((316 - hs) >> 3) & (pw - 1))) * 2);
+        uint16_t out = vram16_at(nt + (row + (uint32_t)(((324 - hs) >> 3) & (pw - 1))) * 2);
+        if (!empty_tile(in) && empty_tile(out)) return true;
+    }
+    return false;
+}
+
 static void slide_view(int before, int after) {
     int extra = vdp_opts.extra_width;
     patch_sor_cull_left = patch_sor_cull_right = patch_sor_reach_left = extra;
@@ -345,10 +371,22 @@ void widescreen_frame(void) {
         else if (cam - cam_at_start > 128 || cam_at_start - cam > 128) cam_moved = true;   /* settling in is not moving */
         /* Bare Knuckle III DX's motorbike stages (7A's and 7B's first scenes: round $FFFB05 6
          * and 7, area 0): the road scrolls by itself and has no end to stop at. The map and its
-         * limit there are not the street's, and the view slid, blacking out the HUD's strip. */
+         * limit there are not the street's, and the view slid, blacking out the HUD's strip.
+         * The players keep to the original edges there: let past them, no hit landed either
+         * way, the bikes' or the riders' (#25). And the planes are drawn as the original
+         * draws them: the hack puts its own scenery into the road as it goes, which the
+         * columns drawn further out covered with the map's, dark bars across 7A's fields. The
+         * 512-pixel planes hold the wide view's columns all the same. */
         bool bike = round && !strcmp(game->id, "dx") && rd8(0xFFFB05) >= 6 && rd8(0xFFFB03) == 0;
+        patch_sor_wide = bike ? 0 : sor_wide_full;
         bool narrow = round && !bike && sor3_keeps_narrow(cam);
-        if (bike) slide_view(-extra, -extra);
+        if (bike) {
+            slide_view(-extra, -extra);
+            patch_sor_reach_left = patch_sor_reach_right = 0;
+            /* A truck on plane B reaching the original right edge: the plane has nothing of it
+             * past there, so that side is black rather than the truck cut off (#25). */
+            if (plane_b_ends_at_right()) vdp_opts.mask_right = extra;
+        }
         else if (round && !narrow) {
             slide_view(extra - cam, cam + 320 + extra - end);
             narrow = !cam_moved && cam == limit && (vdp_opts.mask_left > 0 || vdp_opts.mask_right > 0);
@@ -452,7 +490,7 @@ void widescreen_patches(int extra_width) {
         patch_sor_x_hi = (uint32_t)(hi > 0x200 ? 0x200 : hi);
         /* The players walk to the new edges, enemies walk in from beyond them and count as
          * on screen across the whole width. */
-        patch_sor_wide = patch_sor_reach = patch_sor_reach_right = patch_sor_reach_left = extra_width;
+        patch_sor_wide = patch_sor_reach = patch_sor_reach_right = patch_sor_reach_left = sor_wide_full = extra_width;
         patch_sor_cull_left = patch_sor_cull_right = extra_width;
         return;
     }
