@@ -475,10 +475,15 @@ void widescreen_patches(int extra_width) {
 /* Streets of Rage: the level table places an object (sorWide.tableSpawn), type byte and world
  * X. Most stand where the level puts them (scenery, enemies waiting in doorways), but an enemy
  * (types below $40) put just past an edge of the original 320 pixels, to walk in, would show
- * in the widescreen sides: it goes as far past the new edge. */
+ * in the widescreen sides: it goes as far past the new edge.
+ * An enemy with bit 7 of +$40 set (outside round 8) waits, unseen, for the camera to reach
+ * its X, then comes in from the left edge (sub_00A59C). It goes the width further left, so
+ * it comes in from the new edge. Moved right instead, it waited for a camera that a locked
+ * screen kept short of it, and the wave never ended (round 2, a $21 placed at $490). */
 uint32_t sor_table_x(uint32_t type, uint32_t x) {
     int w = patch_sor_wide, sx = (int16_t)x - (int16_t)rd16(0xFFE002);
     if (!w || type >= 0x40) return x;
+    if ((rd8(A(1) + 0x40) & 0x80) && rd16(0xFFFF02) != 7) return (x - (uint32_t)w) & 0xFFFF;
     if (sx > 320 && sx <= 320 + w + 64) return (x + (uint32_t)w) & 0xFFFF;
     if (sx < 0 && sx >= -w - 64) return (x - (uint32_t)w) & 0xFFFF;
     return x;
