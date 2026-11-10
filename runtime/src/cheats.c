@@ -187,6 +187,11 @@ static void cheats_sor2(void) {
 static void cheats_sor3(void) {
     patch_no_damage = settings.cheat_health;
     patch_attack = settings.cheat_attack;
+    /* The secret fighters, as the game unlocks them: $FF88EF (Up+B+Start held on the title)
+     * adds Roo to the select screen, and $FFFB0C / $FFFB0D offer Ash and Shiva in the
+     * fighter choice a player gets in the HUD on joining or continuing. The game clears
+     * them for a new game, so they are held. */
+    if (settings.cheat_fighters) bus.ram[0x88EF] = bus.ram[0xFB0C] = bus.ram[0xFB0D] = 1;
     if (bus.ram[0xFB13]) return;                                 /* the demo */
     for (int p = 0; p < 2; p++) {
         uint16_t obj = p ? 0xE000 : 0xDF00, state = peek16(obj);

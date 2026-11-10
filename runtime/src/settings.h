@@ -56,6 +56,7 @@ typedef struct {
     bool cheat_specials;                /* a special attack always left (both players) */
     bool cheat_time;                    /* the round timer held at 99 */
     bool cheat_unlock;                  /* the Options screen's hidden entries (cheats.c) */
+    bool cheat_fighters;                /* Streets of Rage 3: Roo, Shiva and Ash to pick (cheats.c) */
     bool third_player;                  /* a third fighter on a third controller (third.c) */
     bool cheat_weapons;                 /* weapons never break */
     int  cheat_attack;                  /* attack power: 0 normal, 1 double, 2 quadruple, 3 one-hit kills */
@@ -84,7 +85,7 @@ enum { OPT_WIDESCREEN, OPT_ASPECT, OPT_SIDES, OPT_FULLSCREEN, OPT_INTEGER, OPT_W
        OPT_TEXPACK, OPT_DUMP,
        OPT_COMBAT, OPT_RUMBLE, OPT_FAST, OPT_TIMER, OPT_RANDOMIZER,
        OPT_PLAYER2, OPT_CHEAT_LIVES, OPT_CHEAT_SPECIALS, OPT_CHEAT_TIME, OPT_CHEAT_UNLOCK, OPT_THIRD, OPT_HDR,
-       OPT_EDITION };                   /* which edition of the game is played (switching restarts it) */
+       OPT_EDITION, OPT_CHEAT_FIGHTERS };                   /* which edition of the game is played (switching restarts it) */
 enum { OST_MODE_ALL, OST_MODE_REPEAT, OST_MODE_SHUFFLE, OST_MODE_COUNT };
 void settings_set_volume_fraction(float v);         /* sets volume from a slider (0-1), in steps of 5 */                    /* all three cheats as presets: Off, Health, Health + spirit, All */
 void settings_option_text(int id, char *out, size_t n);

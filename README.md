@@ -86,6 +86,8 @@ In all three games:
 * **Cheats**: infinite health and lives, attack power up to one-hit kills; the timer and the
   specials where the game has them; the **hidden options** of each game's own Options screen
   (round select and lives; in Streets of Rage 2 also Very Easy and Mania) without the codes
+  and, in Streets of Rage 3, its **hidden fighters**: Roo on the select screen, and Shiva and
+  Ash in the fighter choice a player gets on joining or continuing (in DX all three are there)
 * **Combat info** (damage numbers, health bars over ordinary enemies), rumble, a play timer and stats
 * **Fighters' colours**: every playable fighter's clothes, hair and skin in any of the
   Genesis' 512 colours, still or animated, with a live preview

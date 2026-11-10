@@ -563,6 +563,7 @@ int main(int argc, char **argv) {
             else if (!strcmp(c, "specials")) settings.cheat_specials = true;
             else if (!strcmp(c, "time")) settings.cheat_time = true;
             else if (!strcmp(c, "unlock")) settings.cheat_unlock = true;
+            else if (!strcmp(c, "fighters")) settings.cheat_fighters = true;
             else if (!strcmp(c, "weapons")) settings.cheat_weapons = true;
             else if (!strcmp(c, "double")) settings.cheat_attack = 1;
             else if (!strcmp(c, "quadruple")) settings.cheat_attack = 2;

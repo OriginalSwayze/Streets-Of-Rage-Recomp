@@ -37,6 +37,15 @@ games/sor3/entries.json. Found by scanning the ROM for the instructions.
 |---|---|---|
 | `$FFF710` | word | camera X (the planes' scroll table at `$FF8E00` holds its negative) |
 | `$FFFB13` | byte | nonzero during the demo: the pads are read from the recording at `$FFF7B0` |
+| `$FFFF18`, `$FFFF1A` | word | each player's fighter: 0 Ash, 2 Shiva, 4 Zan, 6 Axel, 8 Blaze, `$A` Skate, `$C` Roo (Victy in Bare Knuckle III); `$FFFF` for no player 2 |
+| `$FF8850`, `$FF8854` | word | the select screen's cursors (0-3, or 0-4 with Roo), turned into fighters by the table at `$04846A` |
+| `$FF88EF` | byte | Roo on the select screen: set by Up+B+Start held on the title (`$013770`), cleared for a new game |
+| `$FFFB0C`, `$FFFB0D` | byte | Ash, and Shiva, in the fighter choice a player gets in the HUD on joining or continuing (`$00E980`) |
+| `$FF88F0` | byte | both players may pick the same fighter |
+
+The game modes (`$FFFB00`) run from the table at `$00040A`: `$14` sets up the select screen,
+`$16` runs it (`$047B32`), `$10` is a level select of every round and scene that no code opens,
+`$0E` is play. The cheats' Hidden fighters holds the three flags.
 
 There is no round timer. Player 2 can join a one-player game with Start, as in Streets of
 Rage.
