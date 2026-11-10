@@ -180,11 +180,11 @@ static uint32_t picture_of(const HdSprite *c) {
 }
 
 static unsigned frame_moves(const HdFrame *f, int dx[SPRITES_MAX], int dy[SPRITES_MAX], int *owned) {
-    static struct { bool drawn; int x, y, w, h, dx, dy; uint32_t picture; } prev[SPRITES_MAX];
+    static struct { bool drawn, matched; int x, y, w, h, dx, dy; uint32_t picture; } prev[SPRITES_MAX];
     uint32_t pic[SPRITES_MAX];
     for (int i = 0; i < SPRITES_MAX; i++) pic[i] = f->sprites[i].drawn ? picture_of(&f->sprites[i]) : 0;
     static unsigned serial;
-    bool matched[SPRITES_MAX] = { false };
+    bool matched[SPRITES_MAX] = { false }, steady[SPRITES_MAX] = { false };
     for (int i = 0; i < SPRITES_MAX; i++) {
         const HdSprite *c = &f->sprites[i];
         if (!c->drawn) continue;
@@ -192,7 +192,10 @@ static unsigned frame_moves(const HdFrame *f, int dx[SPRITES_MAX], int dy[SPRITE
         for (int j = 0; j < SPRITES_MAX; j++) {
             if (!prev[j].drawn || prev[j].picture != pic[i] || prev[j].w != c->w || prev[j].h != c->h) continue;
             int mx = c->x - prev[j].x, my = c->y - prev[j].y, d = abs(mx) + abs(my);
-            if (abs(mx) <= MAX_JUMP && abs(my) <= MAX_JUMP && d < best) { best = d; dx[i] = mx; dy[i] = my; matched[i] = true; }
+            if (abs(mx) <= MAX_JUMP && abs(my) <= MAX_JUMP && d < best) {
+                best = d; dx[i] = mx; dy[i] = my; matched[i] = true;
+                steady[i] = prev[j].matched && abs(prev[j].dx - mx) <= 1 && abs(prev[j].dy - my) <= 1;
+            }
         }
         if (matched[i] && owned) ++*owned;
     }
@@ -218,7 +221,10 @@ static unsigned frame_moves(const HdFrame *f, int dx[SPRITES_MAX], int dy[SPRITE
     /* A figure (sprites touching each other) moves as one: by the move most of its matched
      * pixels agree on. A new step of an animation brings pieces found elsewhere in the
      * frame before (a pipe's repeated tiles, a foot) and pieces not found at all, which
-     * glided from wrong places on their own: legs twice, a pipe's end apart (issue #5). */
+     * glided from wrong places on their own: legs twice, a pipe's end apart (issue #5).
+     * A piece found as itself and going on as it went the frame before keeps its own move:
+     * it may be another object the figure touches, an apple or a crate the fighter walks
+     * onto, which glided along with the fighter and jumped back (it jittered). */
     int group[SPRITES_MAX];
     for (int i = 0; i < SPRITES_MAX; i++) group[i] = i;
     for (int i = 0; i < SPRITES_MAX; i++) {
@@ -254,11 +260,12 @@ static unsigned frame_moves(const HdFrame *f, int dx[SPRITES_MAX], int dy[SPRITE
         }
         if (members < 2 || !votes || best * 2 < total) continue;
         for (int i = g; i < SPRITES_MAX; i++)
-            if (group[i] == g && f->sprites[i].drawn) { dx[i] = bx; dy[i] = by; }
+            if (group[i] == g && f->sprites[i].drawn && !steady[i]) { dx[i] = bx; dy[i] = by; }
     }
     for (int i = 0; i < SPRITES_MAX; i++) {
         const HdSprite *c = &f->sprites[i];
         prev[i].drawn = c->drawn;
+        prev[i].matched = c->drawn && matched[i];
         prev[i].x = c->x; prev[i].y = c->y; prev[i].w = c->w; prev[i].h = c->h;
         prev[i].dx = c->drawn ? dx[i] : 0; prev[i].dy = c->drawn ? dy[i] : 0;
         prev[i].picture = pic[i];
