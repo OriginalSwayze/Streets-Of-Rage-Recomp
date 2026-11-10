@@ -74,7 +74,7 @@ In all three games:
 * **Widescreen** (16:9 and other shapes), with the play area widened to match: the players walk
   to the new edges and enemies walk in from beyond them. At either end of a street the view
   stops at the street's end and takes its width from the other side, so the picture is the
-  game's own scenery edge to edge; scenes and rooms drawn for 4:3 keep to it, with blurred
+  game's own scenery edge to edge; scenes, rooms and talks drawn for 4:3 keep to it, with blurred
   sides (or black)
 * **High frame rate**: drawn at your screen's refresh rate (120, 144 Hz or more), the scrolling
   and every sprite gliding between the game's 60 updates (a fighter's sprites together, in
