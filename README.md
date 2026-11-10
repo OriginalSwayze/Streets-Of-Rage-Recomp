@@ -78,7 +78,7 @@ In all three games:
   sides (or black)
 * **High frame rate**: drawn at your screen's refresh rate (120, 144 Hz or more), the scrolling
   and every sprite gliding between the game's 60 updates (a fighter's sprites together, in
-  one piece)
+  one piece, and what it touches on its own)
 * **Internal resolution** up to 6x with dither-aware scalers (Edge, Smooth/xBR, Sharp),
   sharpening, integer scaling and CRT, scanline and LCD filters
 * **Neon glow** (the scenery's signs and lamps light up) and an **HDR look**
