@@ -69,6 +69,13 @@ saves and save states live in the install folder's `games\<game>` folder. To add
 rebuild, or remove the collection: Settings > Apps > Streets of Rage Collection (Modify runs
 Setup again; Uninstall can keep your saves).
 
+**Updates**: when a newer release is out, the collection says so at the top as it opens. **Update**
+(U, or Y on a pad) downloads its installer, checks it against the release, and runs it: it
+rebuilds the games you have from the ROMs Setup kept, and keeps your settings and saves.
+**Not now** (N, or X) waits for the next release after that one. The check asks GitHub for the
+collection's latest release and nothing else; `check_updates=0` in `collection.ini`, next to
+the collection's program, turns it off.
+
 ## What it adds
 
 In all three games:

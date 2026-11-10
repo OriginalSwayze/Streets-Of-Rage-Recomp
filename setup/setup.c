@@ -869,7 +869,8 @@ int main(int argc, char **argv) {
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     default_folder();
     const char *shot = NULL;
-    bool install_test = false;
+    bool install_test = false, update = false;
+    DWORD wait_pid = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--uninstall")) page = PAGE_UNINSTALL;
         else if (!strcmp(argv[i], "--source") && i + 1 < argc) snprintf(source_dir, sizeof source_dir, "%s", argv[++i]);
@@ -877,9 +878,37 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--rom") && i + 2 < argc) { int g = atoi(argv[++i]) - 1; if (g >= 0 && g < ROW_COUNT) take_rom(g, argv[++i]); else i++; }
         else if (!strcmp(argv[i], "--shot") && i + 2 < argc) { page = atoi(argv[++i]); shot = argv[++i]; }
         else if (!strcmp(argv[i], "--install-test")) install_test = true;
+        else if (!strcmp(argv[i], "--update")) update = true;
+        else if (!strcmp(argv[i], "--wait") && i + 1 < argc) wait_pid = (DWORD)strtoul(argv[++i], NULL, 10);
+    }
+    /* Started by the collection's updater (update.c): it closes as this starts, and its
+     * games must not be running while they are replaced. */
+    if (wait_pid) {
+        HANDLE p = OpenProcess(SYNCHRONIZE, FALSE, wait_pid);
+        if (p) { WaitForSingleObject(p, 30000); CloseHandle(p); }
     }
     find_installed();
+    /* --update: the same install again with this version, straight to building, from the ROMs
+     * kept in the install folder (copy_rom); the desktop icon as it was. Without a kept ROM
+     * for any game, the pages as usual. */
+    if (!reinstall) update = false;     /* nothing installed to update */
+    if (update) {
+        static const char *const kept[ROW_COUNT] = { "sor1.md", "sor2.md", "sor3.md", "sor3-jp.md", "sor3-en.md", "sor3-dx.md" };
+        for (int r = 0; r < ROW_COUNT; r++) {
+            char p[MAX_PATH];
+            snprintf(p, sizeof p, "%s\\roms\\%s", folder, kept[r]);
+            if (GetFileAttributesA(p) != INVALID_FILE_ATTRIBUTES) take_rom(r, p);
+        }
+        char lnk[MAX_PATH];
+        link_path(CSIDL_DESKTOPDIRECTORY, lnk);
+        desktop_icon = GetFileAttributesA(lnk) != INVALID_FILE_ATTRIBUTES;
+        if (games_ready()) {
+            prog = (typeof(prog)){ 0 };
+            page = PAGE_INSTALL;
+        } else update = false;
+    }
     lock = SDL_CreateMutex();
+    if (update) SDL_CreateThread(install_thread, "install", NULL);
     if (install_test) {
         print_progress = true;
         install_thread(NULL);

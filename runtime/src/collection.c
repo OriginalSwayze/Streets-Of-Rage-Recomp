@@ -4,7 +4,12 @@
  * (Setup skipped its ROM) shows as such.
  *
  * Each game writes card.png (its cover, from its ROM) next to its program when its
- * launcher captures its art; until then its card is drawn from text alone. */
+ * launcher captures its art; until then its card is drawn from text alone.
+ *
+ * On opening it looks for a newer release (update.c); when there is one a sign at the top
+ * offers it, and on Update downloads the installer and hands over to it. collection.ini, next
+ * to the program: check_updates=0 turns the check off; skip_version is the release "Not now"
+ * was chosen for (offered again only when a newer one comes). */
 #include <SDL.h>
 #include <math.h>
 #include <stdio.h>
@@ -16,6 +21,7 @@
 
 #include "png.h"
 #include "ui.h"
+#include "update.h"
 /* The collection is not one game: its own night-street colours, then the neon drawing
    (theme.h, which is per game, is skipped). */
 #define THEME_H
@@ -55,6 +61,108 @@ static Uint64 status_until;
 static void say(const char *s) {
     snprintf(status, sizeof status, "%s", s);
     status_until = SDL_GetTicks64() + 4000;
+}
+
+/* ---- collection.ini ------------------------------------------------------------------- */
+static bool check_updates = true;
+static char skip_version[32];
+
+static void ini_path(char *out, size_t n) { snprintf(out, n, "%scollection.ini", base); }
+
+static void load_ini(void) {
+    char p[1100], line[200];
+    ini_path(p, sizeof p);
+    FILE *f = fopen(p, "r");
+    if (!f) return;
+    while (fgets(line, sizeof line, f)) {
+        line[strcspn(line, "\r\n")] = 0;
+        if (!strncmp(line, "check_updates=", 14)) check_updates = atoi(line + 14) != 0;
+        else if (!strncmp(line, "skip_version=", 13)) snprintf(skip_version, sizeof skip_version, "%s", line + 13);
+    }
+    fclose(f);
+}
+
+static void save_ini(void) {
+    char p[1100];
+    ini_path(p, sizeof p);
+    FILE *f = fopen(p, "w");
+    if (!f) return;
+    fprintf(f, "# Streets of Rage Collection\n");
+    fprintf(f, "# check_updates=0: do not look for a newer release on opening\n");
+    fprintf(f, "check_updates=%d\n", check_updates);
+    fprintf(f, "skip_version=%s\n", skip_version);
+    fclose(f);
+}
+
+/* ---- The update sign ------------------------------------------------------------------ */
+#define UPD_X 820
+#define UPD_Y 30
+#define UPD_W 390
+#define UPD_H 96
+#define UPD_BTN_Y (UPD_Y + 50)
+static const float upd_btn_x[2] = { UPD_X + 18, UPD_X + 18 + 190 }, upd_btn_w = 168, upd_btn_h = 34;
+
+/* Whether the sign shows: a newer release not put off, or one on its way. */
+static bool update_shown(void) {
+    int s = update_state();
+    if (s == UPDATE_DOWNLOADING || s == UPDATE_READY) return true;
+    if (s == UPDATE_FAILED) return update_latest()[0] && strcmp(update_latest(), skip_version);
+    return s == UPDATE_AVAILABLE && strcmp(update_latest(), skip_version);
+}
+
+static bool update_busy(void) { return update_state() == UPDATE_DOWNLOADING || update_state() == UPDATE_READY; }
+
+static void update_now(void) {
+    if (update_shown() && !update_busy()) update_download();
+}
+
+static void update_later(void) {
+    if (!update_shown() || update_busy()) return;
+    snprintf(skip_version, sizeof skip_version, "%s", update_latest());
+    save_ini();
+}
+
+static void draw_update(float t) {
+    if (!update_shown()) return;
+    Rgb pink = rgb_hex(0xFF4FB0), cyan = rgb_hex(0x5CD8FF);
+    int s = update_state();
+    ui_fill_rect(UPD_X, UPD_Y, UPD_W, UPD_H, C_INK, .92f);
+    neon_tube(UPD_X, UPD_Y, UPD_W, UPD_H, cyan, .55f + .2f * neon_flicker(t, 4));
+    char line[200];
+    if (update_busy()) {
+        float k = s == UPDATE_READY ? 1 : update_progress();
+        if (s == UPDATE_READY) snprintf(line, sizeof line, "STARTING THE INSTALLER");
+        else snprintf(line, sizeof line, "DOWNLOADING %s   %d%%", update_latest(), (int)(k * 100));
+        neon_text(line, FONT_SIGN, 22, 600, 3, UPD_X + 18, UPD_Y + 12, cyan, 1);
+        ui_fill_rect(UPD_X + 18, UPD_BTN_Y + 10, UPD_W - 36, 10, C_LINE, 1);
+        neon_bar(UPD_X + 18, UPD_BTN_Y + 10, (UPD_W - 36) * k, 10, pink, 1);
+        return;
+    }
+    if (s == UPDATE_FAILED) ui_draw_text(update_error(), FONT_UI, 15, 400, 0, UPD_X + 18, UPD_Y + 14, rgb_hex(0xFF5A6E), rgb_hex(0xFF5A6E), 1);
+    else {
+        snprintf(line, sizeof line, "VERSION %s IS OUT", update_latest());
+        neon_text(line, FONT_SIGN, 22, 600, 3, UPD_X + 18, UPD_Y + 12, cyan, 1);
+        snprintf(line, sizeof line, "you have %s", update_installed());
+        ui_draw_text(line, FONT_UI, 14, 400, 0, UPD_X + UPD_W - 18 - ui_text_width(line, FONT_UI, 14, 400, 0), UPD_Y + 18, C_DIM, C_DIM, 1);
+    }
+    const char *labels[2] = { s == UPDATE_FAILED ? "TRY AGAIN  (U)" : "UPDATE  (U)", "NOT NOW  (N)" };
+    for (int b = 0; b < 2; b++) {
+        float w = ui_text_width(labels[b], FONT_SIGN, 18, 600, 3);
+        if (!b) {
+            ui_fill_rect(upd_btn_x[b], UPD_BTN_Y, upd_btn_w, upd_btn_h, pink, .08f);
+            neon_tube(upd_btn_x[b], UPD_BTN_Y, upd_btn_w, upd_btn_h, pink, .9f);
+        } else neon_rect_frame(upd_btn_x[b], UPD_BTN_Y, upd_btn_w, upd_btn_h, 1.5f, C_DIM, .6f);
+        Rgb c = b ? C_TEXT : pink;
+        ui_draw_text(labels[b], FONT_SIGN, 18, 600, 3, upd_btn_x[b] + upd_btn_w / 2 - w / 2, UPD_BTN_Y + 6, c, c, 1);
+    }
+}
+
+/* Which of the sign's buttons is at (lx, ly), layout units: 0 Update, 1 Not now, -1 none. */
+static int update_button_at(float lx, float ly) {
+    if (!update_shown() || update_busy()) return -1;
+    for (int b = 0; b < 2; b++)
+        if (lx >= upd_btn_x[b] && lx < upd_btn_x[b] + upd_btn_w && ly >= UPD_BTN_Y && ly < UPD_BTN_Y + upd_btn_h) return b;
+    return -1;
 }
 
 static void find_games(void) {
@@ -160,6 +268,7 @@ static void render(int w, int h, float t) {
     neon_bar(72, 108, 200, 4, rgb_hex(0x5CD8FF), 1);
     neon_text("COLLECTION", FONT_SIGN, 30, 600, 14, 290, 94, rgb_hex(0x5CD8FF), 1);
     for (int g = 0; g < GAMES; g++) draw_card(g, t);
+    draw_update(t);
     const char *help = "\xE2\x86\x90 \xE2\x86\x92  choose      Enter  play      Esc  quit";
     ui_draw_text(help, "Segoe UI Semibold", 15, 600, 1, UI_BASE_W / 2.f - ui_text_width(help, "Segoe UI Semibold", 15, 600, 1) / 2, 668,
                  C_DIM, C_DIM, 1);
@@ -221,8 +330,36 @@ int main(int argc, char **argv) {
     snprintf(base, sizeof base, "%s", bp ? bp : "");
     if (bp) SDL_free(bp);
     const char *shot = NULL;            /* --shot F.png: render one frame and save it (tests) */
-    for (int i = 1; i < argc; i++) if (!strcmp(argv[i], "--shot") && i + 1 < argc) shot = argv[++i];
+    const char *check = NULL;           /* --check-update FILE [--download] */
+    bool download = false;
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "--shot") && i + 1 < argc) shot = argv[++i];
+        /* --update-shot STATE HAVE NEW PROGRESS: the sign in that state (update.h), for --shot */
+        else if (!strcmp(argv[i], "--update-shot") && i + 4 < argc) {
+            int s = atoi(argv[i + 1]);
+            update_pretend(s, argv[i + 2], argv[i + 3], (float)atof(argv[i + 4]));
+            i += 4;
+        }
+        /* --check-update FILE [--download]: the check (and the download) here, the outcome in FILE */
+        else if (!strcmp(argv[i], "--check-update") && i + 1 < argc) check = argv[++i];
+        else if (!strcmp(argv[i], "--download")) download = true;
+    }
+    if (check) {
+        update_check();
+        while (update_state() == UPDATE_CHECKING) SDL_Delay(50);
+        if (download && update_state() == UPDATE_AVAILABLE) {
+            update_download();
+            while (update_state() == UPDATE_DOWNLOADING) SDL_Delay(100);
+        }
+        FILE *out = fopen(check, "w");
+        if (!out) return 1;
+        fprintf(out, "installed %s, latest %s, state %d %s %s\n", update_installed(), update_latest(), update_state(), update_error(),
+               update_state() == UPDATE_READY ? update_file() : "");
+        fclose(out);
+        return 0;
+    }
     find_games();
+    load_ini();
     for (int g = 0; g < GAMES; g++) if (games[g].installed) { selected = g; break; }
     if (shot) {
         hl_x = card_x(selected) + CARD_W / 2.f;
@@ -230,6 +367,7 @@ int main(int argc, char **argv) {
         return png_write(shot, ui_px, ui_w, ui_h, ui_w) ? 1 : 0;
     }
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) return 1;
+    if (check_updates) update_check();
     SDL_Window *win = SDL_CreateWindow("Streets of Rage Collection", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                        1280, 720, SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
@@ -253,17 +391,26 @@ int main(int argc, char **argv) {
                 else if (e.key.keysym.sym == SDLK_LEFT || e.key.keysym.sym == SDLK_a) move = -1;
                 else if (e.key.keysym.sym == SDLK_RIGHT || e.key.keysym.sym == SDLK_d) move = 1;
                 else if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_SPACE) go = true;
+                else if (e.key.keysym.sym == SDLK_u) update_now();
+                else if (e.key.keysym.sym == SDLK_n) update_later();
                 break;
             case SDL_CONTROLLERBUTTONDOWN:
                 if (e.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_LEFT) move = -1;
                 else if (e.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_RIGHT) move = 1;
                 else if (e.cbutton.button == SDL_CONTROLLER_BUTTON_A || e.cbutton.button == SDL_CONTROLLER_BUTTON_START) go = true;
                 else if (e.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) running = false;
+                else if (e.cbutton.button == SDL_CONTROLLER_BUTTON_Y) update_now();
+                else if (e.cbutton.button == SDL_CONTROLLER_BUTTON_X) update_later();
                 break;
             case SDL_MOUSEMOTION: case SDL_MOUSEBUTTONDOWN: {
                 int ww, wh, mx = e.type == SDL_MOUSEMOTION ? e.motion.x : e.button.x, my = e.type == SDL_MOUSEMOTION ? e.motion.y : e.button.y;
                 SDL_GetWindowSize(win, &ww, &wh);
                 float lx = (mx * (float)tw / ww - ui_ox) / ui_s, ly = (my * (float)th / wh - ui_oy) / ui_s;
+                int ub = update_button_at(lx, ly);
+                if (ub >= 0) {
+                    if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) { if (ub) update_later(); else update_now(); }
+                    break;
+                }
                 hover = -1;
                 for (int g = 0; g < GAMES; g++)
                     if (lx >= card_x(g) && lx < card_x(g) + CARD_W && ly >= CARD_Y - 10 && ly < CARD_Y + CARD_H) hover = g;
@@ -277,6 +424,8 @@ int main(int argc, char **argv) {
             if (move) selected = (selected + move + GAMES) % GAMES;
             if (go && !play(win, selected)) running = false;
         }
+        /* The installer is downloaded and checked: it takes over (and waits for this to close). */
+        if (update_state() == UPDATE_READY && update_run()) running = false;
         Uint64 now = SDL_GetPerformanceCounter();
         float dt = (float)(now - last) / SDL_GetPerformanceFrequency(), t = (float)(now - t0) / SDL_GetPerformanceFrequency();
         last = now;

@@ -145,6 +145,7 @@ endif()
 if(GAME STREQUAL "sor1")
   add_executable(Collection WIN32
     runtime/src/collection.c
+    runtime/src/update.c
     runtime/src/ui.c
     runtime/src/text.c
     runtime/src/png.c)
@@ -153,7 +154,7 @@ if(GAME STREQUAL "sor1")
   target_compile_options(Collection PRIVATE -Wall -Wextra -Wno-unused-parameter)
   if(WIN32)
     target_link_options(Collection PRIVATE -static)
-    target_link_libraries(Collection PRIVATE gdi32)
+    target_link_libraries(Collection PRIVATE gdi32 winhttp bcrypt)
   endif()
   # The installer (setup/setup.c); the release appends the source to it.
   add_executable(Setup WIN32
