@@ -14,7 +14,9 @@
 #define OST_STOP 0
 
 #if GAME_SOR == 3
-/* Streets of Rage 3: its own driver at $1A8000 (requests $01xx songs). */
+/* Streets of Rage 3: its own driver at $1A8000 (requests $01xx songs); in Bare Knuckle III DX
+ * at $0BBED4. The driver's address in the edition loaded. */
+uint32_t ost_driver(void);
 #define OST_SONGS 36
 #define SFX_CURSOR  0x0342              /* a 4-frame tick, the game's most used */
 #define SFX_CONFIRM 0x0341

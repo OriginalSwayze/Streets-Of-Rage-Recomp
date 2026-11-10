@@ -14,9 +14,12 @@
 #if GAME_SOR == 3
 /* Streets of Rage 3: the V blank calls $1A8000 once a frame (again on a 50 Hz console, to
  * keep the tempo); `jsr $1A8004` with a request in d0 starts a song ($01xx) or an effect.
- * $1A8008 sets the driver up at power on. Its RAM is $FF9F00-$FFA6FF. */
-#define DRIVER_UPDATE  0x1A8000
-#define DRIVER_CMD     0x1A8004
+ * $1A8008 sets the driver up at power on. Its RAM is $FF9F00-$FFA6FF. Bare Knuckle III DX,
+ * rebuilt from a disassembly, has it at $0BBED4 (#26). */
+#include <string.h>
+uint32_t ost_driver(void) { return game && !strcmp(game->id, "dx") ? 0x0BBED4 : 0x1A8000; }
+#define DRIVER_UPDATE  (ost_driver())
+#define DRIVER_CMD     (ost_driver() + 4)
 /* The songs: $0100-$0123, every one plays (--sound-probe). */
 static const uint16_t songs[OST_SONGS] = {
     0x0100, 0x0101, 0x0102, 0x0103, 0x0104, 0x0105, 0x0106, 0x0107,

@@ -255,7 +255,7 @@ void music_mix(int16_t *out, int frames, int rate, float gain) {
 
 /* ---- The hooks ------------------------------------------------------------------------------ */
 #if GAME_SOR == 3
-#define REQUEST_PC 0x1A8004
+#define REQUEST_PC (ost_driver() + 4)     /* $1A8004; Bare Knuckle III DX's at $0BBED8 (ost.c) */
 #elif GAME_SOR == 2
 #define REQUEST_PC 0x040008
 #elif GAME_SMPS
