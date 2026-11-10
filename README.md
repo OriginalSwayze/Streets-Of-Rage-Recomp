@@ -81,7 +81,7 @@ the collection's program, turns it off.
 In all three games:
 
 * **Widescreen** (16:9 and other shapes), with the play area widened to match: the players walk
-  to the new edges and enemies walk in from beyond them. At either end of a street the view
+  to the new edges and enemies walk in from beyond them, fighting anywhere in the wide view. At either end of a street the view
   stops at the street's end and takes its width from the other side, so the picture is the
   game's own scenery edge to edge; scenes, rooms and talks drawn for 4:3 keep to it, with blurred
   sides (or black)
@@ -105,7 +105,7 @@ In all three games:
   clipping), with a bass setting
 * **Your own music**: put recordings in a `music` folder beside the game, named by the
   launcher's Track number (`07.flac`, or `07 - Go Straight.mp3`), and the game plays them
-  instead of its songs, looping where the songs loop, with its sound effects on top. MP3,
+  instead of its songs (Bare Knuckle III DX too), looping where the songs loop, with its sound effects on top. MP3,
   FLAC, WAV, M4A/AAC or WMA (Windows decodes them); the Music files setting turns them off
 * A launcher and pause menu in a neon night-street style, in each game's own pair of neon
   colours, with its own music and sounds
