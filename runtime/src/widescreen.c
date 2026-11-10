@@ -32,6 +32,7 @@ int patch_sor_wide, patch_sor_reach, patch_sor_reach_right, patch_sor_reach_left
 int patch_sor_cull_left, patch_sor_cull_right, patch_sor_x_cap = 0x200;
 int patch_sprite_cap = 0x50;
 int patch_cam_margin;
+int patch_sor_view_left, patch_sor_view_right;
 static int sor_wide_full;                /* patch_sor_wide outside Bare Knuckle III DX's bike stages */
 
 static int16_t L16(uint32_t layer, int off) { return (int16_t)rd16(layer + off); }
@@ -404,6 +405,14 @@ void widescreen_frame(void) {
             vdp_opts.view_slide = 0;
             vdp_opts.sprite_x_wide = false;
         }
+        /* What the view shows past the original edges, for the game's on-screen test
+         * (sub_022FE0, sorCullList "vlo"/"vhi"): a fighter there is on screen, so its hits
+         * land and it can be hit; held to 4:3 it was neither (#27). The game's picture starts
+         * view_slide past the wide columns, and masked columns do not count. */
+        int vl = round ? extra + vdp_opts.view_slide - vdp_opts.mask_left : 0;
+        int vr = round ? extra - vdp_opts.view_slide - vdp_opts.mask_right : 0;
+        patch_sor_view_left = vl > 0 ? vl : 0;
+        patch_sor_view_right = vr > 0 ? vr : 0;
     }
     if (GAME_SOR == 2) {
         /* Streets of Rage 2: each area of a stage scrolls to a limit per section (the table at

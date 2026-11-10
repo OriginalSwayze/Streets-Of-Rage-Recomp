@@ -73,12 +73,17 @@ export function usePatches(patches) {
     // $200, or more when the VDP reads a 10th bit of X (vdp_opts.sprite_x_wide). "slo" and "shi"
     // are signed screen positions (the spawner's window), moved by patch_sor_wide without limits.
     // "hii" is a right edge tested with bgt (the edge itself passes): at most the cap less 1.
+    // "vlo" and "vhi" are an object's X from the camera against the screen's edges (Streets
+    // of Rage 3's on-screen test, sub_022FE0): moved out to what the wide view shows on each
+    // side (patch_sor_view_left/right, widescreen.c).
     ...Object.entries(PATCHES.sorCullList ?? {}).map(([pc, spec]) => {
       const [reg, k, side] = spec.split(' ');
       const K = `0x${k}u`, w = '(uint32_t)patch_sor_wide', l = '(uint32_t)patch_sor_cull_left', r = '(uint32_t)patch_sor_cull_right', cap = '(uint32_t)patch_sor_x_cap';
       const edge = side === 'lo' ? `(${K} > ${l} + 1u ? ${K} - ${l} : 1u)`
         : side === 'hi' ? `(${K} + ${r} < ${cap} ? ${K} + ${r} : ${cap})`
         : side === 'hii' ? `(${K} + ${r} < ${cap} - 1u ? ${K} + ${r} : ${cap} - 1u)`
+        : side === 'vlo' ? `((${K} - (uint32_t)patch_sor_view_left) & 0xFFFFu)`
+        : side === 'vhi' ? `((${K} + (uint32_t)patch_sor_view_right) & 0xFFFFu)`
         : side === 'slo' ? `((${K} - ${w}) & 0xFFFFu)` : `((${K} + ${w}) & 0xFFFFu)`;
       return [parseInt(pc, 16), [`cmpi.w	#$${k},${reg}`, [`cmpw(${edge}, D(${reg[1]}) & 0xFFFFu);`]]];
     }),
