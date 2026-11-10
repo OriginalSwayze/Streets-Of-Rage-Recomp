@@ -163,7 +163,7 @@ void bus_write8(uint32_t a, uint8_t v) {
     a &= 0xFFFFFF;
     if (a >= 0xE00000) { bus.ram[a & 0xFFFF] = v; return; }
 #if GAME_SOR == 3
-    if (in_extra(a)) { bus.sprites_extra[a - SPRITES_EXTRA_ADDR] = v; return; }
+    if (in_extra(a)) { bus.sprites_extra[a - SPRITES_EXTRA_ADDR] = v; bus.sprites_extra_written = true; return; }
 #endif
     if (in_sram(a)) {
         if (a & 1) { bus.sram[(a - 0x200000) >> 1] = v; bus.sram_dirty = true; }

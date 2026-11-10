@@ -236,6 +236,23 @@ static bool sor3_keeps_narrow(int cam) {
     return false;
 }
 
+/* A talk inside a round (round 6's General Petrov, the roof after the round's boss): the game
+ * runs only the talk then. Its list of active objects ($FFF72C: their slots' addresses, in
+ * drawing order, 0 after the last) holds no player's ($DF00, $E000, and $E100 for a third),
+ * where in play a player is in it (but for a frame now and then). The talk's picture is
+ * drawn for 320 pixels, and in the wide sides the street went on, or the view had slid at
+ * a map's end (#20). */
+static bool sor3_talk(void) {
+    uint16_t first = rd16(0xFFF72C);
+    if (!first) return false;           /* an empty list: the round loading */
+    for (uint32_t k = 0; k < 64; k++) {
+        uint16_t slot = rd16(0xFFF72C + 2 * k);
+        if (!slot) break;
+        if (slot == 0xDF00 || slot == 0xE000 || slot == 0xE100) return false;
+    }
+    return true;
+}
+
 static void slide_view(int before, int after) {
     int extra = vdp_opts.extra_width;
     patch_sor_cull_left = patch_sor_cull_right = patch_sor_reach_left = extra;
@@ -340,6 +357,15 @@ void widescreen_frame(void) {
             slide_view(extra, extra);       /* both sides masked */
             patch_sor_reach_left = 0;
         } else if (!round) slide_view(-extra, -extra);
+        /* A talk: held for a few frames (a player thrown is out of the list for one), and only
+         * the picture changes, so that play is the same either way. */
+        static int talk_frames;
+        talk_frames = round && sor3_talk() ? (talk_frames < 8 ? talk_frames + 1 : 8) : 0;
+        if (talk_frames >= 4) {
+            vdp_opts.mask_left = vdp_opts.mask_right = extra;
+            vdp_opts.view_slide = 0;
+            vdp_opts.sprite_x_wide = false;
+        }
     }
     if (GAME_SOR == 2) {
         /* Streets of Rage 2: each area of a stage scrolls to a limit per section (the table at

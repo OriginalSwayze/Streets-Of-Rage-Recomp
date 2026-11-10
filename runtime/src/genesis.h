@@ -34,6 +34,7 @@ typedef struct {
     bool z80_busreq, z80_reset;
 #if GAME_SOR == 3
     uint8_t sprites_extra[SPRITES_EXTRA * 8];   /* at SPRITES_EXTRA_ADDR */
+    bool sprites_extra_written;                 /* since the list was last sent (vdp.c) */
 #endif
 } Bus;
 

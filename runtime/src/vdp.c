@@ -88,9 +88,19 @@ static void dma_68k(void) {
     uint32_t src = (uint32_t)(vdp.reg[23] & 0x7F) << 17 | vdp.reg[22] << 9 | vdp.reg[21] << 1;
     trace_vram("dma", vdp.addr, len, src);
 #if GAME_SOR == 3
-    /* The list sent to the sprite table: its entries past 80 go with it (genesis.h). */
-    if ((vdp.code & 0x0F) == 0x1 && vdp.addr == ((vdp.reg[5] & 0x7E) << 9))
-        memcpy(vdp.sat_extra, bus.sprites_extra, sizeof vdp.sat_extra);
+    /* The list sent to the sprite table: its entries past 80 go with it (genesis.h). Only
+     * while the game still writes them: story scenes and the ending build their lists with
+     * other code, which leaves the last link of an earlier list pointing past 80, and the old
+     * entries there stayed on screen to the credits (#21). A list sent again unchanged (in
+     * slowdown, for several frames) keeps them. */
+    if ((vdp.code & 0x0F) == 0x1 && vdp.addr == ((vdp.reg[5] & 0x7E) << 9)) {
+        static int unwritten;
+        if (bus.sprites_extra_written) unwritten = 0;
+        else if (unwritten < 8) unwritten++;
+        bus.sprites_extra_written = false;
+        if (unwritten < 8) memcpy(vdp.sat_extra, bus.sprites_extra, sizeof vdp.sat_extra);
+        else memset(vdp.sat_extra, 0, sizeof vdp.sat_extra);
+    }
 #endif
     for (uint32_t i = 0; i < len; i++) {
         write_target(bus_read16(src));
