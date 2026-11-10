@@ -447,6 +447,12 @@ void widescreen_frame(void) {
         vdp_opts.still_planes = round;
         vdp_opts.still_cam = cam;
         slide_view(before, after);
+        /* The enemies' test of their target (sub_01A94C, sorCullList "vlo"/"vhi"), as in
+         * Streets of Rage 3: what the view shows past the original edges counts as on screen. */
+        int vl = round ? extra + vdp_opts.view_slide - vdp_opts.mask_left : 0;
+        int vr = round ? extra - vdp_opts.view_slide - vdp_opts.mask_right : 0;
+        patch_sor_view_left = vl > 0 ? vl : 0;
+        patch_sor_view_right = vr > 0 ? vr : 0;
     }
     if (GAME_SOR != 1 && !GAME_WIDESCREEN) {
         /* Streets of Rage 2 and 3: the sides show only with a player in the game. The intro

@@ -26,7 +26,9 @@
     "021F28": "d0 60 lo",
     "021F2E": "d0 1C0 hi",
     "00E236": "d0 FFE0 slo",
-    "00E23E": "d0 168 shi"
+    "00E23E": "d0 168 shi",
+    "01A958": "d0 0 vlo",
+    "01A95E": "d0 140 vhi"
   },
   "sorWideLoad": {
     "003CDC": "d1 FC46",

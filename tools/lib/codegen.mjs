@@ -177,6 +177,11 @@ export function usePatches(patches) {
       // The in-view tests: cmpi.w #edge,$28(a0), the low edge moved left and the high one right.
       ...Object.entries(PATCHES.sorWide.inView ?? {}).map(([pc, edge]) => [parseInt(pc, 16), [`cmpi.w	#${edge.slice(1)},$28(a0)`,
         [`cmpw((0x${edge.slice(2)}u ${edge[0]} (uint32_t)patch_sor_wide) & 0xFFFFu, rd16(A(0) + 0x28));`]]]),
+      // The hit tests (the target's screen X + $80 between $78 and $1C8 before a hit counts):
+      // moved out as far as the players may go (patch_sor_reach: 0 while the sides are masked),
+      // or what stood in the wide view past them took no hits.
+      ...Object.entries(PATCHES.sorWide.hitView ?? {}).map(([pc, edge]) => [parseInt(pc, 16), [`cmpi.w	#${edge.slice(1)},$28(a0)`,
+        [`cmpw((0x${edge.slice(2)}u ${edge[0]} (uint32_t)patch_sor_reach) & 0xFFFFu, rd16(A(0) + 0x28));`]]]),
     ] : []),
     ...Object.entries(PATCHES.playerSpeed?.pcs ?? {}).map(([pc, field]) => [parseInt(pc, 16), [`move.l	${field}(a6),d0`,
       [`D(0) = player_move(A(6), rd32(A(6) + 0x${field.slice(1)}));`, 'logicl(D(0));']]]),
