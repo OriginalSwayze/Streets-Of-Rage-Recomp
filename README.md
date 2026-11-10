@@ -27,7 +27,9 @@ from the cartridge (round 6's extra rooms, the motorbike stages), has Red Comet'
 gives Shiva new moves. For it, give Setup the hack's patch (`BKIII 1.5.ips`, or a zip with it) on the last
 row: Setup applies it to your Japanese ROM, and it is another edition. It plays as the hack was left, with its
 own unfinished parts (bosses picking up weapons, a few sprite mix-ups, round 6 ending once the general is
-saved).
+saved). In widescreen its motorbike stages show the wide road, with the riders kept to the original
+edges (as the hack's bumps and hits need), and the side a truck stands across is black where the hack
+draws no more of it.
 
 They are static recompilations, not decompilations: at build time each game's 68000 machine
 code is translated into C from your ROM, and anything not yet covered runs on an
