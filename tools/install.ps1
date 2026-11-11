@@ -1,5 +1,7 @@
-# The installer's engine: Setup.exe unpacks the collection's source into <Install>\source and
-# runs this, hidden, reading its progress. It can also be run by hand.
+# The install, by hand: the steps Setup.exe takes (setup/setup.c, install_body) once it has
+# unpacked the collection's source into <Install>\source. Setup does them itself, without
+# PowerShell, so it also runs under Wine; keep the two in step (the tools' pinned versions and
+# SHA-256s, the steps, settings.ini).
 #
 #   install.ps1 -Install <folder> [-Sor1 <rom>] [-Sor2 <rom>] [-Sor3 <rom>] [-NoSystemTools]
 #
