@@ -14,4 +14,9 @@ typedef struct {
 TextMask text_render(const char *utf8, const char *face, int px, int weight, int tracking);
 void     text_free(TextMask *m);
 
+/* The fonts in runtime/fonts/, built in (fonts_data.c, made by cmake/fonts.cmake); the last
+ * entry's name is NULL. */
+typedef struct { const char *name; const unsigned char *data; unsigned len; } FontFile;
+extern const FontFile font_files[];
+
 #endif

@@ -3,6 +3,7 @@
 #define PNG_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /* Writes 0x00RRGGBB pixels (pitch in pixels) as an RGB PNG. Returns 0 on success. */

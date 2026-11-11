@@ -1,5 +1,6 @@
 /* 68000 memory map: cartridge ROM/SRAM, work RAM, Z80 area, I/O and VDP. */
 #include "genesis.h"
+#include "platform.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -84,7 +85,7 @@ static const GameEdition *read_rom(const char *path, uint8_t *buf, const char **
     for (int i = 0; i < GAME_EDITION_COUNT; i++)
         if (!game_editions[i] && !strcmp(hex, game_edition_sha1s[i])) {
             bus_unbuilt_edition = game_edition_names[i];
-            snprintf(msg, sizeof msg, "%s is not installed: run Setup again and pick it to add it", game_edition_names[i]);
+            snprintf(msg, sizeof msg, "%s is not installed: run " INSTALLER " again and pick it to add it", game_edition_names[i]);
             *why = msg;
             return NULL;
         }

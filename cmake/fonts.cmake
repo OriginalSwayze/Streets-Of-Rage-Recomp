@@ -1,0 +1,20 @@
+# The fonts in runtime/fonts/, built into the programs as C arrays (fonts_data.c): text.c
+# draws with them where Windows' own fonts are not there (Linux; Wine and Proton).
+set(FONT_NAMES Anton-Regular Selawik-Regular Selawik-Semibold Selawik-Bold
+               Barlow-Regular Barlow-SemiBold BarlowCondensed-SemiBold DejaVuSans-Symbols)
+set(FONTS_C "${CMAKE_BINARY_DIR}/fonts_data.c")
+set(_body "/* Made by cmake/fonts.cmake from runtime/fonts/. */\n#include \"text.h\"\n\n")
+set(_table "")
+foreach(name IN LISTS FONT_NAMES)
+  set(file "${CMAKE_SOURCE_DIR}/runtime/fonts/${name}.ttf")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${file}")
+  file(READ "${file}" hex HEX)
+  string(LENGTH "${hex}" n)
+  math(EXPR n "${n} / 2")
+  string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," hex "${hex}")
+  string(MAKE_C_IDENTIFIER "${name}" id)
+  string(APPEND _body "static const unsigned char font_${id}[${n}] = {${hex}};\n")
+  string(APPEND _table "    { \"${name}\", font_${id}, ${n} },\n")
+endforeach()
+string(APPEND _body "\nconst FontFile font_files[] = {\n${_table}    { 0, 0, 0 },\n};\n")
+file(CONFIGURE OUTPUT "${FONTS_C}" CONTENT "${_body}" @ONLY)

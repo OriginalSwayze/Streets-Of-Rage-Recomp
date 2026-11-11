@@ -11,6 +11,30 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef _WIN32
+/* Linux: no Setup to hand over to (a copy is built from a release's source by
+ * tools/install.sh, which is also how it is updated), so no check: as a copy Setup did not
+ * install. update_pretend still works, for the sign's screenshots. */
+static int pretend_state = UPDATE_NONE;
+static char pretend_have[32], pretend_latest[32];
+static float pretend_progress;
+void update_check(void) {}
+int update_state(void) { return pretend_state; }
+const char *update_installed(void) { return pretend_have; }
+const char *update_latest(void) { return pretend_latest; }
+float update_progress(void) { return pretend_progress; }
+const char *update_error(void) { return pretend_state == UPDATE_FAILED ? "The download did not finish. Try again." : ""; }
+void update_download(void) {}
+bool update_run(void) { return false; }
+const char *update_file(void) { return ""; }
+void update_pretend(int s, const char *have, const char *v, float k) {
+    snprintf(pretend_have, sizeof pretend_have, "%s", have);
+    snprintf(pretend_latest, sizeof pretend_latest, "%s", v);
+    pretend_progress = k;
+    pretend_state = s;
+}
+#else
+
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <bcrypt.h>
@@ -124,8 +148,19 @@ static int SDLCALL check_thread(void *arg) {
     }
     const char *assets = strstr(body, "\"assets\"");
     char tag[32] = "";
-    bool ok = json_string(body, "tag_name", tag, sizeof tag) && assets &&
-              json_string(assets, "browser_download_url", url, sizeof url) && strstr(url, ".exe");
+    bool ok = json_string(body, "tag_name", tag, sizeof tag) && assets;
+    /* The installer among the assets (a release also has the source, for Linux): each asset's
+     * fields come before its download link, so the .exe's own are read from where the asset
+     * before it ended. */
+    const char *at = assets;
+    bool found = false;
+    while (ok && at && !found) {
+        const char *link = strstr(at, "\"browser_download_url\"");
+        if (!link || !json_string(link, "browser_download_url", url, sizeof url)) break;
+        if (strstr(url, ".exe")) { found = true; assets = at; }
+        else at = link + 22;
+    }
+    ok = ok && found;
     if (ok) {                           /* the asset's size and SHA-256 ("digest": "sha256:...") */
         const char *p = strstr(assets, "\"size\"");
         if (p) { p += 6; while (*p == ' ' || *p == ':') p++; size = strtoll(p, NULL, 10); }
@@ -227,3 +262,4 @@ bool update_run(void) {
     CloseHandle(pi.hThread);
     return true;
 }
+#endif

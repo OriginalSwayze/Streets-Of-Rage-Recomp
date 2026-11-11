@@ -16,9 +16,20 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#define SEP "\\"
+#define EXE ".exe"
+#else
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#define SEP "/"
+#define EXE ""                          /* Linux: the games' programs have no extension */
+#endif
 
+#include "platform.h"
 #include "png.h"
 #include "ui.h"
 #include "update.h"
@@ -43,11 +54,11 @@ typedef struct {
 } Game;
 
 static Game games[3] = {
-    { "sor1", "StreetsOfRage.exe", "STREETS OF RAGE", "", "Axel, Adam and Blaze take back the city.", "1991",
+    { "sor1", "StreetsOfRage" EXE, "STREETS OF RAGE", "", "Axel, Adam and Blaze take back the city.", "1991",
       0xFF4FB0, 0x4A0A2A, false, NULL, 0, 0 },
-    { "sor2", "StreetsOfRage2.exe", "STREETS OF RAGE", "2", "Max and Skate join the fight to rescue Adam.", "1992",
+    { "sor2", "StreetsOfRage2" EXE, "STREETS OF RAGE", "2", "Max and Skate join the fight to rescue Adam.", "1992",
       0x5CD8FF, 0x0A2A50, false, NULL, 0, 0 },
-    { "sor3", "StreetsOfRage3.exe", "STREETS OF RAGE", "3", "Zan and the robots of Mr. X's syndicate.", "1994",
+    { "sor3", "StreetsOfRage3" EXE, "STREETS OF RAGE", "3", "Zan and the robots of Mr. X's syndicate.", "1994",
       0xFFA23C, 0x3A1406, false, NULL, 0, 0 },
 };
 #define GAMES 3
@@ -165,14 +176,23 @@ static int update_button_at(float lx, float ly) {
     return -1;
 }
 
+static bool exists(const char *path) {
+#ifdef _WIN32
+    return GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES;
+#else
+    struct stat st;
+    return !stat(path, &st);
+#endif
+}
+
 static void find_games(void) {
     for (int g = 0; g < GAMES; g++) {
         char p[1200];
-        snprintf(p, sizeof p, "%sgames\\%s\\%s", base, games[g].dir, games[g].exe);
-        games[g].installed = GetFileAttributesA(p) != INVALID_FILE_ATTRIBUTES;
+        snprintf(p, sizeof p, "%sgames" SEP "%s" SEP "%s", base, games[g].dir, games[g].exe);
+        games[g].installed = exists(p);
         free(games[g].card);
         games[g].card = NULL;
-        snprintf(p, sizeof p, "%sgames\\%s\\card.png", base, games[g].dir);
+        snprintf(p, sizeof p, "%sgames" SEP "%s" SEP "card.png", base, games[g].dir);
         games[g].card = png_read(p, &games[g].card_w, &games[g].card_h);
     }
 }
@@ -246,7 +266,7 @@ static void draw_card(int g, float t) {
         ui_draw_text(state, FONT_SIGN, 26, 600, 5, x + CARD_W / 2 - sw / 2, by + 5, sc, sc, 1);
     }
     if (!gm->installed && on)
-        ui_draw_text("Run Setup again with its ROM to add it.", FONT_UI, 14, 400, 0, x + 22, y + CARD_H - 92, C_DIM, C_DIM, 1);
+        ui_draw_text("Run " INSTALLER " again with its ROM to add it.", FONT_UI, 14, 400, 0, x + 22, y + CARD_H - 92, C_DIM, C_DIM, 1);
 }
 
 static void render(int w, int h, float t) {
@@ -282,10 +302,12 @@ static bool armed = true;               /* input counts (false just after a game
 
 /* Returns false when the game's window was closed (its X): then the collection closes too. */
 static bool play(SDL_Window *win, int g) {
-    if (!games[g].installed) { say("That game is not installed: run Setup again and pick its ROM."); return true; }
-    char exe[1200], dir[1200], cmd[1400];
-    snprintf(dir, sizeof dir, "%sgames\\%s", base, games[g].dir);
-    snprintf(exe, sizeof exe, "%s\\%s", dir, games[g].exe);
+    if (!games[g].installed) { say("That game is not installed: run " INSTALLER " again and pick its ROM."); return true; }
+    char exe[1200], dir[1200];
+    snprintf(dir, sizeof dir, "%sgames" SEP "%s", base, games[g].dir);
+    snprintf(exe, sizeof exe, "%s" SEP "%s", dir, games[g].exe);
+#ifdef _WIN32
+    char cmd[1400];
     snprintf(cmd, sizeof cmd, "\"%s\" --collection", exe);
     STARTUPINFOA si = { .cb = sizeof si };
     PROCESS_INFORMATION pi;
@@ -295,6 +317,20 @@ static bool play(SDL_Window *win, int g) {
     DWORD code = 0;
     GetExitCodeProcess(pi.hProcess, &code);
     CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+#else
+    pid_t pid = fork();
+    if (pid == 0) {                     /* the game, in its own folder */
+        if (chdir(dir) == 0) execl(exe, exe, "--collection", (char *)NULL);
+        _exit(127);
+    }
+    if (pid < 0) { say("Could not start the game."); return true; }
+    SDL_HideWindow(win);
+    int status = 0;
+    while (waitpid(pid, &status, 0) < 0) {}
+    /* exec failing is 127; a crash or kill (a signal) counts as not chosen, as on Windows */
+    int code = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+    if (code == 127) { SDL_ShowWindow(win); say("Could not start the game."); return true; }
+#endif
     /* Back to the collection only when the player chose to (Back, Quit: exit code 0). The
      * window's X (EXIT_WINDOW_CLOSED, launcher.h), ending the game in Task Manager (1) or a
      * crash close the collection too: it coming back looked like the launcher reopening

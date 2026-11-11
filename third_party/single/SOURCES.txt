@@ -1,0 +1,11 @@
+Single-file libraries, copied unchanged (each carries its own licence at its end:
+public domain, or MIT / MIT-0, whichever you prefer).
+
+dr_mp3.h, dr_flac.h, dr_wav.h
+    https://github.com/mackron/dr_libs at f12e197fd462e4c22873fbd70d11b1d2f2c1dc3c
+stb_truetype.h, stb_vorbis.c
+    https://github.com/nothings/stb at 4e9b368bfc071e97206ea5c6adba68dd0cbf8897
+
+Used where Windows' own is not there (Linux, and Wine without Windows' fonts):
+stb_truetype draws the menus' text with the fonts in fonts/ (text.c), and the others
+decode replacement music files (music.c).

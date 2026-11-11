@@ -148,7 +148,12 @@ void settings_load(const char *path) {
     if (e >= 0 && settings.rom_paths[e][0]) snprintf(settings.rom_path, sizeof settings.rom_path, "%s", settings.rom_paths[e]);
 }
 
-bool settings_use_rom(const char *path) {
+bool settings_use_rom(const char *path_in) {
+    /* A copy first: path_in is often settings.rom_path itself, and snprintf onto its own
+     * source is undefined (Windows' C library copied it anyway; Linux's left it empty, so the
+     * game forgot its ROM). */
+    char path[sizeof settings.rom_path];
+    snprintf(path, sizeof path, "%s", path_in);
     const GameEdition *g = bus_rom_edition(path);
     if (!g) return false;
     int i = edition_index(g->id);
