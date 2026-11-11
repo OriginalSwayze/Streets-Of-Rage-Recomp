@@ -23,11 +23,27 @@
 
 #include <SDL.h>
 
+#ifdef _WIN32
 #define COBJMACROS
 #include <windows.h>
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
+#define strcasecmp _stricmp
+#define SEP "\\"
+#else
+/* Elsewhere (Linux), MP3, FLAC, WAV and Ogg Vorbis, with the single-file decoders in
+ * third_party/single (built in decoders.c). */
+#include <dirent.h>
+#include <strings.h>
+#include <sys/stat.h>
+#include "dr_flac.h"
+#include "dr_mp3.h"
+#include "dr_wav.h"
+#define STB_VORBIS_HEADER_ONLY
+#include "stb_vorbis.c"
+#define SEP "/"
+#endif
 
 #include "ost.h"
 #include "recomp_rt.h"
@@ -56,29 +72,54 @@ int music_found(void) { return found; }
 
 static bool playable(const char *name) {
     const char *dot = strrchr(name, '.');
+#ifdef _WIN32
     static const char *const exts[] = { ".mp3", ".flac", ".wav", ".m4a", ".aac", ".wma", ".ogg", ".opus" };
+#else
+    static const char *const exts[] = { ".mp3", ".flac", ".wav", ".ogg" };
+#endif
     if (!dot) return false;
-    for (size_t k = 0; k < sizeof exts / sizeof *exts; k++) if (!_stricmp(dot, exts[k])) return true;
+    for (size_t k = 0; k < sizeof exts / sizeof *exts; k++) if (!strcasecmp(dot, exts[k])) return true;
     return false;
+}
+
+/* A file in the music folder: "07.flac", "07 - Go Straight.mp3" is song 7. With two for one
+ * song, the first by name (the order Windows lists them in; Linux lists in no order). */
+static void consider(const char *name) {
+    if (!playable(name)) return;
+    int n = 0, digits = 0;
+    for (const char *p = name; *p >= '0' && *p <= '9' && digits < 3; p++, digits++) n = n * 10 + (*p - '0');
+    if (!digits || n < 1 || n > OST_SONGS) return;
+    char path[sizeof paths[0]];
+    snprintf(path, sizeof path, "%smusic" SEP "%s", folder, name);
+    if (paths[n - 1][0] && strcmp(path, paths[n - 1]) >= 0) return;
+    if (!paths[n - 1][0]) found++;
+    snprintf(paths[n - 1], sizeof paths[0], "%s", path);
 }
 
 int music_scan(void) {
     memset(paths, 0, sizeof paths);
     found = 0;
     char pattern[1100];
+#ifdef _WIN32
     snprintf(pattern, sizeof pattern, "%smusic\\*", folder);
     WIN32_FIND_DATAA fd;
     HANDLE h = FindFirstFileA(pattern, &fd);
     if (h == INVALID_HANDLE_VALUE) return 0;
-    do {
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY || !playable(fd.cFileName)) continue;
-        int n = 0, digits = 0;                  /* "07.flac", "07 - Go Straight.mp3" */
-        for (const char *p = fd.cFileName; *p >= '0' && *p <= '9' && digits < 3; p++, digits++) n = n * 10 + (*p - '0');
-        if (!digits || n < 1 || n > OST_SONGS || paths[n - 1][0]) continue;
-        snprintf(paths[n - 1], sizeof paths[0], "%smusic\\%s", folder, fd.cFileName);
-        found++;
-    } while (FindNextFileA(h, &fd));
+    do if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) consider(fd.cFileName);
+    while (FindNextFileA(h, &fd));
     FindClose(h);
+#else
+    snprintf(pattern, sizeof pattern, "%smusic", folder);
+    DIR *d = opendir(pattern);
+    if (!d) return 0;
+    for (struct dirent *e; (e = readdir(d));) {
+        char full[1400];
+        struct stat st;
+        snprintf(full, sizeof full, "%s/%s", pattern, e->d_name);
+        if (!stat(full, &st) && S_ISREG(st.st_mode)) consider(e->d_name);
+    }
+    closedir(d);
+#endif
     return found;
 }
 
@@ -96,6 +137,7 @@ static void track_release(Track *t) {
     if (SDL_AtomicAdd(&t->refs, -1) == 1) { free(t->pcm); free(t); }
 }
 
+#ifdef _WIN32
 static int decode(void *arg) {
     Track *t = arg;
     HRESULT co = CoInitializeEx(NULL, COINIT_MULTITHREADED);
@@ -163,6 +205,86 @@ out:
     track_release(t);
     return 0;
 }
+#else
+/* One of the four kinds of file, opened by its extension. */
+typedef struct {
+    int kind;                           /* 1 MP3, 2 FLAC, 3 WAV, 4 Ogg Vorbis */
+    drmp3 mp3;
+    drwav wav;
+    drflac *flac;
+    stb_vorbis *ogg;
+    unsigned channels, rate;
+    uint64_t frames;                    /* 0 if unknown */
+} Reader;
+
+static bool reader_open(Reader *r, const char *path) {
+    const char *dot = strrchr(path, '.');
+    memset(r, 0, sizeof *r);
+    if (!dot) return false;
+    if (!strcasecmp(dot, ".mp3") && drmp3_init_file(&r->mp3, path, NULL)) {
+        r->kind = 1; r->channels = r->mp3.channels; r->rate = r->mp3.sampleRate;
+        r->frames = drmp3_get_pcm_frame_count(&r->mp3);   /* (back at the start after) */
+    } else if (!strcasecmp(dot, ".flac") && (r->flac = drflac_open_file(path, NULL))) {
+        r->kind = 2; r->channels = r->flac->channels; r->rate = r->flac->sampleRate; r->frames = r->flac->totalPCMFrameCount;
+    } else if (!strcasecmp(dot, ".wav") && drwav_init_file(&r->wav, path, NULL)) {
+        r->kind = 3; r->channels = r->wav.channels; r->rate = r->wav.sampleRate; r->frames = r->wav.totalPCMFrameCount;
+    } else if (!strcasecmp(dot, ".ogg")) {
+        int err = 0;
+        if (!(r->ogg = stb_vorbis_open_filename(path, &err, NULL))) return false;
+        stb_vorbis_info info = stb_vorbis_get_info(r->ogg);
+        r->kind = 4; r->channels = (unsigned)info.channels; r->rate = info.sample_rate;
+        r->frames = stb_vorbis_stream_length_in_samples(r->ogg);
+    }
+    return r->kind && r->channels && r->channels <= 8 && r->rate;
+}
+
+/* Up to n frames of interleaved 16-bit samples; how many came. */
+static uint64_t reader_read(Reader *r, int16_t *out, uint64_t n) {
+    switch (r->kind) {
+    case 1: return drmp3_read_pcm_frames_s16(&r->mp3, n, out);
+    case 2: return drflac_read_pcm_frames_s16(r->flac, n, out);
+    case 3: return drwav_read_pcm_frames_s16(&r->wav, n, out);
+    case 4: return (uint64_t)stb_vorbis_get_samples_short_interleaved(r->ogg, (int)r->channels, out, (int)(n * r->channels));
+    }
+    return 0;
+}
+
+static void reader_close(Reader *r) {
+    if (r->kind == 1) drmp3_uninit(&r->mp3);
+    if (r->flac) drflac_close(r->flac);
+    if (r->kind == 3) drwav_uninit(&r->wav);
+    if (r->ogg) stb_vorbis_close(r->ogg);
+}
+
+static int decode(void *arg) {
+    Track *t = arg;
+    Reader r;
+    if (!reader_open(&r, t->path)) goto out;
+    double seconds = r.frames ? (double)r.frames / r.rate + 1 : 600;   /* at most ten minutes when the file does not say */
+    if (seconds > 900) seconds = 900;
+    t->capacity = (int)(seconds * r.rate);
+    t->pcm = malloc((size_t)t->capacity * 4);
+    if (!t->pcm) goto out;
+    t->rate = (int)r.rate;
+    int have = 0;
+    int16_t *s = malloc(4096 * 8 * sizeof *s);   /* 4096 frames of up to 8 channels */
+    while (s && !SDL_AtomicGet(&t->cancel) && have < t->capacity) {
+        uint64_t frames = reader_read(&r, s, 4096);
+        if (!frames) break;
+        for (uint64_t i = 0; i < frames && have < t->capacity; i++, have++) {
+            t->pcm[have * 2] = s[i * r.channels];
+            t->pcm[have * 2 + 1] = s[i * r.channels + (r.channels > 1)];
+        }
+        SDL_AtomicSet(&t->decoded, have);
+    }
+    free(s);
+out:
+    reader_close(&r);
+    SDL_AtomicSet(&t->done, 1);
+    track_release(t);
+    return 0;
+}
+#endif
 
 /* ---- Playing ------------------------------------------------------------------------------ */
 static SDL_mutex *lock;

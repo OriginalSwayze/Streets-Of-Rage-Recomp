@@ -69,6 +69,33 @@ saves and save states live in the install folder's `games\<game>` folder. To add
 rebuild, or remove the collection: Settings > Apps > Streets of Rage Collection (Modify runs
 Setup again; Uninstall can keep your saves).
 
+### On Linux
+
+Two ways, both from the same release:
+
+* **Native**: download `Streets-of-Rage-Collection-Source-<version>.zip` from
+  [Releases](../../releases), unzip it, and in its `src` folder run
+
+  ```
+  bash tools/install.sh --sor1 <rom> --sor2 <rom> --sor3 <rom>
+  ```
+
+  with any of the games (`--bk3`, `--bk3-en` and `--bk3-dx` add Bare Knuckle III and its
+  editions, as ROMs already patched; `--help` lists the rest). It checks each ROM, builds each
+  game as a Linux program (a couple of minutes each), puts the collection in
+  `~/.local/share/streets-of-rage-collection` and adds it to your applications menu. It needs
+  Node.js 18+, CMake 3.20+, Ninja, Clang and the X11/Wayland and PulseAudio/ALSA development
+  headers: if any is missing it says which packages to install (apt, dnf, pacman or zypper).
+  Run it again to add a game; `--uninstall` removes it (`--keep-saves` keeps your saves).
+* **Through Proton or Wine** (the Steam Deck, or without building tools): run the Setup
+  `.exe` as above, with Wine, or added to Steam as a non-Steam game with Proton. It installs
+  and builds the Windows programs on its own. Windows' fonts are not there, so the menus use
+  open-licence stand-ins of the same shapes and widths (as the native build does).
+
+The games play exactly as on Windows (the same frames, compared run for run); music files
+can be MP3, FLAC, WAV or Ogg Vorbis on Linux, and the updater is Windows-only (run a newer
+release's `install.sh` to update).
+
 **Updates**: when a newer release is out, the collection says so at the top as it opens. **Update**
 (U, or Y on a pad) downloads its installer, checks it against the release, and runs it: it
 rebuilds the games you have from the ROMs Setup kept, and keeps your settings and saves.
@@ -106,7 +133,8 @@ In all three games:
 * **Your own music**: put recordings in a `music` folder beside the game, named by the
   launcher's Track number (`07.flac`, or `07 - Go Straight.mp3`), and the game plays them
   instead of its songs (Bare Knuckle III DX too), looping where the songs loop, with its sound effects on top. MP3,
-  FLAC, WAV, M4A/AAC or WMA (Windows decodes them); the Music files setting turns them off
+  FLAC, WAV, M4A/AAC or WMA (Windows decodes them); on Linux MP3, FLAC, WAV or Ogg Vorbis.
+  The Music files setting turns them off
 * A launcher and pause menu in a neon night-street style, in each game's own pair of neon
   colours, with its own music and sounds
 
@@ -146,16 +174,21 @@ New code is found by playing: the runtime records every instruction it runs in
 
 ## Building by hand
 
-Setup does all of this. By hand, you need:
+Setup (Windows) and `tools/install.sh` (Linux) do all of this. By hand, you need:
 
-* Windows 10 or 11 (the menus draw their text with Windows' fonts). Setup itself needs
-  nothing of Windows' beyond its libraries (it unzips, downloads and runs the build tools on
-  its own, with no PowerShell, tar or curl), so on Linux it can run under Wine or Proton;
-  that has not been tested there yet
+* Windows 10 or 11, or Linux (on Linux, the X11 or Wayland and the PulseAudio or ALSA
+  development headers, for SDL)
 * [Git](https://git-scm.com/), [Node.js](https://nodejs.org/) 18 or newer,
   [CMake](https://cmake.org/) 3.20 or newer, [Ninja](https://ninja-build.org/) and
-  Clang ([LLVM-MinGW](https://github.com/mstorsjo/llvm-mingw))
+  Clang ([LLVM-MinGW](https://github.com/mstorsjo/llvm-mingw) on Windows; the system's on Linux)
 * Your own ROMs (above)
+
+The menus draw their text with Windows' fonts where they are installed, and otherwise (Linux,
+Wine) with the open-licence stand-ins in [runtime/fonts](runtime/fonts), built into each
+program: Anton for Impact, Selawik for Segoe UI, Barlow for Bahnschrift, set to the Windows
+faces' heights and widths. `SOR_BUILT_IN_FONTS=1` in the environment uses them on Windows too.
+Setup needs nothing of Windows' beyond its libraries (it unzips, downloads and runs the build
+tools on its own, with no PowerShell, tar or curl), so it also installs under Wine and Proton.
 
 Clone with the submodules (the third-party code below):
 
@@ -203,6 +236,13 @@ F11 fullscreen.
 * [SDL2](https://github.com/libsdl-org/SDL) (zlib): window, input, audio
 * [z80](https://github.com/superzazu/z80) (MIT): Z80 sound CPU
 * [ymfm](https://github.com/aaronsgiles/ymfm) (BSD-3-Clause): YM2612 FM synthesis
+* [stb_truetype and stb_vorbis](https://github.com/nothings/stb) (public domain or MIT) and
+  [dr_mp3, dr_flac and dr_wav](https://github.com/mackron/dr_libs) (public domain or MIT-0), in
+  [third_party/single](third_party/single): text with the built-in fonts, and music files on Linux
+* Fonts in [runtime/fonts](runtime/fonts): [Anton](https://github.com/googlefonts/AntonFont)
+  and [Barlow](https://github.com/jpt/barlow) (SIL Open Font License),
+  [Selawik](https://github.com/microsoft/Selawik) (SIL Open Font License) and a few symbols of
+  [DejaVu Sans](https://dejavu-fonts.github.io/) (its own free license); each licence is beside it
 
 ## License and legal
 

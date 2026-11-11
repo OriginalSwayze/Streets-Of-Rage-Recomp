@@ -92,6 +92,8 @@ target_include_directories(recomp PRIVATE runtime/src ${GAME_CONFIG})
 target_link_libraries(recomp PRIVATE musashi)
 target_compile_options(recomp PRIVATE -O1 -w)
 
+include(cmake/fonts.cmake)
+
 # ---- Runtime ------------------------------------------------------------------
 # WIN32: a windowed program, so no console window opens with the game (main.c attaches
 # to the terminal it was started from, for the test output).
@@ -132,9 +134,14 @@ add_executable(${GAME_EXE} WIN32
   runtime/src/ai.c
   runtime/src/fighters.c
   runtime/src/music.c
+  runtime/src/decoders.c
+  ${FONTS_C}
   runtime/src/third.c
   runtime/src/sound.cpp)
 target_link_libraries(${GAME_EXE} PRIVATE recomp musashi z80core ymfm SDL2::SDL2main SDL2::SDL2-static)
+target_include_directories(${GAME_EXE} PRIVATE third_party/single)
+# The single-file libraries (third_party/single), as they come: none of the project's warnings.
+set_source_files_properties(runtime/src/decoders.c PROPERTIES COMPILE_OPTIONS "-w")
 target_compile_options(${GAME_EXE} PRIVATE -Wall -Wextra -Wno-unused-parameter)
 if(WIN32)
   target_link_options(${GAME_EXE} PRIVATE -static)
@@ -148,25 +155,31 @@ if(GAME STREQUAL "sor1")
     runtime/src/update.c
     runtime/src/ui.c
     runtime/src/text.c
-    runtime/src/png.c)
+    runtime/src/png.c
+    runtime/src/decoders.c
+    ${FONTS_C})
   set_target_properties(Collection PROPERTIES OUTPUT_NAME "Streets of Rage Collection")
   target_link_libraries(Collection PRIVATE SDL2::SDL2main SDL2::SDL2-static)
+  target_include_directories(Collection PRIVATE runtime/src third_party/single)
   target_compile_options(Collection PRIVATE -Wall -Wextra -Wno-unused-parameter)
   if(WIN32)
     target_link_options(Collection PRIVATE -static)
     target_link_libraries(Collection PRIVATE gdi32 winhttp bcrypt)
   endif()
-  # The installer (setup/setup.c); the release appends the source to it.
-  add_executable(Setup WIN32
-    setup/setup.c
-    setup/unzip.c
-    runtime/src/ui.c
-    runtime/src/text.c
-    runtime/src/png.c)
-  target_include_directories(Setup PRIVATE runtime/src)
-  target_link_libraries(Setup PRIVATE SDL2::SDL2main SDL2::SDL2-static)
-  target_compile_options(Setup PRIVATE -Wall -Wextra -Wno-unused-parameter)
+  # The installer (setup/setup.c); the release appends the source to it. Windows only (it
+  # also runs under Wine and Proton); on Linux tools/install.sh does its job.
   if(WIN32)
+    add_executable(Setup WIN32
+      setup/setup.c
+      setup/unzip.c
+      runtime/src/ui.c
+      runtime/src/text.c
+      runtime/src/png.c
+      runtime/src/decoders.c
+      ${FONTS_C})
+    target_include_directories(Setup PRIVATE runtime/src third_party/single)
+    target_link_libraries(Setup PRIVATE SDL2::SDL2main SDL2::SDL2-static)
+    target_compile_options(Setup PRIVATE -Wall -Wextra -Wno-unused-parameter)
     target_link_options(Setup PRIVATE -static)
     target_link_libraries(Setup PRIVATE gdi32 comdlg32 bcrypt winhttp ole32 shell32 uuid)
   endif()

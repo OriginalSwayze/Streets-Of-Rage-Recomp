@@ -9,6 +9,7 @@
  * headless screenshots), at the window's pixel scale. */
 #include "launcher.h"
 #include "ost.h"
+#include "platform.h"
 #include "launcher_scene.h"
 #include "pads.h"
 #include "foil.h"
@@ -31,6 +32,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <commdlg.h>
+#else
+#include <sys/wait.h>
 #endif
 
 #define BASE_W UI_BASE_W
@@ -774,7 +777,7 @@ static const Row tab_rows[TABS][9] = {
       { ROW_OPTION, "Widescreen sides", OPT_SIDES, "Story scenes and the street's ends: the picture's edge blurred, or black." },
       { ROW_OPTION, "Rumble", OPT_RUMBLE, GAME_SOR == 1 ? "The controller rumbles on your hits, knockouts, when you are hit and on the police car."
                                                          : "The controller rumbles on your hits, knockouts and when you are hit." } },
-    { { ROW_ROM, "ROM", 0, GAME_SOR == 3 ? "Your Streets of Rage 3 (USA) cartridge file, or a Bare Knuckle III one installed with it. To add Bare Knuckle III, run Setup again (Settings > Apps > Streets of Rage Collection > Modify)."
+    { { ROW_ROM, "ROM", 0, GAME_SOR == 3 ? "Your Streets of Rage 3 (USA) cartridge file, or a Bare Knuckle III one installed with it. To add Bare Knuckle III, " INSTALLER_AGAIN "."
                          : GAME_SOR == 2 ? "Your Streets of Rage 2 (USA) cartridge file." : "Your Streets of Rage cartridge file." },
 #if GAME_EDITION_COUNT > 1
       { ROW_OPTION, "Edition", OPT_EDITION, GAME_SOR == 3 ? "Streets of Rage 3, Bare Knuckle III (the Japanese original), or the DX fan hack of it."
@@ -1344,18 +1347,38 @@ static void choose_rom(SDL_Window *win) {
     char path[1024];
     WideCharToMultiByte(CP_UTF8, 0, file, -1, path, sizeof path, NULL, NULL);
     for (char *p = path; *p; p++) if (*p == '\\') *p = '/';
+#else
+    /* Linux: the desktop's own picker, zenity (GNOME and most others) or kdialog (KDE, the
+     * Steam Deck's desktop mode). */
+    (void)win;
+    static const char *const pickers[] = {
+        "zenity --file-selection --title='Choose your Streets of Rage ROM' "
+        "--file-filter='Genesis / Mega Drive ROM | *.md *.bin *.gen *.smd' --file-filter='All files | *' 2>/dev/null",
+        "kdialog --title 'Choose your Streets of Rage ROM' --getopenfilename . "
+        "'*.md *.bin *.gen *.smd|Genesis / Mega Drive ROM' 2>/dev/null",
+    };
+    char path[1024] = "";
+    for (size_t k = 0; k < sizeof pickers / sizeof *pickers && !path[0]; k++) {
+        FILE *p = popen(pickers[k], "r");
+        if (!p) continue;
+        if (!fgets(path, sizeof path, p)) path[0] = 0;
+        int code = pclose(p);
+        path[strcspn(path, "\r\n")] = 0;
+        if (code == 0 && path[0]) break;
+        if (WIFEXITED(code) && WEXITSTATUS(code) == 1) return;   /* the player cancelled */
+        path[0] = 0;                    /* not there (127): the next */
+    }
+    if (!path[0]) { snprintf(rom_note, sizeof rom_note, "No file picker found: install zenity or kdialog"); update_rom_status(); return; }
+#endif
     /* An edition this build has becomes the one played; one it has not got leaves the game
      * as it is and says how to add it; any other file is kept as picked, so the row says
      * what is wrong with it. */
     rom_note[0] = 0;
     if (!settings_use_rom(path)) {
-        if (bus_unbuilt_edition) { snprintf(rom_note, sizeof rom_note, "Not installed: run Setup to add it"); update_rom_status(); return; }
+        if (bus_unbuilt_edition) { snprintf(rom_note, sizeof rom_note, "Not installed: run " INSTALLER " to add it"); update_rom_status(); return; }
         snprintf(settings.rom_path, sizeof settings.rom_path, "%s", path);
     }
     reload_rom();
-#else
-    (void)win;
-#endif
 }
 
 /* ---- Interactive loop --------------------------------------------------------------- */
