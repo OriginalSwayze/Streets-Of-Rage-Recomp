@@ -4,15 +4,19 @@
  * (each checked by its SHA-1 as it is picked, any game may be skipped), the install, done.
  * The collection's source travels inside Setup.exe, a zip appended to the program with an
  * 8-byte length and the tag SORPAYLD after it (the release workflow appends it); the install
- * unpacks it into <folder>\source and runs tools\install.ps1 there, hidden, showing its
- * progress lines ("@@ <percent> <what>", "@@error <why>"). The ROMs are copied into
- * <folder>\roms, so the games keep working if the originals move.
+ * unpacks it into <folder>\source and builds there, the steps of tools\install.ps1 done by
+ * Setup itself (install_body): it unzips, downloads (WinHTTP), checks SHA-256s (bcrypt) and
+ * runs node, cmake and ninja, with no PowerShell, tar or curl, so it also runs under Wine and
+ * Proton (#28). Its progress goes through progress_line ("@@ <percent> <what>",
+ * "@@error <why>"). The ROMs are copied into <folder>\roms, so the games keep working if the
+ * originals move.
  *
  * Setup.exe copies itself into the folder and registers the collection under
  * HKCU\...\Uninstall: Modify runs it again (to add a game or rebuild), Uninstall runs it with
  * --uninstall. Run from a source folder without a payload, --source DIR uses that folder in
  * place (for testing). --shot PAGE F.png renders a page to a PNG; --install-test unpacks and
- * builds into --folder without a window, shortcuts or registry entry, printing the progress. */
+ * builds into --folder without a window, shortcuts or registry entry, printing the progress
+ * (with --no-system-tools it downloads the build tools even when they are on PATH). */
 #define WIN32_LEAN_AND_MEAN
 #define COBJMACROS
 #include <windows.h>
@@ -22,14 +26,18 @@
 #include <shellapi.h>
 #include <shlobj.h>
 #include <shobjidl.h>
+#include <winhttp.h>
 #include <SDL.h>
+#include <ctype.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "png.h"
 #include "ui.h"
+#include "unzip.h"
 
 #define APP_NAME   "Streets of Rage Collection"
 #define UNINST_KEY "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\StreetsOfRageCollection"
@@ -151,27 +159,6 @@ static bool sha1_file(const char *path, char out[41]) {
     return ok;
 }
 
-/* Runs a command line hidden and waits; its exit code, or -1. */
-static int run_hidden(const char *cmd, const char *dir) {
-    STARTUPINFOA si = { .cb = sizeof si, .dwFlags = STARTF_USESHOWWINDOW, .wShowWindow = SW_HIDE };
-    PROCESS_INFORMATION pi;
-    char line[4096];
-    snprintf(line, sizeof line, "%s", cmd);
-    if (!CreateProcessA(NULL, line, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, dir, &si, &pi)) return -1;
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD code = 1;
-    GetExitCodeProcess(pi.hProcess, &code);
-    CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
-    return (int)code;
-}
-
-static const char *tar_exe(void) {
-    static char p[MAX_PATH];
-    GetSystemDirectoryA(p, MAX_PATH);
-    strcat(p, "\\tar.exe");             /* Windows' own: Git's reads C:\ as a host */
-    return p;
-}
-
 static int rom_index(const char *id) {
     for (int r = 0; r < ROMS; r++) if (roms[r].game == 2 && !strcmp(roms[r].id, id)) return r;
     return -1;
@@ -273,14 +260,12 @@ static void take_rom(int slot, const char *path) {
         return;
     }
     if (dot && !_stricmp(dot, ".zip")) {
-        char tmp[MAX_PATH], cmd[2 * MAX_PATH + 64];
+        char tmp[MAX_PATH];
         GetTempPathA(MAX_PATH, tmp);
         static int zips;                /* a folder each: a game may take several */
         snprintf(tmp + strlen(tmp), MAX_PATH - strlen(tmp), "sor_setup_%d_%d", slot, zips++);
-        CreateDirectoryA(tmp, NULL);
-        snprintf(cmd, sizeof cmd, "\"%s\" -xf \"%s\" -C \"%s\"", tar_exe(), path, tmp);
         file[0] = 0;
-        if (run_hidden(cmd, NULL) == 0) {
+        if (unzip(path, 0, -1, tmp, false, NULL, NULL, 0)) {
             const char *exts[3] = { "*.md", "*.bin", "*.gen" };
             for (int e = 0; e < 3 && !file[0]; e++) {
                 char pat[MAX_PATH];
@@ -639,35 +624,380 @@ static bool copy_rom(int r, char *out) {
     return CopyFileA(roms[r].picked, out, FALSE) != 0;
 }
 
-/* Wine (Proton on Linux and the Steam Deck): its version, or NULL on Windows. */
-static const char *wine_version(void) {
-    HMODULE nt = GetModuleHandleA("ntdll.dll");
-    const char *(CDECL *get)(void) = nt ? (const char *(CDECL *)(void))(void *)GetProcAddress(nt, "wine_get_version") : NULL;
-    return get ? get() : NULL;
+/* ---- The build ------------------------------------------------------------------------- *
+ * What tools\install.ps1 does, done by Setup itself: no PowerShell, tar or curl, which Wine
+ * and Proton do not have (#28). install.ps1 stays for building by hand; keep the two in step
+ * (the tools' pinned versions and SHA-256s, the steps, settings.ini). */
+static bool no_system_tools;            /* --no-system-tools: download them even if on PATH */
+
+static int fail(const char *fmt, ...) {
+    char s[420] = "@@error ";
+    va_list a;
+    va_start(a, fmt);
+    vsnprintf(s + 8, sizeof s - 8, fmt, a);
+    va_end(a);
+    progress_line(s);
+    return 1;
 }
 
-/* Runs a command hidden for at most `ms`: its exit code, or -1 (not started, or still going). */
-static int run_hidden_for(const char *cmd, DWORD ms) {
-    STARTUPINFOA si = { .cb = sizeof si, .dwFlags = STARTF_USESHOWWINDOW, .wShowWindow = SW_HIDE };
+static void progress(int percent, const char *fmt, ...) {
+    char s[300];
+    int n = snprintf(s, sizeof s, "@@ %d ", percent);
+    va_list a;
+    va_start(a, fmt);
+    vsnprintf(s + n, sizeof s - n, fmt, a);
+    va_end(a);
+    progress_line(s);
+}
+
+/* Clang must be a MinGW one (llvm-mingw): the MSVC-flavoured LLVM would need Visual Studio's
+ * libraries. `bin`: where in the zip the program is ("" its top). */
+typedef struct { const char *name, *dir, *bin, *exe; int mb; const char *url, *sha; char path[MAX_PATH]; } Tool;
+static Tool tools[4] = {
+    { "Node.js 22.20.0", "node", "", "node.exe", 34, "https://nodejs.org/dist/v22.20.0/node-v22.20.0-win-x64.zip",
+      "bb819d6eb8f5bfda294bbc83a7e4ec6539da67c4233d54b0d655b9248b15e29d", "" },
+    { "CMake 3.31.12", "cmake", "bin", "cmake.exe", 45, "https://github.com/Kitware/CMake/releases/download/v3.31.12/cmake-3.31.12-windows-x86_64.zip",
+      "0c4baa40f28b3f8225eb3fdf6946c987b4fe901403b4eaf2fbbd9378100aaa0c", "" },
+    { "Ninja 1.13.2", "ninja", "", "ninja.exe", 1, "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-win.zip",
+      "07fc8261b42b20e71d1720b39068c2e14ffcee6396b76fb7a795fb460b78dc65", "" },
+    { "LLVM-MinGW 20260616 (Clang)", "llvm-mingw", "bin", "clang.exe", 179, "https://github.com/mstorsjo/llvm-mingw/releases/download/20260616/llvm-mingw-20260616-ucrt-x86_64.zip",
+      "b9b68a4d276e16fa25802aaba458e4638f64b3884c290aaccdc2d87083b6ca35", "" },
+};
+
+static void out_line(const char *s, char *first, size_t first_n, bool *any) {
+    if (!first) progress_line(s);
+    else if (!*any) snprintf(first, first_n, "%s", s);
+    *any = true;
+}
+
+/* Runs a command line hidden in `dir` (NULL: here), its output and errors passed on line by
+ * line as progress; or with `first`, only its first line kept there. Its exit code, or -1 if
+ * it did not start. */
+static int run(const char *cmd, const char *dir, char *first, size_t first_n) {
+    SECURITY_ATTRIBUTES sa = { sizeof sa, NULL, TRUE };
+    HANDLE rd, wr;
+    if (first && first_n) first[0] = 0;
+    if (!CreatePipe(&rd, &wr, &sa, 0)) return -1;
+    SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
+    HANDLE nul = CreateFileA("NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, OPEN_EXISTING, 0, NULL);
+    STARTUPINFOA si = { .cb = sizeof si, .dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW, .wShowWindow = SW_HIDE };
+    si.hStdInput = nul;
+    si.hStdOutput = si.hStdError = wr;
     PROCESS_INFORMATION pi;
-    char line[1024];
+    static char line[8192];             /* (CreateProcess may write to it) */
     snprintf(line, sizeof line, "%s", cmd);
-    if (!CreateProcessA(NULL, line, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) return -1;
-    DWORD code = (DWORD)-1;
-    if (WaitForSingleObject(pi.hProcess, ms) == WAIT_OBJECT_0) GetExitCodeProcess(pi.hProcess, &code);
-    else TerminateProcess(pi.hProcess, 1);
+    BOOL started = CreateProcessA(NULL, line, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, dir, &si, &pi);
+    CloseHandle(wr);
+    if (nul != INVALID_HANDLE_VALUE) CloseHandle(nul);
+    if (!started) { CloseHandle(rd); return -1; }
+    child = pi.hProcess;
+    char buf[4096], ln[1024];
+    int n = 0;
+    bool any = false;
+    DWORD got;
+    while (ReadFile(rd, buf, sizeof buf, &got, NULL) && got)
+        for (DWORD k = 0; k < got; k++) {
+            if (buf[k] == '\n' || n == (int)sizeof ln - 1) {
+                ln[n] = 0;
+                if (n && ln[n - 1] == '\r') ln[n - 1] = 0;
+                out_line(ln, first, first_n, &any);
+                n = 0;
+            } else ln[n++] = buf[k];
+        }
+    if (n) { ln[n] = 0; out_line(ln, first, first_n, &any); }
+    CloseHandle(rd);
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 1;
+    GetExitCodeProcess(pi.hProcess, &code);
+    child = NULL;
     CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
     return (int)code;
 }
 
-/* What the install runs besides itself: Windows' tar (to unpack) and PowerShell (the build,
- * tools/install.ps1). Wine has neither working; without them the install stood at 1% (#28). */
-static bool tools_present(void) {
-    if (GetFileAttributesA(tar_exe()) == INVALID_FILE_ATTRIBUTES) return false;
-    return run_hidden_for("powershell.exe -NoProfile -NonInteractive -Command \"exit 7\"", 60000) == 7;
+/* A build tool on PATH that will do. */
+static bool on_path(int t) {
+    static const char *const ask[4] = { "node --version", "cmake --version", "ninja --version", "clang -dumpmachine" };
+    char out[256];
+    if (no_system_tools || run(ask[t], NULL, out, sizeof out) != 0) return false;
+    int major = 0, minor = 0;
+    const char *d = strpbrk(out, "0123456789");
+    switch (t) {
+    case 0: return out[0] == 'v' && atoi(out + 1) >= 18;
+    case 1: return d && sscanf(d, "%d.%d", &major, &minor) == 2 && (major > 3 || (major == 3 && minor >= 20));
+    case 2: return out[0] != 0;
+    default: return strstr(out, "mingw") || strstr(out, "windows-gnu");
+    }
 }
 
-static int install_body(void);
+/* An https GET into `file` (WinHTTP follows the redirects GitHub's downloads take). */
+static bool download(const char *url, const char *file, void (*tick)(long long got, long long total)) {
+    wchar_t wu[600], host[256], path[600];
+    MultiByteToWideChar(CP_UTF8, 0, url, -1, wu, 600);
+    URL_COMPONENTS c = { .dwStructSize = sizeof c, .lpszHostName = host, .dwHostNameLength = 256,
+                         .lpszUrlPath = path, .dwUrlPathLength = 600 };
+    if (!WinHttpCrackUrl(wu, 0, 0, &c) || c.nScheme != INTERNET_SCHEME_HTTPS) return false;
+    bool ok = false;
+    const wchar_t *agent = L"Streets-of-Rage-Collection-Setup";
+    HINTERNET s = WinHttpOpen(agent, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!s) s = WinHttpOpen(agent, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    HINTERNET con = s ? WinHttpConnect(s, host, c.nPort, 0) : NULL;
+    HINTERNET req = con ? WinHttpOpenRequest(con, L"GET", path, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE) : NULL;
+    DWORD status = 0, sl = sizeof status, total = 0, tl = sizeof total;
+    if (req && WinHttpSendRequest(req, WINHTTP_NO_ADDITIONAL_HEADERS, 0, NULL, 0, 0, 0) && WinHttpReceiveResponse(req, NULL) &&
+        WinHttpQueryHeaders(req, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, NULL, &status, &sl, NULL) && status == 200) {
+        if (!WinHttpQueryHeaders(req, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER, NULL, &total, &tl, NULL)) total = 0;
+        FILE *out = fopen(file, "wb");
+        static char chunk[1 << 16];
+        long long n = 0;
+        DWORD got = 0;
+        ok = out != NULL;
+        while (ok && (ok = WinHttpReadData(req, chunk, sizeof chunk, &got)) && got) {
+            ok = fwrite(chunk, 1, got, out) == got;
+            n += got;
+            if (tick) tick(n, total);
+        }
+        if (out && fclose(out)) ok = false;
+        if (ok && total && n != (long long)total) ok = false;   /* cut short */
+    }
+    if (req) WinHttpCloseHandle(req);
+    if (con) WinHttpCloseHandle(con);
+    if (s) WinHttpCloseHandle(s);
+    return ok;
+}
+
+static bool sha256_file(const char *path, char out[65]) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return false;
+    BCRYPT_ALG_HANDLE alg = NULL;
+    BCRYPT_HASH_HANDLE h = NULL;
+    bool ok = BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, NULL, 0) == 0 &&
+              BCryptCreateHash(alg, &h, NULL, 0, NULL, 0, 0) == 0;
+    static unsigned char buf[1 << 16];
+    size_t n;
+    while (ok && (n = fread(buf, 1, sizeof buf, f)) > 0) ok = BCryptHashData(h, buf, (ULONG)n, 0) == 0;
+    unsigned char d[32];
+    ok = ok && BCryptFinishHash(h, d, 32, 0) == 0;
+    if (h) BCryptDestroyHash(h);
+    if (alg) BCryptCloseAlgorithmProvider(alg, 0);
+    fclose(f);
+    if (ok) for (int k = 0; k < 32; k++) sprintf(out + k * 2, "%02x", d[k]);
+    return ok;
+}
+
+static void remove_tree(const char *path);
+
+/* A tool's download and unpacking, as progress: its share of 4..30%, most of it downloading. */
+static int fetch_k, fetch_n, fetch_shown = -1;
+static const Tool *fetching;
+
+static void fetch_progress(double done, bool unpacking) {
+    int p = 4 + (int)(26 * (fetch_k + done) / fetch_n), key = p * 2 + unpacking;
+    if (key == fetch_shown) return;
+    fetch_shown = key;
+    if (unpacking) progress(p, "Unpacking %s", fetching->name);
+    else progress(p, "Downloading %s (%d MB)", fetching->name, fetching->mb);
+}
+static void download_tick(long long got, long long total) { if (total > 0) fetch_progress(.85 * got / total, false); }
+static void unzip_tick(int done, int total) { fetch_progress(.85 + .15 * done / total, true); }
+
+static bool exists(const char *path) { return GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES; }
+
+/* Downloads a tool into <dir>\<its name>, checked against its pinned SHA-256. */
+static int fetch(const Tool *t, const char *dir) {
+    char zip[MAX_PATH], tmp[MAX_PATH], dest[MAX_PATH], sum[65] = "", why[300] = "";
+    snprintf(zip, sizeof zip, "%s\\%s.zip", dir, t->dir);
+    snprintf(tmp, sizeof tmp, "%s\\%s.tmp", dir, t->dir);
+    snprintf(dest, sizeof dest, "%s\\%s", dir, t->dir);
+    fetching = t;
+    fetch_shown = -1;
+    fetch_progress(0, false);
+    if (!download(t->url, zip, download_tick)) {
+        DeleteFileA(zip);
+        return fail("Could not download %s. Check the internet connection and try again.", t->name);
+    }
+    if (!sha256_file(zip, sum) || strcmp(sum, t->sha)) {
+        DeleteFileA(zip);
+        return fail("%s: the download does not match its published SHA-256. Not using it.", t->name);
+    }
+    if (exists(tmp)) remove_tree(tmp);
+    /* Most zips hold one top folder, left out; Ninja's holds ninja.exe alone. */
+    bool ok = unzip(zip, 0, -1, tmp, true, unzip_tick, why, sizeof why);
+    DeleteFileA(zip);
+    if (!ok) { remove_tree(tmp); return fail("Could not unpack %s: %s", t->name, why); }
+    if (exists(dest)) remove_tree(dest);
+    if (!MoveFileExA(tmp, dest, 0)) return fail("Could not put %s in %s.", t->name, dest);
+    return 0;
+}
+
+/* A path from Setup (the ANSI code page) as UTF-8, as install.ps1 wrote settings.ini. */
+static void to_utf8(const char *s, char *out, int n) {
+    wchar_t w[MAX_PATH * 2];
+    if (!MultiByteToWideChar(CP_ACP, 0, s, -1, w, MAX_PATH * 2) || !WideCharToMultiByte(CP_UTF8, 0, w, -1, out, n, NULL, NULL))
+        snprintf(out, n, "%s", s);
+}
+
+static bool id_in(const char *id, size_t len, int n, const char *const *ids) {
+    for (int k = 0; k < n; k++) if (strlen(ids[k]) == len && !_strnicmp(ids[k], id, len)) return true;
+    return false;
+}
+
+/* settings.ini: rom_path is the first ROM (the game's own if picked), and with editions each
+ * one's rom_<id>; the edition played stays if its ROM is still there. The rest is kept. */
+static bool set_rom_path(const char *ini, int n, const char *const *ids, const char *const *paths) {
+    size_t len = 0;
+    uint8_t *old = read_all(ini, &len, 1);
+    char *text = old ? (char *)old : NULL;
+    if (text) text[len] = 0;
+    if (text && !strncmp(text, "\xEF\xBB\xBF", 3)) text += 3;
+    FILE *f = fopen(ini, "wb");
+    if (!f) { free(old); return false; }
+    char u[MAX_PATH * 4];
+    to_utf8(paths[0], u, sizeof u);
+    fprintf(f, "rom_path=%s\r\n", u);
+    if (n > 1 || strcmp(ids[0], "main"))
+        for (int k = 0; k < n; k++) { to_utf8(paths[k], u, sizeof u); fprintf(f, "rom_%s=%s\r\n", ids[k], u); }
+    for (char *p = text; p && *p;) {
+        char *e = strchr(p, '\n'), *next = e ? e + 1 : p + strlen(p);
+        size_t l = (size_t)((e ? e : next) - p);
+        if (l && p[l - 1] == '\r') l--;
+        bool drop = !_strnicmp(p, "rom_path=", 9);
+        if (!drop && !_strnicmp(p, "rom_", 4)) {
+            size_t k = 4;
+            while (k < l && isalpha((unsigned char)p[k])) k++;
+            drop = k > 4 && k < l && p[k] == '=' && id_in(p + 4, k - 4, n, ids);
+        }
+        if (!drop && l >= 8 && !_strnicmp(p, "edition=", 8)) drop = !id_in(p + 8, l - 8, n, ids);
+        if (!drop) fprintf(f, "%.*s\r\n", (int)l, p);
+        p = next;
+    }
+    free(old);
+    return fclose(f) == 0;
+}
+
+static int install_body(void) {
+    char src[MAX_PATH], cmd[4 * MAX_PATH], why[300] = "";
+    SHCreateDirectoryExA(NULL, folder, NULL);
+    /* The source: the payload unpacked into <folder>\source, or a folder given for testing. */
+    if (source_dir[0]) snprintf(src, sizeof src, "%s", source_dir);
+    else {
+        progress_line("@@ 1 Unpacking the collection");
+        snprintf(src, sizeof src, "%s\\source", folder);
+        FILE *self = fopen(exe_path, "rb");
+        char tag[9] = "";
+        uint64_t size = 0;
+        long long end = 0;
+        bool ok = self && !_fseeki64(self, -16, SEEK_END) && (end = _ftelli64(self) + 16) > 16 && fread(&size, 8, 1, self) == 1 &&
+                  fread(tag, 1, 8, self) == 8 && !memcmp(tag, "SORPAYLD", 8) && size > 0 && size <= (uint64_t)end - 16;
+        if (self) fclose(self);
+        /* The zip's top folder is left out. The files get the time of unpacking, not the zip's:
+         * those are the release server's clock with no time zone, so right after a release they
+         * can lie in the future here, and ninja then finds its build file older than its
+         * sources every time ("manifest 'build.ninja' still dirty after 100 tries"). */
+        if (!ok || !unzip(exe_path, end - 16 - (long long)size, (long long)size, src, true, NULL, why, sizeof why))
+            return fail("Could not unpack the collection (Setup.exe may be damaged: download it again). %s", why);
+    }
+    /* The ROMs, copied in. */
+    char copies[ROMS][MAX_PATH];
+    for (int r = 0; r < ROMS; r++) {
+        copies[r][0] = 0;
+        if (roms[r].picked[0] && !copy_rom(r, copies[r])) return fail("Could not copy a ROM into the install folder.");
+    }
+    int chosen[3], nchosen = 0;
+    for (int g = 0; g < 3; g++) if (game_picked(g)) chosen[nchosen++] = g;
+    if (!nchosen) return fail("No game was picked.");
+
+    /* The build tools: from PATH when they will do, else downloaded once into
+     * <source>\toolchain (the publishers' own releases; nothing is installed into Windows). */
+    char tooldir[MAX_PATH];
+    snprintf(tooldir, sizeof tooldir, "%s\\toolchain", src);
+    progress(2, "Checking the build tools");
+    int missing[4], nmissing = 0;
+    for (int t = 0; t < 4; t++) {
+        char portable[MAX_PATH];
+        snprintf(tools[t].path, MAX_PATH, "%s\\%s%s%s", tooldir, tools[t].dir, tools[t].bin[0] ? "\\" : "", tools[t].bin);
+        snprintf(portable, sizeof portable, "%s\\%s", tools[t].path, tools[t].exe);
+        if (!exists(portable)) {
+            tools[t].path[0] = 0;
+            if (!on_path(t)) missing[nmissing++] = t;
+        }
+    }
+    if (nmissing) {
+        CreateDirectoryA(tooldir, NULL);
+        for (int k = 0; k < nmissing; k++) {
+            Tool *t = &tools[missing[k]];
+            fetch_k = k; fetch_n = nmissing;
+            if (fetch(t, tooldir)) return 1;
+            snprintf(t->path, MAX_PATH, "%s\\%s%s%s", tooldir, t->dir, t->bin[0] ? "\\" : "", t->bin);
+        }
+    }
+    static char path_var[32768];
+    for (int t = 0; t < 4; t++) {       /* the portable ones first on PATH, for the tools and theirs */
+        if (!tools[t].path[0]) continue;
+        size_t n = (size_t)snprintf(path_var, sizeof path_var, "%s;", tools[t].path);
+        GetEnvironmentVariableA("PATH", path_var + n, (DWORD)(sizeof path_var - n));
+        SetEnvironmentVariableA("PATH", path_var);
+    }
+    snprintf(cmd, sizeof cmd, "%s\\third_party\\sdl2\\CMakeLists.txt", src);
+    if (!exists(cmd)) return fail("The source is incomplete: third_party is empty.");
+
+    /* The games: each checked, recompiled and built, then put in <folder>\games\<name>. */
+    double span = 66.0 / nchosen;
+    for (int i = 0; i < nchosen; i++) {
+        const Game *g = &games[chosen[i]];
+        int at = 30 + (int)(span * i);
+        const char *ids[ROMS], *paths[ROMS];
+        int n = 0;
+        progress(at, "%s: checking your ROM", g->title);
+        for (int r = 0; r < ROMS; r++) {
+            if (roms[r].game != chosen[i] || !copies[r][0]) continue;
+            ids[n] = roms[r].id; paths[n++] = copies[r];
+            snprintf(cmd, sizeof cmd, "node tools/setup.mjs --game %s \"%s\"", g->name, copies[r]);
+            if (run(cmd, src, NULL, 0)) return fail("That file is not %s (or an edition of it), unchanged.", g->title);
+        }
+        progress(at + (int)(span * .1), "%s: finding its code", g->title);
+        SetEnvironmentVariableA("GAME", g->name);
+        int code = run("node tools/disasm.mjs", src, NULL, 0);
+        SetEnvironmentVariableA("GAME", NULL);
+        if (code) return fail("%s: the disassembler failed.", g->title);
+        snprintf(cmd, sizeof cmd, "%s\\build\\%s\\build.ninja", src, g->name);
+        if (!exists(cmd)) {
+            progress(at + (int)(span * .2), "%s: setting up the build", g->title);
+            snprintf(cmd, sizeof cmd, "cmake -S . -B build/%s -G Ninja -DGAME=%s -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++", g->name, g->name);
+            if (run(cmd, src, NULL, 0)) return fail("%s: CMake could not set up the build.", g->title);
+        }
+        progress(at + (int)(span * .3), "%s: recompiling and building (a few minutes)", g->title);
+        snprintf(cmd, sizeof cmd, "cmake --build build/%s", g->name);
+        if (run(cmd, src, NULL, 0)) return fail("%s: the build failed.", g->title);
+        char from[MAX_PATH], dest[MAX_PATH], to[MAX_PATH];
+        snprintf(dest, sizeof dest, "%s\\games\\%s", folder, g->name);
+        SHCreateDirectoryExA(NULL, dest, NULL);
+        snprintf(from, sizeof from, "%s\\build\\%s\\%s", src, g->name, g->exe);
+        snprintf(to, sizeof to, "%s\\%s", dest, g->exe);
+        if (!CopyFileA(from, to, FALSE)) return fail("Could not put %s in the install folder (is it running?).", g->title);
+        snprintf(to, sizeof to, "%s\\settings.ini", dest);
+        if (!set_rom_path(to, n, ids, paths)) return fail("Could not write %s's settings.ini.", g->title);
+        if (!strcmp(g->name, "sor1")) {
+            snprintf(from, sizeof from, "%s\\build\\sor1\\%s.exe", src, APP_NAME);
+            snprintf(to, sizeof to, "%s\\%s.exe", folder, APP_NAME);
+            if (!CopyFileA(from, to, FALSE)) return fail("Could not put the collection in the install folder (is it running?).");
+        }
+    }
+    /* The front end comes with the first game's build; with Streets of Rage skipped, build it
+     * on its own. */
+    char app[MAX_PATH];
+    snprintf(app, sizeof app, "%s\\%s.exe", folder, APP_NAME);
+    if (!exists(app)) {
+        progress(96, "Building the collection");
+        snprintf(cmd, sizeof cmd, "%s\\build\\sor1\\build.ninja", src);
+        if (!exists(cmd) && run("cmake -S . -B build/sor1 -G Ninja -DGAME=sor1 -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++", src, NULL, 0))
+            return fail("CMake could not set up the build.");
+        if (run("cmake --build build/sor1 --target Collection", src, NULL, 0)) return fail("The collection failed to build.");
+        snprintf(cmd, sizeof cmd, "%s\\build\\sor1\\%s.exe", src, APP_NAME);
+        if (!CopyFileA(cmd, app, FALSE)) return fail("Could not put the collection in the install folder (is it running?).");
+    }
+    progress(100, "Done");
+    return 0;
+}
 
 /* Every way out of the install ends it: an error before the build (unpacking, a ROM's copy)
  * left the page at 1% with the error never shown (#28). */
@@ -679,104 +1009,6 @@ static int SDLCALL install_thread(void *arg) {
     prog.done = true;
     SDL_UnlockMutex(lock);
     return r;
-}
-
-static int install_body(void) {
-    char src[MAX_PATH], cmd[8 * MAX_PATH + 512];
-    if (!tools_present()) {
-        const char *wine = wine_version();
-        if (wine) progress_line("@@error Setup cannot install under Wine or Proton (Linux, Steam Deck): it builds each game with Windows' own PowerShell and tar, which Wine does not have. Install on Windows for now.");
-        else progress_line("@@error Setup needs Windows PowerShell and tar.exe (both part of Windows 10 and 11), and could not start them.");
-        return 1;
-    }
-    SHCreateDirectoryExA(NULL, folder, NULL);
-    /* The source: the payload unpacked into <folder>\source, or a folder given for testing. */
-    if (source_dir[0]) snprintf(src, sizeof src, "%s", source_dir);
-    else {
-        progress_line("@@ 1 Unpacking the collection");
-        snprintf(src, sizeof src, "%s\\source", folder);
-        FILE *self = fopen(exe_path, "rb");
-        char tag[9] = "";
-        uint64_t size = 0;
-        bool ok = self && !_fseeki64(self, -16, SEEK_END) && fread(&size, 8, 1, self) == 1 && fread(tag, 1, 8, self) == 8 &&
-                  !memcmp(tag, "SORPAYLD", 8) && size > 0;
-        char zip[MAX_PATH];
-        snprintf(zip, sizeof zip, "%s\\source.zip", folder);
-        FILE *out = ok ? fopen(zip, "wb") : NULL;
-        if (out && !_fseeki64(self, -16 - (long long)size, SEEK_END)) {
-            static char buf[1 << 16];
-            uint64_t left = size;
-            while (left && ok) {
-                size_t n = fread(buf, 1, left < sizeof buf ? (size_t)left : sizeof buf, self);
-                ok = n > 0 && fwrite(buf, 1, n, out) == n;
-                left -= n;
-            }
-        } else ok = false;
-        if (out) fclose(out);
-        if (self) fclose(self);
-        if (ok) {
-            SHCreateDirectoryExA(NULL, src, NULL);
-            /* -m: the files get the time of unpacking, not the zip's. The zip's times are the
-             * release server's clock with no time zone, so right after a release they can lie in
-             * the future here, and ninja then finds its build file older than its sources every
-             * time ("manifest 'build.ninja' still dirty after 100 tries"). */
-            snprintf(cmd, sizeof cmd, "\"%s\" -m -xf \"%s\" -C \"%s\" --strip-components=1", tar_exe(), zip, src);
-            ok = run_hidden(cmd, NULL) == 0;
-        }
-        DeleteFileA(zip);
-        if (!ok) { progress_line("@@error Could not unpack the collection (Setup.exe may be damaged: download it again)."); return 1; }
-    }
-    /* The ROMs, copied in, for the installer. */
-    char copies[ROMS][MAX_PATH];
-    for (int r = 0; r < ROMS; r++) {
-        copies[r][0] = 0;
-        if (roms[r].picked[0] && !copy_rom(r, copies[r])) { progress_line("@@error Could not copy a ROM into the install folder."); return 1; }
-    }
-    /* -SorN "<rom>", or with several editions "<id>=<rom>|<id>=<rom>" (the game's own first). */
-    int n = snprintf(cmd, sizeof cmd, "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"%s\\tools\\install.ps1\" -Install \"%s\"", src, folder);
-    for (int g = 0; g < 3; g++) {
-        if (!game_picked(g)) continue;
-        n += snprintf(cmd + n, sizeof cmd - n, " -Sor%d \"", g + 1);
-        bool first = true;
-        for (int r = 0; r < ROMS; r++) {
-            if (roms[r].game != g || !copies[r][0]) continue;
-            n += snprintf(cmd + n, sizeof cmd - n, "%s%s=%s", first ? "" : "|", roms[r].id, copies[r]);
-            first = false;
-        }
-        n += snprintf(cmd + n, sizeof cmd - n, "\"");
-    }
-    SECURITY_ATTRIBUTES sa = { sizeof sa, NULL, TRUE };
-    HANDLE rd, wr;
-    CreatePipe(&rd, &wr, &sa, 0);
-    SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
-    STARTUPINFOA si = { .cb = sizeof si, .dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW, .wShowWindow = SW_HIDE };
-    si.hStdOutput = si.hStdError = wr;
-    PROCESS_INFORMATION pi;
-    if (!CreateProcessA(NULL, cmd, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, src, &si, &pi)) {
-        CloseHandle(rd); CloseHandle(wr);
-        progress_line("@@error Could not start PowerShell.");
-        return 1;
-    }
-    CloseHandle(wr);
-    child = pi.hProcess;
-    char buf[4096], line[1024];
-    int ln = 0;
-    DWORD got;
-    while (ReadFile(rd, buf, sizeof buf, &got, NULL) && got)
-        for (DWORD k = 0; k < got; k++) {
-            if (buf[k] == '\n' || ln == (int)sizeof line - 1) { line[ln] = 0; if (ln && line[ln - 1] == '\r') line[ln - 1] = 0; progress_line(line); ln = 0; }
-            else line[ln++] = buf[k];
-        }
-    CloseHandle(rd);
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD code = 1;
-    GetExitCodeProcess(pi.hProcess, &code);
-    CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
-    child = NULL;
-    SDL_LockMutex(lock);
-    if (code && !prog.failed) { prog.failed = true; snprintf(prog.error, sizeof prog.error, "The install stopped (code %lu).", (unsigned long)code); }
-    SDL_UnlockMutex(lock);
-    return 0;
 }
 
 /* ---- Shortcuts and the Installed apps entry --------------------------------------------- */
@@ -927,6 +1159,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--rom") && i + 2 < argc) { int g = atoi(argv[++i]) - 1; if (g >= 0 && g < ROW_COUNT) take_rom(g, argv[++i]); else i++; }
         else if (!strcmp(argv[i], "--shot") && i + 2 < argc) { page = atoi(argv[++i]); shot = argv[++i]; }
         else if (!strcmp(argv[i], "--install-test")) install_test = true;
+        else if (!strcmp(argv[i], "--no-system-tools")) no_system_tools = true;
         else if (!strcmp(argv[i], "--update")) update = true;
         else if (!strcmp(argv[i], "--wait") && i + 1 < argc) wait_pid = (DWORD)strtoul(argv[++i], NULL, 10);
     }
@@ -965,7 +1198,7 @@ int main(int argc, char **argv) {
     }
     if (shot) {
         ui_begin(1280, 720);
-        if (page == PAGE_FAILED) { prog.percent = 1; snprintf(prog.error, sizeof prog.error, "Setup cannot install under Wine or Proton (Linux, Steam Deck): it builds each game with Windows' own PowerShell and tar, which Wine does not have. Install on Windows for now."); }
+        if (page == PAGE_FAILED) { prog.percent = 12; snprintf(prog.error, sizeof prog.error, "Could not download LLVM-MinGW 20260616 (Clang). Check the internet connection and try again."); }
         if (page == PAGE_INSTALL) { prog.percent = 42; snprintf(prog.what, sizeof prog.what, "Streets of Rage 2: recompiling and building (a few minutes)"); prog.nlog = 2;
                                     snprintf(prog.log[0], 200, "[214/347] Building C object CMakeFiles/recomp.dir/generated/sor2/recomp_07.c.obj");
                                     snprintf(prog.log[1], 200, "[215/347] Building C object CMakeFiles/recomp.dir/generated/sor2/recomp_08.c.obj"); }

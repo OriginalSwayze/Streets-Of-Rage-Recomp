@@ -12,5 +12,8 @@ int png_write_rgba(const char *path, const uint32_t *px, int w, int h);
 /* Reads an 8-bit PNG (grey, RGB, palette, grey + alpha or RGBA; not interlaced) into
  * 0xAARRGGBB pixels; NULL if it cannot. Free the result with free(). */
 uint32_t *png_read(const char *path, int *w, int *h);
+/* Inflates a raw deflate stream (RFC 1951, as in a zip: no zlib header) into a new buffer, its
+ * size in *len; NULL if it is not one. `expect`: the size it should come to, or 0. */
+uint8_t *png_inflate(const uint8_t *src, size_t n, size_t expect, size_t *len);
 
 #endif

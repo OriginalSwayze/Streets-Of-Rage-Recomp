@@ -48,8 +48,8 @@ jobs:
             cp "$f" "$stage/src/$f" || { echo "could not copy $f"; exit 1; }
           done
           # Dated a day back: zips keep times without a time zone, and a file dated after the
-          # player's clock makes ninja rebuild its build file forever (Setup also unpacks with
-          # tar -m, which ignores these times).
+          # player's clock makes ninja rebuild its build file forever (Setup also ignores these
+          # times when it unpacks).
           find "$stage/src" -exec touch -d "$(date -u -d '1 day ago' '+%Y-%m-%d %H:%M:%S')" {} +
           (cd "$stage" && 7z a -tzip -mx=9 source.zip src > /dev/null)
           cp "$stage/source.zip" source.zip

@@ -175,9 +175,9 @@ static bool inflate_block(Bits *b, Out *o, const Huff *lit, const Huff *dist) {
     }
 }
 
+/* A raw deflate stream (no zlib header). */
 static bool inflate_all(const uint8_t *src, size_t n, Out *o) {
-    if (n < 2) return false;
-    Bits b = { src + 2, src + n, 0, 0, false };   /* skip the zlib header */
+    Bits b = { src, src + n, 0, 0, false };
     int last;
     do {
         last = bit(&b, 1);
@@ -231,6 +231,19 @@ static bool inflate_all(const uint8_t *src, size_t n, Out *o) {
     return true;
 }
 
+uint8_t *png_inflate(const uint8_t *src, size_t n, size_t expect, size_t *len) {
+    Out out = { 0 };
+    if (expect) {                       /* room for all of it at once when its size is known */
+        out.data = malloc(expect);
+        if (!out.data) return NULL;
+        out.cap = expect;
+    }
+    if (!inflate_all(src, n, &out)) { free(out.data); return NULL; }
+    if (!out.data) out.data = malloc(1);    /* an empty file still gets a buffer */
+    *len = out.len;
+    return out.data;
+}
+
 /* ---- Reader ------------------------------------------------------------------------- */
 static int paeth(int a, int b, int c) {
     int p = a + b - c, pa = abs(p - a), pb = abs(p - b), pc = abs(p - c);
@@ -279,7 +292,7 @@ uint32_t *png_read(const char *path, int *w_out, int *h_out) {
     }
     int channels = type == 0 ? 1 : type == 2 ? 3 : type == 3 ? 1 : type == 4 ? 2 : type == 6 ? 4 : 0;
     if (w <= 0 || h <= 0 || w > 8192 || h > 8192 || depth != 8 || !channels || interlace || !idat) goto done;
-    if (!inflate_all(idat, idat_n, &out)) goto done;
+    if (idat_n < 2 || !inflate_all(idat + 2, idat_n - 2, &out)) goto done;   /* past the zlib header */
     size_t stride = (size_t)w * channels;
     if (out.len < (stride + 1) * (size_t)h) goto done;
     /* Undo the filters, row by row, in place. */

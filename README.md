@@ -148,9 +148,10 @@ New code is found by playing: the runtime records every instruction it runs in
 
 Setup does all of this. By hand, you need:
 
-* Windows 10 or 11 (the menus draw their text with Windows' fonts). Not Linux through Wine or Proton yet:
-  Setup builds the games with Windows' own PowerShell and tar, which Wine does not have, and
-  says so rather than starting
+* Windows 10 or 11 (the menus draw their text with Windows' fonts). Setup itself needs
+  nothing of Windows' beyond its libraries (it unzips, downloads and runs the build tools on
+  its own, with no PowerShell, tar or curl), so on Linux it can run under Wine or Proton;
+  that has not been tested there yet
 * [Git](https://git-scm.com/), [Node.js](https://nodejs.org/) 18 or newer,
   [CMake](https://cmake.org/) 3.20 or newer, [Ninja](https://ninja-build.org/) and
   Clang ([LLVM-MinGW](https://github.com/mstorsjo/llvm-mingw))
@@ -179,7 +180,7 @@ the code seen running in play (`coverage.txt`). A game's other editions (`editio
 found in each by the bytes around them: `node tools/map-editions.mjs --game sor3` writes
 `editions.json` (addresses only) after an address is added or changed. `build/sor1` also builds the collection's
 front end (`Streets of Rage Collection.exe`) and the installer (`Setup.exe`);
-[tools/install.ps1](tools/install.ps1) is what Setup runs.
+[tools/install.ps1](tools/install.ps1) does what Setup does, from PowerShell.
 
 Default controls (all remappable in the pause menu's Controls page):
 
