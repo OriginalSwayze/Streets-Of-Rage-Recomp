@@ -148,7 +148,9 @@ New code is found by playing: the runtime records every instruction it runs in
 
 Setup does all of this. By hand, you need:
 
-* Windows 10 or 11 (the menus draw their text with Windows' fonts)
+* Windows 10 or 11 (the menus draw their text with Windows' fonts). Not Linux through Wine or Proton yet:
+  Setup builds the games with Windows' own PowerShell and tar, which Wine does not have, and
+  says so rather than starting
 * [Git](https://git-scm.com/), [Node.js](https://nodejs.org/) 18 or newer,
   [CMake](https://cmake.org/) 3.20 or newer, [Ninja](https://ninja-build.org/) and
   Clang ([LLVM-MinGW](https://github.com/mstorsjo/llvm-mingw))

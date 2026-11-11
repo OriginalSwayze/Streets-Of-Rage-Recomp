@@ -535,10 +535,13 @@ static void draw_page(float t) {
             char pct[16];
             snprintf(pct, sizeof pct, "%d%%", prog.percent);
             ui_draw_text(pct, HEAD, 20, 400, 2, x + w - 60, y + 112, C_YELLOW, C_YELLOW, 1);
-            ui_draw_text(failed ? prog.error : prog.what, BODY, 19, 400, 0, x, y + 112, failed ? rgb_hex(0xF09A86) : C_TEXT,
-                         failed ? rgb_hex(0xF09A86) : C_TEXT, 1);
+            float ly = y + 170;          /* where the log goes: below a long error */
+            if (failed) {
+                float ey = wrap(prog.error, x, y + 112, w - 90, 19, rgb_hex(0xF09A86), 1);
+                if (ey + 16 > ly) ly = ey + 16;
+            } else ui_draw_text(prog.what, BODY, 19, 400, 0, x, y + 112, C_TEXT, C_TEXT, 1);
             for (int k = 0; k < prog.nlog; k++)
-                ui_draw_text(prog.log[k], "Consolas", 14, 400, 0, x, y + 170 + k * 22, rgb_hex(0x6E6A62), rgb_hex(0x6E6A62), 1);
+                ui_draw_text(prog.log[k], "Consolas", 14, 400, 0, x, ly + k * 22, rgb_hex(0x6E6A62), rgb_hex(0x6E6A62), 1);
             if (failed) {
                 button(1010, 596, 170, 52, "CLOSE", 1, B_CANCEL);
                 button(820, 596, 170, 52, "BACK", 0, B_BACK);
@@ -636,9 +639,56 @@ static bool copy_rom(int r, char *out) {
     return CopyFileA(roms[r].picked, out, FALSE) != 0;
 }
 
+/* Wine (Proton on Linux and the Steam Deck): its version, or NULL on Windows. */
+static const char *wine_version(void) {
+    HMODULE nt = GetModuleHandleA("ntdll.dll");
+    const char *(CDECL *get)(void) = nt ? (const char *(CDECL *)(void))(void *)GetProcAddress(nt, "wine_get_version") : NULL;
+    return get ? get() : NULL;
+}
+
+/* Runs a command hidden for at most `ms`: its exit code, or -1 (not started, or still going). */
+static int run_hidden_for(const char *cmd, DWORD ms) {
+    STARTUPINFOA si = { .cb = sizeof si, .dwFlags = STARTF_USESHOWWINDOW, .wShowWindow = SW_HIDE };
+    PROCESS_INFORMATION pi;
+    char line[1024];
+    snprintf(line, sizeof line, "%s", cmd);
+    if (!CreateProcessA(NULL, line, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) return -1;
+    DWORD code = (DWORD)-1;
+    if (WaitForSingleObject(pi.hProcess, ms) == WAIT_OBJECT_0) GetExitCodeProcess(pi.hProcess, &code);
+    else TerminateProcess(pi.hProcess, 1);
+    CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+    return (int)code;
+}
+
+/* What the install runs besides itself: Windows' tar (to unpack) and PowerShell (the build,
+ * tools/install.ps1). Wine has neither working; without them the install stood at 1% (#28). */
+static bool tools_present(void) {
+    if (GetFileAttributesA(tar_exe()) == INVALID_FILE_ATTRIBUTES) return false;
+    return run_hidden_for("powershell.exe -NoProfile -NonInteractive -Command \"exit 7\"", 60000) == 7;
+}
+
+static int install_body(void);
+
+/* Every way out of the install ends it: an error before the build (unpacking, a ROM's copy)
+ * left the page at 1% with the error never shown (#28). */
 static int SDLCALL install_thread(void *arg) {
     (void)arg;
+    int r = install_body();
+    SDL_LockMutex(lock);
+    if (r && !prog.failed) { prog.failed = true; snprintf(prog.error, sizeof prog.error, "The install stopped."); }
+    prog.done = true;
+    SDL_UnlockMutex(lock);
+    return r;
+}
+
+static int install_body(void) {
     char src[MAX_PATH], cmd[8 * MAX_PATH + 512];
+    if (!tools_present()) {
+        const char *wine = wine_version();
+        if (wine) progress_line("@@error Setup cannot install under Wine or Proton (Linux, Steam Deck): it builds each game with Windows' own PowerShell and tar, which Wine does not have. Install on Windows for now.");
+        else progress_line("@@error Setup needs Windows PowerShell and tar.exe (both part of Windows 10 and 11), and could not start them.");
+        return 1;
+    }
     SHCreateDirectoryExA(NULL, folder, NULL);
     /* The source: the payload unpacked into <folder>\source, or a folder given for testing. */
     if (source_dir[0]) snprintf(src, sizeof src, "%s", source_dir);
@@ -725,7 +775,6 @@ static int SDLCALL install_thread(void *arg) {
     child = NULL;
     SDL_LockMutex(lock);
     if (code && !prog.failed) { prog.failed = true; snprintf(prog.error, sizeof prog.error, "The install stopped (code %lu).", (unsigned long)code); }
-    prog.done = true;
     SDL_UnlockMutex(lock);
     return 0;
 }
@@ -916,6 +965,7 @@ int main(int argc, char **argv) {
     }
     if (shot) {
         ui_begin(1280, 720);
+        if (page == PAGE_FAILED) { prog.percent = 1; snprintf(prog.error, sizeof prog.error, "Setup cannot install under Wine or Proton (Linux, Steam Deck): it builds each game with Windows' own PowerShell and tar, which Wine does not have. Install on Windows for now."); }
         if (page == PAGE_INSTALL) { prog.percent = 42; snprintf(prog.what, sizeof prog.what, "Streets of Rage 2: recompiling and building (a few minutes)"); prog.nlog = 2;
                                     snprintf(prog.log[0], 200, "[214/347] Building C object CMakeFiles/recomp.dir/generated/sor2/recomp_07.c.obj");
                                     snprintf(prog.log[1], 200, "[215/347] Building C object CMakeFiles/recomp.dir/generated/sor2/recomp_08.c.obj"); }
