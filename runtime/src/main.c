@@ -1158,8 +1158,22 @@ int main(int argc, char **argv) {
             else snprintf(title, sizeof title, GAME_TITLE);
             if (strcmp(title, shown_title)) { SDL_SetWindowTitle(win, title); strcpy(shown_title, title); }
             if (audio) {
-                /* Keep about 3 frames queued: drop audio if we fall far behind. */
-                if (SDL_GetQueuedAudioSize(audio) < (Uint32)sound_out_rate * 4 / 10) {
+                /* The device plays from a cushion of about 3 frames (50 ms). Each frame makes one
+                 * frame of sound, so nothing builds one up by itself: the queue sat under a frame,
+                 * and ran dry (a crackle) whenever a frame was late or the device took its sound
+                 * in bigger pieces, which Wine and Proton do: 9 times a second there (#30). When
+                 * it runs low, silence first tops it back up; as the game makes sound as fast as
+                 * it plays, the cushion then stays. Far behind (over 150 ms queued), a frame's
+                 * sound is dropped. */
+                Uint32 queued = SDL_GetQueuedAudioSize(audio) / 4, frame_n = (Uint32)sound_out_rate / 60;
+                if (queued < frame_n / 2) {
+                    static int16_t silence[2 * 4096];
+                    Uint32 pad = (Uint32)sound_out_rate / 20 - queued;
+                    if (pad > 4096) pad = 4096;
+                    SDL_QueueAudio(audio, silence, pad * 4);
+                    queued += pad;
+                }
+                if (queued < (Uint32)sound_out_rate * 15 / 100) {
                     if (settings.volume < 100) {
                         int v = settings.volume * 256 / 100;
                         for (int i = 0; i < sound_out_count * 2; i++) sound_out[i] = (int16_t)(sound_out[i] * v / 256);
