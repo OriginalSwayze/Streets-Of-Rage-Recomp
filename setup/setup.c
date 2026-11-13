@@ -41,7 +41,7 @@
 
 #define APP_NAME   "Streets of Rage Collection"
 #define UNINST_KEY "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\StreetsOfRageCollection"
-#define VERSION    "2.9.4"
+#define VERSION    "2.9.5"
 
 /* ---- The games and their ROMs --------------------------------------------------------- */
 typedef struct {

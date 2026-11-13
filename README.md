@@ -215,7 +215,8 @@ found in each by the bytes around them: `node tools/map-editions.mjs --game sor3
 front end (`Streets of Rage Collection.exe`) and the installer (`Setup.exe`);
 [tools/install.ps1](tools/install.ps1) does what Setup does, from PowerShell.
 
-Default controls (all remappable in the pause menu's Controls page):
+Default controls (all remappable in the pause menu's Controls page, to any key, controller
+button or trigger: a Genesis-style pad that sends C or Z as a trigger works too):
 
 | Action | Keyboard | Controller (Xbox layout) |
 |---|---|---|
