@@ -5,6 +5,7 @@
  * controller that disconnects (a wireless one sleeping, Bluetooth dropping) is closed by
  * its instance id, and opened again when it comes back. */
 #include "pads.h"
+#include "input.h"
 
 #define MAX_PADS 8
 
@@ -50,6 +51,7 @@ void pads_event(const SDL_Event *e) {
     case SDL_CONTROLLERDEVICEREMOVED: close_id(e->cdevice.which); break;
     case SDL_CONTROLLERBUTTONDOWN: { int i = find(e->cbutton.which); if (i >= 0) active = i; break; }
     case SDL_CONTROLLERAXISMOTION: {
+        input_trigger_pressed(e);       /* every move, so a trigger's press is known wherever it comes */
         int i = find(e->caxis.which);
         if (i >= 0 && (e->caxis.value > 16000 || e->caxis.value < -16000)) active = i;
         break;

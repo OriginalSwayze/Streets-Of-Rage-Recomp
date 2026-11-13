@@ -57,17 +57,30 @@ bool input_ini_load(const char *key, const char *value) {
         }
         if (!strncmp(key, "pad_", 4) && !strcmp(key + 4, ini_names[i])) {
             SDL_GameControllerButton b = SDL_GameControllerGetButtonFromString(value);
+            SDL_GameControllerAxis a = SDL_GameControllerGetAxisFromString(value);
             if (b != SDL_CONTROLLER_BUTTON_INVALID) settings.bind_pad[i] = b;
+            else if (a == SDL_CONTROLLER_AXIS_TRIGGERLEFT) settings.bind_pad[i] = INPUT_TRIGGER_LEFT;
+            else if (a == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) settings.bind_pad[i] = INPUT_TRIGGER_RIGHT;
             return true;
         }
     }
     return false;
 }
 
+/* A trigger binding's axis, or SDL_CONTROLLER_AXIS_INVALID for a button. */
+static SDL_GameControllerAxis trigger_axis(int bind) {
+    return bind == INPUT_TRIGGER_LEFT ? SDL_CONTROLLER_AXIS_TRIGGERLEFT
+         : bind == INPUT_TRIGGER_RIGHT ? SDL_CONTROLLER_AXIS_TRIGGERRIGHT : SDL_CONTROLLER_AXIS_INVALID;
+}
+
+#define TRIGGER_DOWN 20000              /* of 32767: past 60% of its travel (a pad whose trigger rests at half reads 16383 at rest) */
+
 void input_ini_save(FILE *f) {
-    fprintf(f, "# Controls: keyboard key and controller button for each action\n");
+    fprintf(f, "# Controls: keyboard key and controller button (or trigger) for each action\n");
     for (int i = 0; i < IN_COUNT; i++) {
-        const char *b = SDL_GameControllerGetStringForButton((SDL_GameControllerButton)settings.bind_pad[i]);
+        SDL_GameControllerAxis a = trigger_axis(settings.bind_pad[i]);
+        const char *b = a != SDL_CONTROLLER_AXIS_INVALID ? SDL_GameControllerGetStringForAxis(a)
+                                                          : SDL_GameControllerGetStringForButton((SDL_GameControllerButton)settings.bind_pad[i]);
         fprintf(f, "key_%s=%s\n", ini_names[i], SDL_GetScancodeName((SDL_Scancode)settings.bind_key[i]));
         fprintf(f, "pad_%s=%s\n", ini_names[i], b ? b : "");
     }
@@ -76,12 +89,37 @@ void input_ini_save(FILE *f) {
 bool input_held(int action, const Uint8 *keys, SDL_GameController *pad) {
     int k = settings.bind_key[action];
     if (keys && k > 0 && k < SDL_NUM_SCANCODES && keys[k]) return true;
-    return pad && SDL_GameControllerGetButton(pad, (SDL_GameControllerButton)settings.bind_pad[action]);
+    if (!pad) return false;
+    SDL_GameControllerAxis a = trigger_axis(settings.bind_pad[action]);
+    if (a != SDL_CONTROLLER_AXIS_INVALID) return SDL_GameControllerGetAxis(pad, a) > TRIGGER_DOWN;
+    return SDL_GameControllerGetButton(pad, (SDL_GameControllerButton)settings.bind_pad[action]);
+}
+
+int input_trigger_pressed(const SDL_Event *e) {
+    if (e->type != SDL_CONTROLLERAXISMOTION) return -1;
+    int t = e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERLEFT ? 0 : e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT ? 1 : -1;
+    if (t < 0) return -1;
+    /* A press is a move past TRIGGER_DOWN: each trigger's last value on each controller.
+     * One event may be asked about for several actions, so its answer is kept. */
+    static SDL_ControllerAxisEvent asked;
+    static int answer = -1;
+    if (asked.timestamp == e->caxis.timestamp && asked.which == e->caxis.which && asked.axis == e->caxis.axis &&
+        asked.value == e->caxis.value && asked.type) return answer;
+    static struct { SDL_JoystickID pad; int trigger; Sint16 value; bool used; } last[8];
+    int k = 0;
+    while (k < 8 && last[k].used && !(last[k].pad == e->caxis.which && last[k].trigger == t)) k++;
+    if (k == 8) k = 0;                  /* (more than four pads: the first slot again) */
+    bool was = last[k].used && last[k].pad == e->caxis.which && last[k].trigger == t && last[k].value > TRIGGER_DOWN;
+    last[k].used = true; last[k].pad = e->caxis.which; last[k].trigger = t; last[k].value = e->caxis.value;
+    asked = e->caxis;
+    answer = e->caxis.value > TRIGGER_DOWN && !was ? (t ? INPUT_TRIGGER_RIGHT : INPUT_TRIGGER_LEFT) : -1;
+    return answer;
 }
 
 bool input_event_is(int action, const SDL_Event *e) {
     if (e->type == SDL_KEYDOWN) return !e->key.repeat && (int)e->key.keysym.scancode == settings.bind_key[action];
     if (e->type == SDL_CONTROLLERBUTTONDOWN) return e->cbutton.button == settings.bind_pad[action];
+    if (e->type == SDL_CONTROLLERAXISMOTION) { int t = input_trigger_pressed(e); return t >= 0 && t == settings.bind_pad[action]; }
     return false;
 }
 
@@ -115,6 +153,8 @@ const char *input_button_name(int action) {
         "Paddle 4", "Touchpad",
     };
     int b = settings.bind_pad[action];
+    if (b == INPUT_TRIGGER_LEFT) return "LT";
+    if (b == INPUT_TRIGGER_RIGHT) return "RT";
     return b >= 0 && b < SDL_CONTROLLER_BUTTON_MAX && names[b] ? names[b] : "(none)";
 }
 
@@ -124,7 +164,7 @@ void input_bind_key(int action, SDL_Scancode key) {
     settings.bind_key[action] = key;
 }
 
-void input_bind_button(int action, SDL_GameControllerButton button) {
+void input_bind_button(int action, int button) {
     for (int i = 0; i < IN_COUNT; i++)
         if (i != action && settings.bind_pad[i] == (int)button) settings.bind_pad[i] = settings.bind_pad[action];
     settings.bind_pad[action] = button;

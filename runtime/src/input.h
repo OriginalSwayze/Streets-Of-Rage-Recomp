@@ -38,6 +38,13 @@ const char *input_button_name(int action);
 /* Binds a key or a button to an action. An action that had it already gets the action's
  * old key or button instead, so no two actions share one. */
 void     input_bind_key(int action, SDL_Scancode key);
-void     input_bind_button(int action, SDL_GameControllerButton button);
+void     input_bind_button(int action, int button);
+
+/* The triggers bind like buttons (settings.bind_pad), past SDL's buttons: some pads give
+ * their C or Z (a Genesis-style pad's) as a trigger, which is an axis, not a button (#31). */
+#define INPUT_TRIGGER_LEFT  100
+#define INPUT_TRIGGER_RIGHT 101
+/* The trigger an event pressed past 60% of its travel: INPUT_TRIGGER_*, or -1. */
+int      input_trigger_pressed(const SDL_Event *e);
 
 #endif

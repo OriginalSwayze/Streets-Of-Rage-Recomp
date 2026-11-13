@@ -66,7 +66,14 @@ bool controls_event(const SDL_Event *e, float mx, float my) {
         if (e->type == SDL_CONTROLLERBUTTONDOWN) {
             capturing = false;
             if (e->cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) return false;
-            input_bind_button(selected, (SDL_GameControllerButton)e->cbutton.button);
+            input_bind_button(selected, e->cbutton.button);
+            captured_until = now + 1;
+            return true;
+        }
+        int trigger = input_trigger_pressed(e);   /* a pad's C or Z may be a trigger (#31) */
+        if (trigger >= 0) {
+            capturing = false;
+            input_bind_button(selected, trigger);
             captured_until = now + 1;
             return true;
         }
