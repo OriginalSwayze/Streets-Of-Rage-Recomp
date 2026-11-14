@@ -210,6 +210,13 @@ void gen_instr_hook(unsigned int pc) {
 void machine_reset(void) {
     vdp_reset();
     memset(bus.ram, 0, sizeof bus.ram);
+    /* The I/O chip powers on too. A game that ran before (the launcher runs the ROM to its
+     * title first) left its control registers set, and Streets of Rage takes a set port C
+     * control ($A1000D bit 6) for a reset without power-off: it then skips its start-up,
+     * which keeps the console's region at $FFFF44, so Mr. X asked his question in
+     * Japanese (#32). */
+    memset(&io, 0, sizeof io);
+    io_frame();
     bus.sram_mapped = false;
     bus.z80_reset = true;               /* the Z80 is held in reset at power on */
     bus.z80_busreq = false;
