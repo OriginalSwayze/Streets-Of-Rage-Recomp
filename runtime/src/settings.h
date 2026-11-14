@@ -50,6 +50,8 @@ typedef struct {
     int  volume;                        /* 0-100: game sound and launcher music */
     int  bind_key[16];                  /* input.h IN_*: SDL scancode for each action */
     int  bind_pad[16];                  /* input.h IN_*: SDL game controller button for each action */
+    int  bind_key_more[2][16];          /* players 2 and 3: their own key (0 none) and button for */
+    int  bind_pad_more[2][16];          /* each of the pad's actions (input.h INPUT_PLAYERS) */
     bool cheat_health;                  /* infinite health: no damage, health held full */
     bool cheat_spirit;                  /* infinite spirit power */
     bool cheat_lives;                   /* lives held at 3 or more (both players) */

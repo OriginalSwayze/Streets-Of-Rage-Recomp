@@ -383,6 +383,7 @@ int main(int argc, char **argv) {
     const char *menu_shot = NULL;
     int menu_w = 1920, menu_h = 1080;
     bool controls_shot = false, outfit_page_shot = false;
+    int controls_player = 0;
     int fighters_shot = -1;
     int menu_tab = -1, menu_row = 0;    /* --menu-tab TAB ROW, with --menu-shot */
     bool save_preview = false;          /* --save-preview: keep the last frame for the launcher's previews */
@@ -578,6 +579,7 @@ int main(int argc, char **argv) {
             menu_h = atoi(argv[++i]);
         }
         else if (!strcmp(argv[i], "--controls-shot")) controls_shot = true;   /* with --menu-shot: the Controls page */
+        else if (!strcmp(argv[i], "--controls-player") && i + 1 < argc) controls_player = atoi(argv[++i]) - 1;   /* and its tab */
         else if (!strcmp(argv[i], "--outfit-shot")) outfit_page_shot = true;  /* with --menu-shot: the outfit page */
         else if (!strcmp(argv[i], "--fighters-shot") && i + 1 < argc) fighters_shot = atoi(argv[++i]);   /* with --menu-shot: fighter N's colours page */
         else if (!strcmp(argv[i], "--save-preview")) save_preview = true;
@@ -601,15 +603,22 @@ int main(int argc, char **argv) {
             /* --input-check FILE: rebind a few keys and buttons, save to FILE, load it back,
              * and print the bindings (never touches settings.ini). */
             const char *file = argv[++i];
-            input_bind_key(IN_A, SDL_SCANCODE_J);
-            input_bind_key(IN_B, SDL_SCANCODE_J);           /* taken by A: A gets B's old key */
-            input_bind_button(IN_START, SDL_CONTROLLER_BUTTON_Y);
-            input_bind_button(IN_REWIND, SDL_CONTROLLER_BUTTON_START);   /* taken by Start: swaps */
+            input_bind_key(0, IN_A, SDL_SCANCODE_J);
+            input_bind_key(0, IN_B, SDL_SCANCODE_J);           /* taken by A: A gets B's old key */
+            input_bind_button(0, IN_START, SDL_CONTROLLER_BUTTON_Y);
+            input_bind_button(0, IN_REWIND, SDL_CONTROLLER_BUTTON_START);   /* taken by Start: swaps */
+            input_bind_key(1, IN_UP, SDL_SCANCODE_I);
+            input_bind_key(1, IN_DOWN, SDL_SCANCODE_DOWN);     /* player 1's Down: they get "(none)" */
+            input_bind_button(1, IN_A, SDL_CONTROLLER_BUTTON_A);   /* player 2's B gets their old X */
+            input_bind_button(1, IN_C, INPUT_TRIGGER_RIGHT);
             settings_save(file);
             input_defaults();
             settings_load(file);
-            for (int k = 0; k < IN_COUNT; k++)
-                printf("  %-14s keyboard %-12s controller %s\n", input_labels[k], input_key_name(k), input_button_name(k));
+            for (int p = 0; p < 2; p++) {
+                printf("player %d\n", p + 1);
+                for (int k = 0; k < (p ? IN_PAD_COUNT : IN_COUNT); k++)
+                    printf("  %-20s keyboard %-12s controller %s\n", input_labels[k], input_key_name(p, k), input_button_name(p, k));
+            }
             return 0;
         }
         else if (!strcmp(argv[i], "--launcher-shot") && i + 4 < argc) {
@@ -708,11 +717,11 @@ int main(int argc, char **argv) {
                 uint16_t script[3] = { pad_state[0], pad_state[1], third_pad };
                 for (int k = 0; k < 3; k++)
                     for (size_t m = 0; m < sizeof map / sizeof *map; m++)
-                        SDL_JoystickSetVirtualButton(vpad[k], settings.bind_pad[map[m].in], script[k] & map[m].bit ? 1 : 0);
+                        SDL_JoystickSetVirtualButton(vpad[k], k ? settings.bind_pad_more[k - 1][map[m].in] : settings.bind_pad[map[m].in], script[k] & map[m].bit ? 1 : 0);
                 SDL_GameControllerUpdate();
-                pad_state[0] = input_pad_bits(NULL, pads_player(0));
-                pad_state[1] = input_pad_bits(NULL, pads_player(1));
-                third_pad = pads_count() >= 3 ? input_pad_bits(NULL, pads_player(2)) : 0;
+                pad_state[0] = input_pad_bits(0, NULL, pads_player(0));
+                pad_state[1] = input_pad_bits(1, NULL, pads_player(1));
+                third_pad = pads_count() >= 3 ? input_pad_bits(2, NULL, pads_player(2)) : 0;
             }
             if (f == check_from) len_a = state_save(snap_a, sizeof snap_a);
             if (f == check_to) len_b = state_save(snap_b, sizeof snap_b);
@@ -963,7 +972,7 @@ int main(int argc, char **argv) {
         if (menu_shot) {
             SDL_Rect r = display_rect(menu_w, menu_h);
             menu_open(framebuffer, frame_width(), vdp_screen_height(), FB_W, r.x, r.y, r.w, r.h, menu_w, menu_h, 1);
-            if (controls_shot) controls_open();
+            if (controls_shot) { controls_open(); controls_show_player(controls_player); }
             if (outfit_page_shot) outfit_open();
             if (fighters_shot >= 0) fighters_open(fighters_shot);
             if (menu_tab >= 0) {
@@ -1135,11 +1144,12 @@ int main(int argc, char **argv) {
                 int runs = input_held(IN_FAST, keys, pads_active()) ? settings.fast_speed + 2 : 1;
                 for (int r = 0; r < runs; r++) {
                     /* Two controllers and no AI partner: the first is player 1's, the second
-                     * player 2's. Otherwise player 1 plays on whichever was used last. */
+                     * player 2's. Otherwise player 1 plays on whichever was used last. Players
+                     * 2 and 3 have keys of their own too (none until they pick some). */
                     bool two = !settings.player2 && pads_count() >= 2;
-                    pad_state[0] = input_pad_bits(keys, two ? pads_player(0) : pads_active());
-                    pad_state[1] = settings.player2 ? ai_pad() : two ? input_pad_bits(NULL, pads_player(1)) : 0;
-                    third_pad = pads_count() >= 3 ? input_pad_bits(NULL, pads_player(2)) : 0;
+                    pad_state[0] = input_pad_bits(0, keys, two ? pads_player(0) : pads_active());
+                    pad_state[1] = settings.player2 ? ai_pad() : input_pad_bits(1, keys, two ? pads_player(1) : NULL);
+                    third_pad = input_pad_bits(2, keys, pads_count() >= 3 ? pads_player(2) : NULL);
                     rewind_push(PADS_BOTH());
                     cheats_frame();
                     machine_run_frame(framebuffer, FB_W);

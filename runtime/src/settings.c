@@ -122,6 +122,7 @@ void settings_load(const char *path) {
         else if (!strcmp(k, "cheat_codes")) snprintf(settings.cheat_codes, sizeof settings.cheat_codes, "%s", v);
     }
     fclose(f);
+    input_ini_done();
     if (settings.aspect_w <= 0 || settings.aspect_h <= 0) { settings.aspect_w = 16; settings.aspect_h = 9; }
     if (settings.window_scale < 1 || settings.window_scale > 10) settings.window_scale = 4;
     if (settings.internal_scale < 1 || settings.internal_scale > 6 || settings.internal_scale == 5) settings.internal_scale = 1;

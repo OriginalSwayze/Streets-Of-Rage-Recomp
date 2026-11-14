@@ -8,6 +8,7 @@
 
 void controls_open(void);
 bool controls_is_open(void);
+void controls_show_player(int player);   /* the tab shown: 0 player 1, 1 player 2, ... */
 /* Handles one event while the page is open; (mx, my) is the mouse position in layout
  * units for mouse events. Returns true when a binding or the defaults changed. */
 bool controls_event(const SDL_Event *e, float mx, float my);

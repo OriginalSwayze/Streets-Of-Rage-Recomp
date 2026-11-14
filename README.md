@@ -228,6 +228,10 @@ button or trigger: a Genesis-style pad that sends C or Z as a trigger works too)
 | Fast-forward (hold) | Tab | RB |
 | Pause menu | Esc | Back (Guide and Esc always work too) |
 
+Players 2 and 3 have their own tabs on the Controls page: their own controller buttons (the
+same layout by default) and keyboard keys of their own (none until you pick some), so two
+can share a keyboard.
+
 Fixed keys: F2 save state, F4 load, F6/F7 previous/next slot (1-9, files in `states/`),
 F11 fullscreen.
 
