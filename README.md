@@ -1,4 +1,4 @@
-# Streets of Rage Collection
+# Streets of Rage Collection Recomp
 
 Native PC ports of **Streets of Rage**, **Streets of Rage 2** and **Streets of Rage 3**
 (Sega Genesis / Mega Drive) in one collection, each built from your own ROM. No game data is
