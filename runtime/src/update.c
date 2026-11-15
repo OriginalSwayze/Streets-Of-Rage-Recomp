@@ -40,7 +40,7 @@ void update_pretend(int s, const char *have, const char *v, float k) {
 #include <bcrypt.h>
 #include <winhttp.h>
 
-#define REPO       "OriginalSwayze/Streets-Of-Rage-Recomp"
+#define REPO       "OriginalSwayze/Streets-of-Rage-Collection-Recomp"
 #define UNINST_KEY "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\StreetsOfRageCollection"
 #define AGENT      L"Streets-of-Rage-Collection-updater"
 
