@@ -116,7 +116,8 @@ In all three games:
   and every sprite gliding between the game's 60 updates (a fighter's sprites together, in
   one piece, and what it touches on its own)
 * **Internal resolution** up to 6x with dither-aware scalers (Edge, Smooth/xBR, Sharp),
-  sharpening, integer scaling and CRT, scanline and LCD filters
+  sharpening, integer scaling and CRT, scanline and LCD filters (6x with every effect takes about
+  a quarter less time a picture than in 2.9.7)
 * **Neon glow** (the scenery's signs and lamps light up) and an **HDR look**
 * **AI partner** for player 2, or a second controller (in Streets of Rage 2, pick 2 PLAYERS)
 * **Cheats**: infinite health and lives, attack power up to one-hit kills; the timer and the
@@ -128,7 +129,8 @@ In all three games:
 * **Fighters' colours**: every playable fighter's clothes, hair and skin in any of the
   Genesis' 512 colours, still or animated, with a live preview
 * Save states, rewind, fast-forward, a slowdown fix and a sprite flicker fix
-* Sound at the console's own balance, as emulated or cleaned up (no aliasing, hum or
+* Sound at the console's own balance and pitch (the noise channel's hiss and drums at the
+  chip's own rate), as emulated or cleaned up (no aliasing, hum or
   clipping), with a bass setting
 * **Your own music**: put recordings in a `music` folder beside the game, named by the
   launcher's Track number (`07.flac`, or `07 - Go Straight.mp3`), and the game plays them
@@ -165,7 +167,8 @@ StreetsOfRage2.exe --headless 4000 --press <script> --hash-log b.log --interpret
 past the title. Widescreen and the cheats change the game on purpose (their patches only run
 natively); with them off every game matches the interpreter frame for frame. To get further,
 `--autoplay N` has player 1 play itself from frame N (the AI partner's fighting, walking on
-when the street is clear); with `--cheat health` it gets through the first rounds. `--poke-at F CODES` writes RAM
+when the street is clear); with `--cheat health` it gets through the first rounds. `--bench N`
+times N HD pictures a game frame, as the window draws them (with `--hd-shot F.png SCALE`). `--poke-at F CODES` writes RAM
 codes (`FFxxxx:VV`) once, at frame F.
 
 New code is found by playing: the runtime records every instruction it runs in
